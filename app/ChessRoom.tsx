@@ -1,7 +1,9 @@
 "use client";
 
-import { Chess, type Color, type Move, type PieceSymbol, type Square } from "chess.js";
+import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { gradeLabel, useMoveAnalysis, type ReviewMove } from "./move-analysis";
 
 type Role = "w" | "b" | "spectator";
 
@@ -15,7 +17,7 @@ type ClockState = {
 type GameState = {
   room: string;
   fen: string;
-  history: Array<Pick<Move, "from" | "to" | "san" | "color">>;
+  history: ReviewMove[];
   players: { w: string | null; b: string | null };
   result: string | null;
   clock: ClockState;
@@ -69,7 +71,7 @@ function relativeStatus(state: GameState, role: Role) {
 }
 
 function useClock(clock: ClockState | null, onFlag: () => void) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const flagged = useRef(false);
 
   useEffect(() => {
@@ -126,6 +128,7 @@ export function ChessRoom() {
   const [promotion, setPromotion] = useState<{ from: Square; to: Square; color: Color } | null>(null);
   const [notice, setNotice] = useState("");
   const [copied, setCopied] = useState(false);
+  const analysis = useMoveAnalysis(room, state?.history ?? [], Boolean(state?.result));
 
   const send = useCallback((payload: object) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -186,6 +189,8 @@ export function ChessRoom() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const incomingRoom = params.get("room");
+    // This synchronizes the invite code from the browser URL on first mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (incomingRoom) setRoomInput(incomingRoom.toUpperCase());
     return () => socketRef.current?.close();
   }, []);
@@ -245,19 +250,33 @@ export function ChessRoom() {
     }
   }
 
-  const movePairs = state?.history.reduce<Array<{ number: number; w?: string; b?: string }>>((pairs, move, index) => {
-    if (index % 2 === 0) pairs.push({ number: Math.floor(index / 2) + 1, w: move.san });
-    else pairs[pairs.length - 1].b = move.san;
+  const movePairs = state?.history.reduce<Array<{ number: number; w?: { san: string; index: number }; b?: { san: string; index: number } }>>((pairs, move, index) => {
+    if (index % 2 === 0) pairs.push({ number: Math.floor(index / 2) + 1, w: { san: move.san, index } });
+    else pairs[pairs.length - 1].b = { san: move.san, index };
     return pairs;
   }, []) ?? [];
+
+  function moveCell(move?: { san: string; index: number }) {
+    if (!move) return <strong className="move-cell"><span>—</span></strong>;
+    const reviewed = analysis.moves[move.index];
+    const title = reviewed
+      ? `${gradeLabel(reviewed.grade)}${reviewed.expectedPointsLoss === null ? "" : ` · ${(reviewed.expectedPointsLoss * 100).toFixed(1)} expected points lost`}`
+      : undefined;
+    return (
+      <strong className="move-cell" title={title}>
+        <span>{move.san}</span>
+        {reviewed && <small className={`move-grade move-grade--${reviewed.grade}`}>{gradeLabel(reviewed.grade)}</small>}
+      </strong>
+    );
+  }
 
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Sentry Gambit home">
+        <Link className="brand" href="/" aria-label="Sentry Gambit home">
           <span className="brand-mark">♞</span>
           <span>SENTRY <em>GAMBIT</em></span>
-        </a>
+        </Link>
         <div className="topbar-note"><span className="live-dot" /> LIVE TABLES · RAPID 10</div>
         <button className="text-button" onClick={() => { socketRef.current?.close(); setConnection("idle"); setRoom(""); setState(null); window.history.replaceState({}, "", "/"); }}>New table</button>
       </header>
@@ -369,11 +388,24 @@ export function ChessRoom() {
           )}
 
           <div className="moves-panel">
-            <div className="moves-header"><span>MOVE SHEET</span><span>{state?.history.length ?? 0} PLIES</span></div>
+            <div className="moves-header">
+              <span>MOVE SHEET</span>
+              <span>
+                {analysis.status === "loading" || analysis.status === "analyzing"
+                  ? `REVIEWING ${analysis.completed}/${state?.history.length ?? 0}`
+                  : analysis.status === "complete"
+                    ? "LOCAL REVIEW COMPLETE"
+                    : analysis.status === "error"
+                      ? "REVIEW UNAVAILABLE"
+                      : state?.result
+                        ? `${state.history.length} PLIES`
+                        : "REVIEW AFTER GAME"}
+              </span>
+            </div>
             <div className="moves-table">
               {movePairs.length ? movePairs.map((pair) => (
                 <div className="move-row" key={pair.number}>
-                  <span>{pair.number}.</span><strong>{pair.w}</strong><strong>{pair.b || "—"}</strong>
+                  <span>{pair.number}.</span>{moveCell(pair.w)}{moveCell(pair.b)}
                 </div>
               )) : <div className="empty-moves"><span>♙</span><p>The move sheet is empty.<br />White begins.</p></div>}
             </div>
