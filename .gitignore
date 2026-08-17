@@ -43,3 +43,4 @@ yarn-error.log*
 data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
+tsconfig.tsbuildinfo

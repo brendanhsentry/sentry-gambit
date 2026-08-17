@@ -4,6 +4,8 @@ import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { IconSeer } from "./IconSeer";
 import { startGameReplay, stopGameReplay } from "./sentry-replay";
 import { gradeLabel, useMoveAnalysis, type ReviewMove } from "./move-analysis";
@@ -680,6 +682,7 @@ export function ChessRoom() {
               <div className="seer-head">
                 <span className="seer-eye"><IconSeer size={16} /></span>
                 <span>Seer Autofix</span>
+                {seer.phase === "done" && seer.shortId ? <span className="seer-chip">{seer.shortId}</span> : null}
                 <span className="seer-head-spacer" />
                 <button
                   className="seer-icon-btn"
@@ -723,12 +726,8 @@ export function ChessRoom() {
                   </div>
                 )}
                 {seer.phase === "done" && (
-                  <div className="seer-card">
-                    <div className="seer-card-head">
-                      <span className="seer-eye"><IconSeer size={14} /></span> Root Cause
-                      {seer.shortId ? <span className="seer-chip">{seer.shortId}</span> : null}
-                    </div>
-                    <div className="seer-card-body">{seer.text}</div>
+                  <div className="seer-md">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{seer.text}</ReactMarkdown>
                   </div>
                 )}
                 {seer.phase === "error" && (
