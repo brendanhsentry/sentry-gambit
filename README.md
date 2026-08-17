@@ -27,6 +27,20 @@ This starter does not use `wrangler.jsonc`.
 - `examples/d1/` contains an optional D1 example surface
 - `drizzle.config.ts` supports local migration generation when needed
 
+## Sentry Move Logs
+
+The Worker sends one structured `chess.move.accepted` Sentry log for every
+accepted move. Logs are disabled automatically when no DSN is configured.
+
+Configure these hosted runtime values:
+
+- `SENTRY_DSN` — the DSN for the Sentry project that should receive move logs
+- `SENTRY_ENVIRONMENT` — optional; defaults to `production`
+
+Move logs include the room code, ply and move numbers, color, SAN and UCI
+notation, resulting FEN, remaining clock time, and whether the move ended the
+game. Player names are not sent.
+
 ## Workspace Auth Headers
 
 Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.

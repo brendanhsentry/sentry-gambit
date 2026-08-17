@@ -1,5 +1,6 @@
 /** Cloudflare Worker entry point with an in-process WebSocket chess table service. */
-import { Chess, type Color, type PieceSymbol } from "chess.js";
+import * as Sentry from "@sentry/cloudflare";
+import { Chess, type Color, type Move, type PieceSymbol } from "chess.js";
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 
@@ -7,6 +8,8 @@ interface Env {
   ASSETS: Fetcher;
   DB?: D1Database;
   TABLES: DurableObjectNamespace;
+  SENTRY_DSN?: string;
+  SENTRY_ENVIRONMENT?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -49,6 +52,16 @@ type Table = {
 };
 
 const STARTING_TIME = 10 * 60 * 1000;
+
+function sentryOptions(env: Env) {
+  return {
+    dsn: env.SENTRY_DSN,
+    enabled: Boolean(env.SENTRY_DSN),
+    enableLogs: true,
+    environment: env.SENTRY_ENVIRONMENT ?? "production",
+    tracesSampleRate: 0,
+  };
+}
 
 type PersistedTable = {
   moves: string[];
@@ -152,7 +165,13 @@ function setBoardResult(table: Table) {
   if (table.result) pauseClock(table);
 }
 
-function handleTableMessage(table: Table, client: TableClient, raw: string, onChanged: () => void) {
+function handleTableMessage(
+  table: Table,
+  client: TableClient,
+  raw: string,
+  onChanged: () => void,
+  onTelemetry: () => void,
+) {
   let message: { type?: string; from?: string; to?: string; promotion?: PieceSymbol };
   try {
     message = JSON.parse(raw);
@@ -176,8 +195,9 @@ function handleTableMessage(table: Table, client: TableClient, raw: string, onCh
 
     const now = Date.now();
     pauseClock(table, now);
+    let acceptedMove: Move;
     try {
-      table.chess.move({ from: message.from, to: message.to, promotion: message.promotion || "q" });
+      acceptedMove = table.chess.move({ from: message.from, to: message.to, promotion: message.promotion || "q" });
     } catch {
       resumeClock(table, now);
       send(client, { type: "error", message: "That move is not legal." });
@@ -185,6 +205,22 @@ function handleTableMessage(table: Table, client: TableClient, raw: string, onCh
     }
     setBoardResult(table);
     if (!table.result) resumeClock(table, now);
+    const ply = table.chess.history().length;
+    Sentry.logger.info("chess.move.accepted", {
+      "chess.room.id": table.id,
+      "chess.move.ply": ply,
+      "chess.move.number": Math.ceil(ply / 2),
+      "chess.move.color": acceptedMove.color === "w" ? "white" : "black",
+      "chess.move.from": acceptedMove.from,
+      "chess.move.to": acceptedMove.to,
+      "chess.move.san": acceptedMove.san,
+      "chess.move.uci": `${acceptedMove.from}${acceptedMove.to}${acceptedMove.promotion ?? ""}`,
+      "chess.position.fen_after": table.chess.fen(),
+      "chess.clock.remaining_ms": table.clock[acceptedMove.color],
+      "chess.game.finished": Boolean(table.result),
+      "chess.game.result": table.result ?? "in_progress",
+    });
+    onTelemetry();
     onChanged();
     broadcast(table);
     return;
@@ -216,13 +252,14 @@ function handleTableMessage(table: Table, client: TableClient, raw: string, onCh
   }
 }
 
-export class ChessTable {
+class ChessTableBase {
   private readonly durableState: DurableObjectState;
   private table: Table | null = null;
   private loading: Promise<void> | null = null;
 
-  constructor(state: DurableObjectState) {
+  constructor(state: DurableObjectState, env: Env) {
     this.durableState = state;
+    void env;
   }
 
   private async load(roomId: string) {
@@ -279,7 +316,15 @@ export class ChessTable {
     if (!table.clock.running) resumeClock(table);
 
     serverSocket.addEventListener("message", (event) => {
-      if (typeof event.data === "string") handleTableMessage(table, client, event.data, () => this.persist());
+      if (typeof event.data === "string") {
+        handleTableMessage(
+          table,
+          client,
+          event.data,
+          () => this.persist(),
+          () => this.durableState.waitUntil(Sentry.flush(2_000)),
+        );
+      }
     });
     serverSocket.addEventListener("close", () => {
       pauseClock(table);
@@ -298,6 +343,11 @@ export class ChessTable {
     return new Response(null, { status: 101, webSocket: browserSocket } as ResponseInit);
   }
 }
+
+export const ChessTable = Sentry.instrumentDurableObjectWithSentry(
+  (env: Env) => sentryOptions(env),
+  ChessTableBase,
+);
 
 async function openTableSocket(request: Request, env: Env) {
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
@@ -331,4 +381,4 @@ const worker = {
   },
 };
 
-export default worker;
+export default Sentry.withSentry((env: Env) => sentryOptions(env), worker);
