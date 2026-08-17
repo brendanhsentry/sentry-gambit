@@ -121,6 +121,7 @@ function PlayerCard({ name, color, time, active, bottom }: {
 export function ChessRoom() {
   const socketRef = useRef<WebSocket | null>(null);
   const [roomInput, setRoomInput] = useState("");
+  const [invitedRoom, setInvitedRoom] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [room, setRoom] = useState("");
   const [role, setRole] = useState<Role>("spectator");
@@ -232,8 +233,12 @@ export function ChessRoom() {
     const params = new URLSearchParams(window.location.search);
     const incomingRoom = params.get("room");
     // This synchronizes the invite code from the browser URL on first mount.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (incomingRoom) setRoomInput(incomingRoom.toUpperCase());
+    if (incomingRoom) {
+      const cleaned = incomingRoom.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRoomInput(cleaned);
+      setInvitedRoom(cleaned || null);
+    }
     return () => socketRef.current?.close();
   }, []);
 
@@ -320,7 +325,7 @@ export function ChessRoom() {
           <span>PAWN <em>PATROL</em></span>
         </Link>
         <div className="topbar-note"><span className="live-dot" /> LIVE TABLES · RAPID 10</div>
-        <button className="text-button" onClick={() => { socketRef.current?.close(); setConnection("idle"); setRoom(""); setState(null); window.history.replaceState({}, "", "/"); }}>New table</button>
+        <button className="text-button" onClick={() => { socketRef.current?.close(); setConnection("idle"); setRoom(""); setState(null); setInvitedRoom(null); setRoomInput(""); window.history.replaceState({}, "", "/"); }}>New table</button>
       </header>
 
       <section className="game-layout">
@@ -366,18 +371,33 @@ export function ChessRoom() {
 
             {connection === "idle" && (
               <div className="lobby-card">
-                <span className="lobby-kicker">PLAY HEAD TO HEAD</span>
-                <h1>Your board.<br />Your move.</h1>
-                <p>Create a private table or enter a code from a friend. No account needed.</p>
-                <label>
-                  <span>Your name</span>
-                  <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Mikhail" maxLength={24} />
-                </label>
-                <button className="primary-button" onClick={startTable}>Create a table <span>→</span></button>
-                <div className="join-row">
-                  <input value={roomInput} onChange={(event) => setRoomInput(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} placeholder="ROOM CODE" maxLength={8} aria-label="Room code" />
-                  <button onClick={() => connect(roomInput, name)} disabled={!roomInput}>Join</button>
-                </div>
+                {invitedRoom ? (
+                  <>
+                    <span className="lobby-kicker">YOU&apos;RE INVITED</span>
+                    <h1>Take your seat.</h1>
+                    <p>You&apos;ve been invited to table {invitedRoom}. Enter a name and join the game.</p>
+                    <label>
+                      <span>Your name</span>
+                      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Mikhail" maxLength={24} />
+                    </label>
+                    <button className="primary-button" onClick={() => connect(invitedRoom, name)}>Join table {invitedRoom} <span>→</span></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="lobby-kicker">PLAY HEAD TO HEAD</span>
+                    <h1>Your board.<br />Your move.</h1>
+                    <p>Create a private table or enter a code from a friend. No account needed.</p>
+                    <label>
+                      <span>Your name</span>
+                      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Mikhail" maxLength={24} />
+                    </label>
+                    <button className="primary-button" onClick={startTable}>Create a table <span>→</span></button>
+                    <div className="join-row">
+                      <input value={roomInput} onChange={(event) => setRoomInput(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} placeholder="ROOM CODE" maxLength={8} aria-label="Room code" />
+                      <button onClick={() => connect(roomInput, name)} disabled={!roomInput}>Join</button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
