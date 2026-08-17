@@ -153,6 +153,65 @@ export function ChessRoom() {
   useEffect(() => () => void stopGameReplay(), []);
 
   const currentGameId = state?.gameId;
+
+  type SeerReview =
+    | { phase: "idle" }
+    | { phase: "requesting" }
+    | { phase: "running"; issueId: string; shortId: string }
+    | { phase: "done"; text: string; shortId: string }
+    | { phase: "error"; message: string };
+  const [seer, setSeer] = useState<SeerReview>({ phase: "idle" });
+
+  useEffect(() => {
+    // A new game means the previous review no longer applies.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSeer({ phase: "idle" });
+  }, [currentGameId]);
+
+  const requestSeerReview = useCallback(async () => {
+    if (!currentGameId) return;
+    setSeer({ phase: "requesting" });
+    // The finished game can take a minute to be indexed by Sentry; retry.
+    for (let attempt = 0; attempt < 12; attempt++) {
+      try {
+        const res = await fetch(`/api/review?gameId=${encodeURIComponent(currentGameId)}`, { method: "POST" });
+        if (res.ok) {
+          const data = await res.json();
+          setSeer({ phase: "running", issueId: String(data.issueId), shortId: String(data.shortId ?? "") });
+          return;
+        }
+        if (res.status !== 404) {
+          const data = await res.json().catch(() => ({} as { error?: string }));
+          setSeer({ phase: "error", message: data.error ?? "The review could not be started." });
+          return;
+        }
+      } catch {
+        // Network hiccup; retry below.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
+    setSeer({ phase: "error", message: "The game has not reached Sentry yet. Try again in a minute." });
+  }, [currentGameId]);
+
+  useEffect(() => {
+    if (seer.phase !== "running") return;
+    const id = window.setInterval(async () => {
+      try {
+        const res = await fetch(`/api/review/status?issueId=${encodeURIComponent(seer.issueId)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === "completed" && data.text) {
+          setSeer({ phase: "done", text: data.text, shortId: seer.shortId });
+        } else if (data.status === "errored" || data.status === "failed" || data.status === "cancelled") {
+          setSeer({ phase: "error", message: "Seer hit an error while reviewing. Try again." });
+        }
+      } catch {
+        // Keep polling.
+      }
+    }, 10000);
+    return () => window.clearInterval(id);
+  }, [seer]);
+
   const analysis = useMoveAnalysis(
     currentGameId ?? room,
     state?.history ?? [],
@@ -477,6 +536,32 @@ export function ChessRoom() {
             <div className="match-actions">
               <button onClick={() => send({ type: "reset" })}>↻ Rematch</button>
               <button onClick={() => send({ type: "resign" })} disabled={role === "spectator" || Boolean(state.result)}>Resign</button>
+            </div>
+          )}
+          {state?.result && (
+            <div className="seer-panel">
+              <div className="moves-header">
+                <span>SEER GAME REVIEW</span>
+                <span>
+                  {seer.phase === "idle"
+                    ? "POST-GAME"
+                    : seer.phase === "done"
+                      ? seer.shortId
+                      : seer.phase === "error"
+                        ? "FAILED"
+                        : "THINKING…"}
+                </span>
+              </div>
+              {seer.phase === "idle" && (
+                <button className="primary-button" onClick={requestSeerReview}>Ask Seer to review this game <span>→</span></button>
+              )}
+              {(seer.phase === "requesting" || seer.phase === "running") && (
+                <p className="seer-status">Seer is studying the game — this usually takes a couple of minutes.</p>
+              )}
+              {seer.phase === "done" && <div className="seer-review">{seer.text}</div>}
+              {seer.phase === "error" && (
+                <p className="seer-status">{seer.message} <button onClick={requestSeerReview}>Retry</button></p>
+              )}
             </div>
           )}
           {notice && <div className="notice" role="status">{notice}</div>}

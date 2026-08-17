@@ -32,4 +32,4 @@ jobs:
           region: us-west1
           image: us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:${{ github.sha }}
           # deploys reset in-progress games: state is in-memory on one instance
-          flags: --max-instances=1 --timeout=3600 --memory=512Mi
+          flags: --max-instances=1 --timeout=3600 --memory=512Mi --update-secrets=SEER_API_TOKEN=seer-api-token:latest

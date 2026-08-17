@@ -213,3 +213,7 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .live-dot { animation: pulse 2.2s ease-in-out infinite; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(217,154,66,0); } }
 }
+
+.seer-panel { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
+.seer-status { font-size: 13px; opacity: 0.85; }
+.seer-review { white-space: pre-wrap; font-size: 13px; line-height: 1.5; max-height: 300px; overflow-y: auto; border: 1px solid var(--line); padding: 10px; }

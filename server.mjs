@@ -419,7 +419,102 @@ const handleRequest = app.getRequestHandler();
 const handleNextUpgrade =
   typeof app.getUpgradeHandler === "function" ? app.getUpgradeHandler() : null;
 
-const server = createServer((req, res) => handleRequest(req, res));
+const SENTRY_ORG = "sentry-gambit";
+const SENTRY_PROJECT_ID = "4511927685939200";
+const SEER_TOKEN = process.env.SEER_API_TOKEN || "";
+
+const REVIEW_PROMPT = [
+  "This issue represents one finished chess game. Review the game using the",
+  "chess.move.accepted and chess.move.graded logs in this issue's trace.",
+  "Reconstruct the game, call out the key moments (best moves, mistakes,",
+  "blunders) with move numbers, and give each player two or three concrete",
+  "tips to improve. Keep it under 300 words. This is a chess game review:",
+  "do not analyze application code and do not propose code changes.",
+].join(" ");
+
+function sendJson(res, status, payload) {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(payload));
+}
+
+async function sentryApi(path, options = {}) {
+  const response = await fetch(`https://sentry.io/api/0${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${SEER_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) throw new Error(`Sentry API ${response.status} for ${path}`);
+  return response.json();
+}
+
+function extractReview(autofix) {
+  const blocks = Array.isArray(autofix?.blocks) ? autofix.blocks : [];
+  const answers = blocks
+    .map((block) => block?.message)
+    .filter((m) => m && m.role === "assistant" && typeof m.content === "string" && m.content.trim());
+  return answers.length ? answers[answers.length - 1].content : null;
+}
+
+async function handleReviewRequest(req, res, url) {
+  if (!SEER_TOKEN) {
+    sendJson(res, 503, { error: "Game review is not configured." });
+    return;
+  }
+  try {
+    if (req.method === "POST" && url.pathname === "/api/review") {
+      const gameId = (url.searchParams.get("gameId") || "").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64);
+      if (!gameId) {
+        sendJson(res, 400, { error: "gameId is required" });
+        return;
+      }
+      const query = encodeURIComponent(`chess.game.id:${gameId}`);
+      const issues = await sentryApi(
+        `/organizations/${SENTRY_ORG}/issues/?project=${SENTRY_PROJECT_ID}&query=${query}&limit=1`,
+      );
+      if (!Array.isArray(issues) || issues.length === 0) {
+        // The game's issue can lag ingestion by a minute; the client retries.
+        sendJson(res, 404, { error: "Game not indexed yet. Try again shortly." });
+        return;
+      }
+      const issueId = issues[0].id;
+      const existing = await sentryApi(`/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/`);
+      if (!existing?.autofix || existing.autofix.status === "errored") {
+        await sentryApi(`/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/?mode=explorer`, {
+          method: "POST",
+          body: JSON.stringify({ step: "root_cause", referrer: "api.web", user_context: REVIEW_PROMPT }),
+        });
+      }
+      sendJson(res, 200, { issueId, shortId: issues[0].shortId });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/review/status") {
+      const issueId = (url.searchParams.get("issueId") || "").replace(/\D/g, "");
+      if (!issueId) {
+        sendJson(res, 400, { error: "issueId is required" });
+        return;
+      }
+      const data = await sentryApi(`/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/`);
+      const status = data?.autofix?.status ?? "none";
+      sendJson(res, 200, { status, text: extractReview(data?.autofix) });
+      return;
+    }
+    sendJson(res, 404, { error: "Not found" });
+  } catch (error) {
+    console.error("Seer review request failed:", error.message);
+    sendJson(res, 502, { error: "Sentry API request failed." });
+  }
+}
+
+const server = createServer((req, res) => {
+  const url = new URL(req.url, "http://localhost");
+  if (url.pathname.startsWith("/api/review")) {
+    void handleReviewRequest(req, res, url);
+    return;
+  }
+  handleRequest(req, res);
+});
 const wss = new WebSocketServer({ noServer: true });
 
 server.on("upgrade", (req, socket, head) => {
