@@ -1,4 +1,4 @@
-# Sentry Gambit
+# Pawn Patrol
 
 Live chess with private tables and shared clocks. Next.js frontend plus a Node
 WebSocket server (`server.mjs`) that keeps each game's board, clocks, and
@@ -29,9 +29,9 @@ in this project — the default build service account is denied by org policy):
 ```bash
 gcloud auth configure-docker us-west1-docker.pkg.dev
 docker buildx build --platform linux/amd64 \
-  -t us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:latest --push .
-gcloud run deploy sentry-gambit \
-  --image us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:latest \
+  -t us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/pawn-patrol:latest --push .
+gcloud run deploy pawn-patrol \
+  --image us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/pawn-patrol:latest \
   --project devinfra-remote-dev \
   --region us-west1 \
   --allow-unauthenticated \
@@ -46,13 +46,18 @@ clients reconnect automatically on the same room code.
 ## Sentry Move Logs
 
 The Node server sends one structured `chess.move.accepted` Sentry log for every
-accepted move. Logging is disabled automatically when no DSN is configured.
+accepted move. Once the game ends, the browser sends each local Stockfish
+classification back to the server, which emits a corresponding
+`chess.move.graded` log. Grade reports from multiple browsers are deduplicated
+by game ID and ply. Logging is disabled automatically when no DSN is
+configured.
 
 Set these Cloud Run environment variables:
 
 - `SENTRY_DSN` — the DSN for the Sentry project that should receive move logs
 - `SENTRY_ENVIRONMENT` — optional; falls back to `NODE_ENV`
 
-Move logs include the room code, ply and move numbers, color, SAN and UCI
-notation, resulting FEN, remaining clock time, and whether the move ended the
-game. Player names are not sent.
+Move logs include the room code, game ID, ply and move numbers, color, SAN and
+UCI notation, resulting FEN, remaining clock time, and whether the move ended
+the game. Grade logs add the Stockfish grade and expected-points loss. Player
+names are not sent.

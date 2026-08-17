@@ -1,0 +1,81 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-run-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_ID: devinfra-remote-dev
+  REGION: us-west1
+  SERVICE: sentry-gambit
+  IMAGE: us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:${{ github.sha }}
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify required secrets
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+        run: |
+          if [ -z "$SENTRY_DSN" ]; then
+            echo "::error::Add SENTRY_DSN in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          if [ -z "$GCP_CREDENTIALS" ]; then
+            echo "::error::Add GCP_CREDENTIALS in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      # Build before authentication so the temporary credentials file created by
+      # google-github-actions/auth cannot be copied into the container image.
+      - name: Build container
+        run: docker build --tag "$IMAGE" .
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Artifact Registry authentication
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Push container
+        run: docker push "$IMAGE"
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.SERVICE }}
+          project_id: ${{ env.PROJECT_ID }}
+          region: ${{ env.REGION }}
+          image: ${{ env.IMAGE }}
+          env_vars: |-
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            SENTRY_ENVIRONMENT=production
+          env_vars_update_strategy: merge
+          flags: >-
+            --allow-unauthenticated
+            --max-instances=1
+            --timeout=3600
+            --memory=512Mi

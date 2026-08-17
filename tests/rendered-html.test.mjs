@@ -4,7 +4,7 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-test("ships the Sentry Gambit product instead of the starter preview", async () => {
+test("ships the Pawn Patrol product instead of the starter preview", async () => {
   const [page, layout, client, server, packageJson] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),
     readFile(new URL("app/layout.tsx", root), "utf8"),
@@ -13,7 +13,7 @@ test("ships the Sentry Gambit product instead of the starter preview", async () 
     readFile(new URL("package.json", root), "utf8"),
   ]);
 
-  assert.match(page, /Sentry Gambit/);
+  assert.match(page, /Pawn Patrol/);
   assert.match(layout, /og\.png/);
   assert.match(client, /new WebSocket/);
   assert.match(client, /chess\.moves/);

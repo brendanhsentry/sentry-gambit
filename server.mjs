@@ -10,15 +10,29 @@ const dev = process.env.NODE_ENV !== "production";
 const port = Number(process.env.PORT) || 3000;
 
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  enabled: Boolean(process.env.SENTRY_DSN),
+  dsn: "https://69f4666f8a913ed118913d18660fe20d@o4511927634296832.ingest.us.sentry.io/4511927685939200",
+  integrations: [
+    // send console.log, console.warn, and console.error calls as logs to Sentry
+    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
+  ],
   enableLogs: true,
-  environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV ?? "development",
-  tracesSampleRate: 0,
+  tracesSampleRate: 1.0,
 });
 
 const STARTING_TIME = 10 * 60 * 1000;
 const IDLE_ROOM_TTL = 60 * 60 * 1000;
+const MOVE_GRADES = new Set([
+  "brilliant",
+  "great",
+  "best",
+  "excellent",
+  "good",
+  "book",
+  "inaccuracy",
+  "mistake",
+  "miss",
+  "blunder",
+]);
 
 /** All live tables, keyed by room code. State is in-memory only, so the
  * service must run as a single instance (Cloud Run --max-instances=1). */
@@ -27,11 +41,13 @@ const tables = new Map();
 function createTable(id) {
   return {
     id,
+    gameId: randomUUID(),
     chess: new Chess(),
     clients: new Set(),
     seats: { w: null, b: null },
     result: null,
     clock: { w: STARTING_TIME, b: STARTING_TIME, running: null, since: null },
+    gradedPlies: new Set(),
     touchedAt: Date.now(),
   };
 }
@@ -39,6 +55,7 @@ function createTable(id) {
 function serializeTable(table) {
   return {
     room: table.id,
+    gameId: table.gameId,
     fen: table.chess.fen(),
     history: table.chess.history({ verbose: true }).map((move) => ({
       from: move.from,
@@ -65,7 +82,10 @@ function send(client, payload) {
 }
 
 function broadcast(table) {
-  const payload = JSON.stringify({ type: "state", state: serializeTable(table) });
+  const payload = JSON.stringify({
+    type: "state",
+    state: serializeTable(table),
+  });
   for (const client of table.clients) {
     try {
       client.socket.send(payload);
@@ -78,7 +98,10 @@ function broadcast(table) {
 function pauseClock(table, now = Date.now()) {
   const running = table.clock.running;
   if (running && table.clock.since !== null) {
-    table.clock[running] = Math.max(0, table.clock[running] - (now - table.clock.since));
+    table.clock[running] = Math.max(
+      0,
+      table.clock[running] - (now - table.clock.since),
+    );
   }
   table.clock.running = null;
   table.clock.since = null;
@@ -146,7 +169,11 @@ function handleTableMessage(table, client, raw) {
     pauseClock(table, now);
     let acceptedMove;
     try {
-      acceptedMove = table.chess.move({ from: message.from, to: message.to, promotion: message.promotion || "q" });
+      acceptedMove = table.chess.move({
+        from: message.from,
+        to: message.to,
+        promotion: message.promotion || "q",
+      });
     } catch {
       resumeClock(table, now);
       send(client, { type: "error", message: "That move is not legal." });
@@ -157,6 +184,7 @@ function handleTableMessage(table, client, raw) {
     const ply = table.chess.history().length;
     Sentry.logger.info("chess.move.accepted", {
       "chess.room.id": table.id,
+      "chess.game.id": table.gameId,
       "chess.move.ply": ply,
       "chess.move.number": Math.ceil(ply / 2),
       "chess.move.color": acceptedMove.color === "w" ? "white" : "black",
@@ -173,6 +201,51 @@ function handleTableMessage(table, client, raw) {
     return;
   }
 
+  if (message.type === "move_grade") {
+    if (!table.result || message.gameId !== table.gameId) return;
+
+    const ply = Number(message.ply);
+    const grade = typeof message.grade === "string" ? message.grade : "";
+    const loss = message.expectedPointsLoss;
+    const validLoss =
+      loss === null ||
+      (typeof loss === "number" &&
+        Number.isFinite(loss) &&
+        loss >= 0 &&
+        loss <= 1);
+    if (
+      !Number.isInteger(ply) ||
+      ply < 1 ||
+      !MOVE_GRADES.has(grade) ||
+      !validLoss ||
+      table.gradedPlies.has(ply)
+    )
+      return;
+
+    const acceptedMove = table.chess.history({ verbose: true })[ply - 1];
+    if (!acceptedMove) return;
+
+    table.gradedPlies.add(ply);
+    const attributes = {
+      "chess.room.id": table.id,
+      "chess.game.id": table.gameId,
+      "chess.move.ply": ply,
+      "chess.move.number": Math.ceil(ply / 2),
+      "chess.move.color": acceptedMove.color === "w" ? "white" : "black",
+      "chess.move.from": acceptedMove.from,
+      "chess.move.to": acceptedMove.to,
+      "chess.move.san": acceptedMove.san,
+      "chess.move.uci": `${acceptedMove.from}${acceptedMove.to}${acceptedMove.promotion ?? ""}`,
+      "chess.position.fen_after": acceptedMove.after,
+      "chess.move.grade": grade,
+      "chess.analysis.engine": "stockfish-18-lite-single",
+      "chess.analysis.search_nodes": 12_000,
+    };
+    if (loss !== null) attributes["chess.move.expected_points_loss"] = loss;
+    Sentry.logger.info("chess.move.graded", attributes);
+    return;
+  }
+
   if (message.type === "resign") {
     if (table.result || (client.role !== "w" && client.role !== "b")) return;
     table.result = `${client.role === "w" ? "Black" : "White"} wins by resignation`;
@@ -183,9 +256,16 @@ function handleTableMessage(table, client, raw) {
 
   if (message.type === "reset") {
     if (client.role === "spectator") return;
+    table.gameId = randomUUID();
     table.chess.reset();
     table.result = null;
-    table.clock = { w: STARTING_TIME, b: STARTING_TIME, running: null, since: null };
+    table.clock = {
+      w: STARTING_TIME,
+      b: STARTING_TIME,
+      running: null,
+      since: null,
+    };
+    table.gradedPlies.clear();
     resumeClock(table);
     broadcast(table);
     return;
@@ -198,12 +278,17 @@ function handleTableMessage(table, client, raw) {
 
 function joinTable(request, socket) {
   const url = new URL(request.url, "http://localhost");
-  const roomId = (url.searchParams.get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  const roomId = (url.searchParams.get("room") || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
   if (!roomId) {
     socket.close(1008, "A room code is required");
     return;
   }
-  const name = (url.searchParams.get("name") || "Guest player").trim().slice(0, 24) || "Guest player";
+  const name =
+    (url.searchParams.get("name") || "Guest player").trim().slice(0, 24) ||
+    "Guest player";
 
   let table = tables.get(roomId);
   if (!table) {
@@ -225,28 +310,39 @@ function joinTable(request, socket) {
     pauseClock(table);
     table.clients.delete(client);
     if (client.role === "w" || client.role === "b") {
-      if (table.seats[client.role]?.id === client.id) table.seats[client.role] = null;
+      if (table.seats[client.role]?.id === client.id)
+        table.seats[client.role] = null;
     }
     table.touchedAt = Date.now();
     broadcast(table);
   });
   socket.on("error", () => socket.close());
 
-  send(client, { type: "welcome", role, playerId: client.id, state: serializeTable(table) });
+  send(client, {
+    type: "welcome",
+    role,
+    playerId: client.id,
+    state: serializeTable(table),
+  });
   broadcast(table);
 }
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, table] of tables) {
-    if (table.clients.size === 0 && now - table.touchedAt > IDLE_ROOM_TTL) tables.delete(id);
-  }
-}, 10 * 60 * 1000).unref();
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [id, table] of tables) {
+      if (table.clients.size === 0 && now - table.touchedAt > IDLE_ROOM_TTL)
+        tables.delete(id);
+    }
+  },
+  10 * 60 * 1000,
+).unref();
 
 const app = next({ dev });
 await app.prepare();
 const handleRequest = app.getRequestHandler();
-const handleNextUpgrade = typeof app.getUpgradeHandler === "function" ? app.getUpgradeHandler() : null;
+const handleNextUpgrade =
+  typeof app.getUpgradeHandler === "function" ? app.getUpgradeHandler() : null;
 
 const server = createServer((req, res) => handleRequest(req, res));
 const wss = new WebSocketServer({ noServer: true });
@@ -264,5 +360,5 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Sentry Gambit listening on http://0.0.0.0:${port}`);
+  console.log(`Pawn Patrol listening on http://0.0.0.0:${port}`);
 });

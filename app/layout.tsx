@@ -23,19 +23,19 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: base,
     title: {
-      default: "Sentry Gambit — Live chess",
-      template: "%s · Sentry Gambit",
+      default: "Pawn Patrol — Live chess",
+      template: "%s · Pawn Patrol",
     },
     description: "Start a private chess table, share the code, and play live.",
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
     openGraph: {
-      title: "Sentry Gambit",
+      title: "Pawn Patrol",
       description: "Live chess, one move at a time.",
       images: [{ url: socialImage, width: 1200, height: 630 }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Sentry Gambit",
+      title: "Pawn Patrol",
       description: "Live chess, one move at a time.",
       images: [socialImage],
     },

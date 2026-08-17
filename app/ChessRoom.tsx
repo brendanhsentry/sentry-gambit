@@ -16,6 +16,7 @@ type ClockState = {
 
 type GameState = {
   room: string;
+  gameId: string;
   fen: string;
   history: ReviewMove[];
   players: { w: string | null; b: string | null };
@@ -128,13 +129,37 @@ export function ChessRoom() {
   const [promotion, setPromotion] = useState<{ from: Square; to: Square; color: Color } | null>(null);
   const [notice, setNotice] = useState("");
   const [copied, setCopied] = useState(false);
-  const analysis = useMoveAnalysis(room, state?.history ?? [], Boolean(state?.result));
+  const reportedGradesRef = useRef(new Set<string>());
 
   const send = useCallback((payload: object) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify(payload));
+      return true;
     }
+    return false;
   }, []);
+
+  const analysis = useMoveAnalysis(state?.gameId ?? room, state?.history ?? [], Boolean(state?.result));
+
+  useEffect(() => {
+    if (!state?.result || connection !== "online") return;
+
+    analysis.moves.forEach((reviewed, index) => {
+      if (!reviewed) return;
+      const ply = index + 1;
+      const reportKey = `${state.gameId}:${ply}`;
+      if (reportedGradesRef.current.has(reportKey)) return;
+
+      const sent = send({
+        type: "move_grade",
+        gameId: state.gameId,
+        ply,
+        grade: reviewed.grade,
+        expectedPointsLoss: reviewed.expectedPointsLoss,
+      });
+      if (sent) reportedGradesRef.current.add(reportKey);
+    });
+  }, [analysis.moves, connection, send, state?.gameId, state?.result]);
 
   const flagClock = useCallback(() => send({ type: "flag" }), [send]);
   const now = useClock(state?.clock ?? null, flagClock);
@@ -273,9 +298,9 @@ export function ChessRoom() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <Link className="brand" href="/" aria-label="Sentry Gambit home">
+        <Link className="brand" href="/" aria-label="Pawn Patrol home">
           <span className="brand-mark">♞</span>
-          <span>SENTRY <em>GAMBIT</em></span>
+          <span>PAWN <em>PATROL</em></span>
         </Link>
         <div className="topbar-note"><span className="live-dot" /> LIVE TABLES · RAPID 10</div>
         <button className="text-button" onClick={() => { socketRef.current?.close(); setConnection("idle"); setRoom(""); setState(null); window.history.replaceState({}, "", "/"); }}>New table</button>
@@ -422,7 +447,7 @@ export function ChessRoom() {
       </section>
 
       <footer>
-        <span>SENTRY GAMBIT · EST. 2026</span>
+        <span>PAWN PATROL · EST. 2026</span>
         <span>PRIVATE ROOMS · REAL-TIME PLAY · NO SIGN-UP</span>
       </footer>
     </main>
