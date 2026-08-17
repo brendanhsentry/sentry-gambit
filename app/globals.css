@@ -220,6 +220,7 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 /* Seer review widget — Sentry's Seer drawer structure, recolored to the club
    palette. Rubik is Sentry's product font; the eye icon is their real SVG. */
 .seer-widget {
+  margin-top: 18px;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 8px;
