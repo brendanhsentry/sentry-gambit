@@ -1,0 +1,7 @@
+node_modules
+.next
+.git
+.wrangler
+.vinext
+.env*
+Dockerfile

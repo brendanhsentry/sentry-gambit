@@ -1,114 +1,58 @@
-# vinext-starter
+# Sentry Gambit
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Live chess with private tables and shared clocks. Next.js frontend plus a Node
+WebSocket server (`server.mjs`) that keeps each game's board, clocks, and
+connected players in memory.
 
 ## Prerequisites
 
 - Node.js `>=22.13.0`
 
-## Quick Start
+## Local development
 
 ```bash
 npm install
-npm run dev
-npm run build
+npm run dev      # dev server with hot reload
+npm run build    # production build
+npm run start    # production server
 ```
 
-This starter does not use `wrangler.jsonc`.
+## Deploying (Google Cloud Run)
 
-## Included Shape
+The app runs as a single container (see `Dockerfile`). Game state is held in
+memory, so the service must run as one instance — a lost instance means live
+games reset, which is acceptable for casual play.
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+Build the image locally and deploy it (`gcloud run deploy --source` is blocked
+in this project — the default build service account is denied by org policy):
+
+```bash
+gcloud auth configure-docker us-west1-docker.pkg.dev
+docker buildx build --platform linux/amd64 \
+  -t us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:latest --push .
+gcloud run deploy sentry-gambit \
+  --image us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:latest \
+  --project devinfra-remote-dev \
+  --region us-west1 \
+  --allow-unauthenticated \
+  --max-instances 1 \
+  --timeout 3600 \
+  --memory 512Mi
+```
+
+`--timeout 3600` keeps WebSocket connections open for up to an hour;
+clients reconnect automatically on the same room code.
 
 ## Sentry Move Logs
 
-The Worker sends one structured `chess.move.accepted` Sentry log for every
-accepted move. Logs are disabled automatically when no DSN is configured.
+The Node server sends one structured `chess.move.accepted` Sentry log for every
+accepted move. Logging is disabled automatically when no DSN is configured.
 
-Configure these hosted runtime values:
+Set these Cloud Run environment variables:
 
 - `SENTRY_DSN` — the DSN for the Sentry project that should receive move logs
-- `SENTRY_ENVIRONMENT` — optional; defaults to `production`
+- `SENTRY_ENVIRONMENT` — optional; falls back to `NODE_ENV`
 
 Move logs include the room code, ply and move numbers, color, SAN and UCI
 notation, resulting FEN, remaining clock time, and whether the move ended the
 game. Player names are not sent.
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
