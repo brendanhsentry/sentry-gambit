@@ -22,6 +22,8 @@ test("ships the Pawn Patrol product instead of the starter preview", async () =>
   assert.match(archive, /Game ID/);
   assert.match(archive, /\/api\/games/);
   assert.match(archive, /Move sheet/);
+  assert.match(archive, /Game replay/);
+  assert.doesNotMatch(archive, />FEN</);
   assert.match(server, /WebSocketServer/);
   assert.match(server, /table\.chess\.move/);
   assert.match(packageJson, /chess\.js/);

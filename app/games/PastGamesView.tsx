@@ -1,5 +1,6 @@
 "use client";
 
+import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -28,6 +29,14 @@ type SavedMove = {
 };
 
 type PastGame = PastGameSummary & { history: SavedMove[] };
+
+const START_FEN = new Chess().fen();
+const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
+const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const;
+const PIECES: Record<Color, Record<PieceSymbol, string>> = {
+  w: { p: "♙", n: "♘", b: "♗", r: "♖", q: "♕", k: "♔" },
+  b: { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" },
+};
 
 function browserPlayerKey() {
   const storageKey = "pawn-patrol-player-key";
@@ -79,6 +88,8 @@ export function PastGamesView() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [replayPly, setReplayPly] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const loadGame = useCallback(async (gameId: string) => {
     setSelectedId(gameId);
@@ -90,7 +101,10 @@ export function PastGamesView() {
         `/api/games/${encodeURIComponent(gameId)}?playerKey=${encodeURIComponent(key)}`,
       );
       if (!response.ok) throw new Error("Game not found");
-      setSelectedGame(await response.json() as PastGame);
+      const game = await response.json() as PastGame;
+      setSelectedGame(game);
+      setReplayPly(game.history.length);
+      setIsPlaying(false);
     } catch {
       setSelectedGame(null);
       setError("That saved game could not be opened.");
@@ -156,6 +170,46 @@ export function PastGamesView() {
       [],
     );
   }, [selectedGame]);
+
+  const replayFen = replayPly === 0
+    ? START_FEN
+    : selectedGame?.history[replayPly - 1]?.fenAfter ?? selectedGame?.finalFen ?? START_FEN;
+  const replayBoard = useMemo(() => {
+    try {
+      return new Chess(replayFen);
+    } catch {
+      return new Chess();
+    }
+  }, [replayFen]);
+  const replayMove = selectedGame?.history[replayPly - 1];
+  const lastPly = selectedGame?.history.length ?? 0;
+
+  useEffect(() => {
+    if (!isPlaying || replayPly >= lastPly) return;
+    const timer = window.setTimeout(() => {
+      setReplayPly((current) => {
+        const next = Math.min(current + 1, lastPly);
+        if (next === lastPly) setIsPlaying(false);
+        return next;
+      });
+    }, 750);
+    return () => window.clearTimeout(timer);
+  }, [isPlaying, lastPly, replayPly]);
+
+  function goToPly(ply: number) {
+    setReplayPly(Math.max(0, Math.min(lastPly, ply)));
+    setIsPlaying(false);
+  }
+
+  function togglePlayback() {
+    if (!lastPly) return;
+    if (isPlaying) {
+      setIsPlaying(false);
+      return;
+    }
+    if (replayPly === lastPly) setReplayPly(0);
+    setIsPlaying(true);
+  }
 
   async function copyGameId() {
     if (!selectedGame) return;
@@ -260,29 +314,74 @@ export function PastGamesView() {
                   <div><dt>Black clock</dt><dd>{formatClock(selectedGame.clock.b)}</dd></div>
                 </dl>
 
-                <section className="record-moves">
-                  <div className="record-section-title"><h3>Move sheet</h3><span>ALGEBRAIC NOTATION</span></div>
-                  <div className="record-move-table" role="table" aria-label="Saved moves">
-                    <div className="record-move-head" role="row">
-                      <span>#</span><span>White</span><span>Black</span>
-                    </div>
-                    {movePairs.map((pair) => (
-                      <div className="record-move-row" role="row" key={pair.number}>
-                        <span>{pair.number}.</span>
-                        {([pair.w, pair.b] as Array<SavedMove | undefined>).map((move, index) => move ? (
-                          <div key={index} title={`Played ${formatDate(move.playedAt)} · position ${move.fenAfter}`}>
-                            <strong>{move.san}</strong>
-                            <small>{move.from} → {move.to}{move.promotion ? ` = ${move.promotion.toUpperCase()}` : ""}</small>
-                          </div>
-                        ) : <div key={index} className="empty-cell">—</div>)}
-                      </div>
-                    ))}
+                <section className="record-replay">
+                  <div className="record-section-title">
+                    <h3>Game replay</h3>
+                    <span aria-live="polite">{replayPly === 0 ? "STARTING POSITION" : `POSITION ${replayPly} OF ${lastPly}`}</span>
                   </div>
-                </section>
+                  <div className="record-replay-layout">
+                    <div className="record-board-column">
+                      <div className="record-board">
+                        <div className="chessboard" role="grid" aria-label={`Chess position after ${replayPly} of ${lastPly} moves`}>
+                          {RANKS.flatMap((rank, rankIndex) => FILES.map((file, fileIndex) => {
+                            const square = `${file}${rank}` as Square;
+                            const piece = replayBoard.get(square);
+                            const dark = (rank + fileIndex) % 2 === 1;
+                            const wasMoved = replayMove?.from === square || replayMove?.to === square;
+                            return (
+                              <div
+                                key={square}
+                                className={`square ${dark ? "square--dark" : "square--light"} ${wasMoved ? "was-moved" : ""}`}
+                                role="gridcell"
+                                aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ""}`}
+                              >
+                                {fileIndex === 0 && <span className="rank-label">{rank}</span>}
+                                {rankIndex === 7 && <span className="file-label">{file}</span>}
+                                {piece && <span className={`piece piece--${piece.color}`}>{PIECES[piece.color][piece.type]}</span>}
+                              </div>
+                            );
+                          }))}
+                        </div>
+                      </div>
+                      <div className="record-replay-controls" aria-label="Replay controls">
+                        <button onClick={() => goToPly(0)} disabled={replayPly === 0} aria-label="Go to starting position">|‹</button>
+                        <button onClick={() => goToPly(replayPly - 1)} disabled={replayPly === 0} aria-label="Previous move">‹</button>
+                        <button className="record-play-button" onClick={togglePlayback} disabled={!lastPly} aria-label={isPlaying ? "Pause replay" : "Play replay"}>
+                          {isPlaying ? "Pause" : replayPly === lastPly ? "Replay" : "Play"}
+                        </button>
+                        <button onClick={() => goToPly(replayPly + 1)} disabled={replayPly === lastPly} aria-label="Next move">›</button>
+                        <button onClick={() => goToPly(lastPly)} disabled={replayPly === lastPly} aria-label="Go to final position">›|</button>
+                      </div>
+                    </div>
 
-                <section className="final-position">
-                  <div className="record-section-title"><h3>Final position</h3><span>FEN</span></div>
-                  <code>{selectedGame.finalFen}</code>
+                    <div className="record-moves">
+                      <div className="record-move-table" role="table" aria-label="Move sheet">
+                        <div className="record-move-head" role="row">
+                          <span>#</span><span>White</span><span>Black</span>
+                        </div>
+                        {movePairs.map((pair) => (
+                          <div className="record-move-row" role="row" key={pair.number}>
+                            <span>{pair.number}.</span>
+                            {([pair.w, pair.b] as Array<SavedMove | undefined>).map((move, index) => {
+                              const ply = (pair.number - 1) * 2 + index + 1;
+                              return move ? (
+                                <button
+                                  key={index}
+                                  className={replayPly === ply ? "is-current" : ""}
+                                  title={`Played ${formatDate(move.playedAt)}`}
+                                  onClick={() => goToPly(ply)}
+                                  aria-label={`Show position after ${move.san}`}
+                                >
+                                  <strong>{move.san}</strong>
+                                  <small>{move.from} → {move.to}{move.promotion ? ` = ${move.promotion.toUpperCase()}` : ""}</small>
+                                </button>
+                              ) : <div key={index} className="empty-cell">—</div>;
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </section>
               </>
             ) : (
@@ -295,7 +394,7 @@ export function PastGamesView() {
 
       <footer>
         <span>PAWN PATROL · EST. 2026</span>
-        <span>COMPLETED GAMES · MOVE HISTORY · FINAL POSITIONS</span>
+        <span>COMPLETED GAMES · MOVE HISTORY · INTERACTIVE REPLAYS</span>
       </footer>
     </main>
   );
