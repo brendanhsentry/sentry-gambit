@@ -258,16 +258,12 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 .seer-cta:hover { background: var(--green-deep); }
 .seer-loading { display: grid; gap: 10px; }
 .seer-scan-row { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: #5a6660; }
-.seer-scan-log { display: grid; gap: 6px; border-left: 2px solid var(--line); padding-left: 10px; }
+.seer-scan-log { display: grid; gap: 6px; border-left: 2px solid var(--line); padding-left: 10px; min-height: 72px; align-content: end; }
 .seer-scan-log div {
   font-size: 11.5px; color: #5a6660;
   opacity: 0; transform: translateY(3px);
   animation: seer-line-in 0.45s ease forwards;
 }
-.seer-scan-log div:nth-child(1) { animation-delay: 0.4s; }
-.seer-scan-log div:nth-child(2) { animation-delay: 7s; }
-.seer-scan-log div:nth-child(3) { animation-delay: 20s; }
-.seer-scan-log div:nth-child(4) { animation-delay: 45s; color: var(--green); }
 @keyframes seer-line-in { to { opacity: 1; transform: none; } }
 .seer-chip {
   font-size: 10px; font-weight: 500;

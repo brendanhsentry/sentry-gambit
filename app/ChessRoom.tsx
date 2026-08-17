@@ -47,6 +47,40 @@ type ServerMessage =
   | { type: "state"; state: GameState }
   | { type: "error"; message: string };
 
+// Shown one at a time while a real Seer review runs (they take minutes).
+const SEER_QUOTES = [
+  "Reading the game event…",
+  "Replaying the moves…",
+  "Locating the eval swings…",
+  "Interviewing the knight who saw everything…",
+  "Checking if the queen was en prise… she was.",
+  "Blaming time pressure…",
+  "Consulting opening theory (1. e4 is still fine)…",
+  "Measuring centipawn loss with a tiny ruler…",
+  "Asking Stockfish to be gentle…",
+  "Cross-referencing every game Magnus ever played…",
+  "Looking for the brilliant move you missed… still looking…",
+  "Filing a bug report against your bishop…",
+  "Rewinding to the last moment things were fine…",
+  "Counting the pawns twice, just to be sure…",
+  "The rook says it was 'just following orders'…",
+  "Detecting hope chess…",
+  "Grepping the middlegame for blunders…",
+  "Escalating to the back rank…",
+  "Reviewing your king's safety posture…",
+  "Running the resignation post-mortem…",
+  "Comparing you to a 3500-rated engine (be brave)…",
+  "Deciding if that sacrifice was sound or just vibes…",
+  "Tracing the eval bar's cliff dive…",
+  "Assigning blame to individual pieces…",
+  "Reconstructing the crime scene on f7…",
+  "Polling the spectators — they saw it too…",
+  "Verifying the touch-move rule was honored…",
+  "Estimating how long that knight was hanging…",
+  "Applying the 'everyone blunders' consolation protocol…",
+  "Almost done… in engine time, which is different…",
+];
+
 const START_FEN = new Chess().fen();
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 const PIECES: Record<Color, Record<PieceSymbol, string>> = {
@@ -265,6 +299,31 @@ export function ChessRoom() {
     }
     setSeer({ phase: "error", message: "The game has not reached Sentry yet. Try again in a minute." });
   }, [currentGameId]);
+
+  // Rolling ticker of quips while a review runs: a shuffled deck cycles so
+  // nothing repeats until the whole pool has been shown.
+  const [seerTicker, setSeerTicker] = useState<{ id: number; text: string }[]>([]);
+  useEffect(() => {
+    if (seer.phase !== "requesting" && seer.phase !== "running") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSeerTicker([]);
+      return;
+    }
+    const deck = [...SEER_QUOTES];
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    let count = 0;
+    const push = () => {
+      const entry = { id: count, text: deck[count % deck.length] };
+      count += 1;
+      setSeerTicker((prev) => [...prev, entry].slice(-4));
+    };
+    push();
+    const interval = window.setInterval(push, 4000);
+    return () => window.clearInterval(interval);
+  }, [seer.phase]);
 
   const [seerCopied, setSeerCopied] = useState(false);
   const copySeerReview = useCallback(() => {
@@ -718,10 +777,7 @@ export function ChessRoom() {
                   <div className="seer-loading">
                     <div className="seer-scan-row"><span className="seer-eye"><IconSeer size={18} animation="loading" /></span> Seer is reviewing the game…</div>
                     <div className="seer-scan-log">
-                      <div>Reading the game event…</div>
-                      <div>Replaying the moves…</div>
-                      <div>Locating the eval swings…</div>
-                      <div>Formulating the verdict — this can take a few minutes…</div>
+                      {seerTicker.map((line) => <div key={line.id}>{line.text}</div>)}
                     </div>
                   </div>
                 )}
