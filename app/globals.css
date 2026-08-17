@@ -155,9 +155,22 @@ button { color: inherit; }
 .moves-panel { flex: 1; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); min-height: 235px; }
 .moves-header { height: 42px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); color: #718078; font: 650 9px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
 .moves-table { max-height: 298px; overflow: auto; scrollbar-width: thin; }
-.move-row { display: grid; grid-template-columns: 40px 1fr 1fr; min-height: 37px; align-items: center; border-bottom: 1px solid rgba(23,63,53,.09); font: 600 12px/1 var(--font-geist-mono), monospace; }
+.move-row { display: grid; grid-template-columns: 40px 1fr 1fr; min-height: 45px; align-items: stretch; border-bottom: 1px solid rgba(23,63,53,.09); font: 600 12px/1 var(--font-geist-mono), monospace; }
 .move-row span { color: #94a099; font-size: 10px; }
-.move-row strong { font-weight: 600; color: #354a42; }
+.move-row > span { align-self: center; }
+.move-cell { min-width: 0; display: flex; align-items: center; gap: 6px; padding: 6px 4px 6px 0; font-weight: 600; color: #354a42; }
+.move-cell > span { overflow: hidden; color: #354a42; font-size: 12px; text-overflow: ellipsis; }
+.move-grade { max-width: 72px; overflow: hidden; border-radius: 2px; padding: 3px 4px; color: white; font: 700 7px/1 var(--font-geist-mono), monospace; letter-spacing: .025em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.move-grade--brilliant { background: #168c8a; }
+.move-grade--great { background: #3884a5; }
+.move-grade--best { background: #4f8d58; }
+.move-grade--excellent { background: #70a066; }
+.move-grade--good { background: #81947b; }
+.move-grade--book { background: #9a7650; }
+.move-grade--inaccuracy { background: #d4a334; color: #302408; }
+.move-grade--mistake { background: #d77d31; }
+.move-grade--miss { background: #b76772; }
+.move-grade--blunder { background: #b6473c; }
 .empty-moves { min-height: 180px; display: grid; place-content: center; text-align: center; color: #89938e; }
 .empty-moves span { color: #a4afa9; font: 38px/1 Georgia, serif; opacity: .5; }
 .empty-moves p { font-size: 10px; line-height: 1.6; }

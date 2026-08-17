@@ -17,7 +17,8 @@
     "chess.js": "^1.4.0",
     "drizzle-orm": "0.45.2",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "stockfish": "^18.0.8"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

@@ -77,6 +77,7 @@ function serializeTable(table: Table) {
       to: move.to,
       san: move.san,
       color: move.color,
+      promotion: move.promotion,
     })),
     players: {
       w: table.seats.w?.name ?? null,
