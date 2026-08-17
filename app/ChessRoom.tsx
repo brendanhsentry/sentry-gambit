@@ -3,6 +3,7 @@
 import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { IconSeer } from "./IconSeer";
 import { startGameReplay, stopGameReplay } from "./sentry-replay";
 import { gradeLabel, useMoveAnalysis, type ReviewMove } from "./move-analysis";
 
@@ -261,6 +262,15 @@ export function ChessRoom() {
     }
     setSeer({ phase: "error", message: "The game has not reached Sentry yet. Try again in a minute." });
   }, [currentGameId]);
+
+  const [seerCopied, setSeerCopied] = useState(false);
+  const copySeerReview = useCallback(() => {
+    if (seer.phase !== "done") return;
+    void navigator.clipboard.writeText(seer.text).then(() => {
+      setSeerCopied(true);
+      setTimeout(() => setSeerCopied(false), 1500);
+    });
+  }, [seer]);
 
   useEffect(() => {
     if (seer.phase !== "running") return;
@@ -663,29 +673,65 @@ export function ChessRoom() {
             </div>
           )}
           {state?.result && !pastGame && (
-            <div className="seer-panel">
-              <div className="moves-header">
-                <span>SEER GAME REVIEW</span>
-                <span>
-                  {seer.phase === "idle"
-                    ? "POST-GAME"
-                    : seer.phase === "done"
-                      ? seer.shortId
-                      : seer.phase === "error"
-                        ? "FAILED"
-                        : "THINKING…"}
-                </span>
+            <div className="seer-widget">
+              <div className="seer-head">
+                <span className="seer-eye"><IconSeer size={16} /></span>
+                <span>Seer Autofix</span>
+                <span className="seer-head-spacer" />
+                <button
+                  className="seer-icon-btn"
+                  aria-label="Start a new analysis"
+                  title="Start a new analysis"
+                  onClick={requestSeerReview}
+                  disabled={seer.phase === "requesting" || seer.phase === "running"}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" /></svg>
+                </button>
+                <button
+                  className="seer-icon-btn"
+                  aria-label="Copy analysis"
+                  title="Copy analysis"
+                  onClick={copySeerReview}
+                  disabled={seer.phase !== "done"}
+                >
+                  {seerCopied ? (
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M2.5 8.5l3.5 3.5 7-8" /></svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="5" y="5" width="9" height="9" rx="1.5" /><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" /></svg>
+                  )}
+                </button>
               </div>
-              {seer.phase === "idle" && (
-                <button className="primary-button" onClick={requestSeerReview}>Ask Seer to review this game <span>→</span></button>
-              )}
-              {(seer.phase === "requesting" || seer.phase === "running") && (
-                <p className="seer-status">Seer is studying the game — this usually takes a couple of minutes.</p>
-              )}
-              {seer.phase === "done" && <div className="seer-review">{seer.text}</div>}
-              {seer.phase === "error" && (
-                <p className="seer-status">{seer.message} <button onClick={requestSeerReview}>Retry</button></p>
-              )}
+              <div className="seer-body">
+                {seer.phase === "idle" && (
+                  <>
+                    <p className="seer-intro">Seer can replay this game, find where it went wrong, and explain the blunder — a post-mortem for your queen.</p>
+                    <button className="seer-cta" onClick={requestSeerReview}><IconSeer size={15} /> Start Seer Analysis</button>
+                  </>
+                )}
+                {(seer.phase === "requesting" || seer.phase === "running") && (
+                  <div className="seer-loading">
+                    <div className="seer-scan-row"><span className="seer-eye"><IconSeer size={18} animation="loading" /></span> Seer is reviewing the game…</div>
+                    <div className="seer-scan-log">
+                      <div>Reading the game event…</div>
+                      <div>Replaying the moves…</div>
+                      <div>Locating the eval swings…</div>
+                      <div>Formulating the verdict — this can take a few minutes…</div>
+                    </div>
+                  </div>
+                )}
+                {seer.phase === "done" && (
+                  <div className="seer-card">
+                    <div className="seer-card-head">
+                      <span className="seer-eye"><IconSeer size={14} /></span> Root Cause
+                      {seer.shortId ? <span className="seer-chip">{seer.shortId}</span> : null}
+                    </div>
+                    <div className="seer-card-body">{seer.text}</div>
+                  </div>
+                )}
+                {seer.phase === "error" && (
+                  <p className="seer-error">{seer.message} <button className="seer-retry" onClick={requestSeerReview}>Retry</button></p>
+                )}
+              </div>
             </div>
           )}
           <div className="archive-panel">
