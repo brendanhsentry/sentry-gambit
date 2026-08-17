@@ -2,6 +2,7 @@
 
 import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type PlayerColor = "w" | "b";
@@ -226,7 +227,9 @@ export function PastGamesView() {
     <main className="app-shell archive-shell">
       <header className="topbar">
         <Link className="brand" href="/" aria-label="Pawn Patrol home">
-          <span className="brand-mark">♞</span>
+          <span className="brand-mark">
+            <Image src="/favicon.png" alt="" width={30} height={30} priority />
+          </span>
           <span>PAWN <em>PATROL</em></span>
         </Link>
         <div className="topbar-note">GAME RECORDS · SQLITE ARCHIVE</div>

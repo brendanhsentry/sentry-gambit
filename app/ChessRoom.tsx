@@ -1,6 +1,7 @@
 "use client";
 
 import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconSeer } from "./IconSeer";
@@ -494,7 +495,9 @@ export function ChessRoom() {
     <main className="app-shell">
       <header className="topbar">
         <Link className="brand" href="/" aria-label="Pawn Patrol home">
-          <span className="brand-mark">♞</span>
+          <span className="brand-mark">
+            <Image src="/favicon.png" alt="" width={30} height={30} priority />
+          </span>
           <span>PAWN <em>PATROL</em></span>
         </Link>
         <div className="topbar-note"><span className="live-dot" /> LIVE TABLES · RAPID 10</div>

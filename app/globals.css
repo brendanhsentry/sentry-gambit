@@ -54,7 +54,8 @@ button { color: inherit; }
 }
 
 .brand em { color: var(--amber); font-family: Georgia, serif; font-size: 1.25em; }
-.brand-mark { width: 32px; height: 38px; display: grid; place-items: center; border-right: 1px solid var(--line); font-size: 25px; padding-right: 12px; }
+.brand-mark { width: 32px; height: 38px; display: grid; place-items: center; border-right: 1px solid var(--line); padding-right: 12px; }
+.brand-mark img { width: 30px; height: 30px; object-fit: contain; }
 .topbar-note { font: 600 10px/1 var(--font-geist-mono), monospace; letter-spacing: 0.13em; color: #52665e; }
 .live-dot { width: 6px; height: 6px; display: inline-block; border-radius: 50%; background: var(--amber); margin-right: 8px; box-shadow: 0 0 0 4px rgba(217,154,66,.13); }
 .text-button { justify-self: end; border: 0; border-bottom: 1px solid var(--green); background: transparent; padding: 6px 0; cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; }
@@ -195,7 +196,8 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 @media (max-width: 600px) {
   .topbar { height: 62px; padding: 0 16px; }
   .brand { font-size: 11px; gap: 8px; }
-  .brand-mark { font-size: 20px; width: 26px; padding-right: 8px; }
+  .brand-mark { width: 26px; padding-right: 8px; }
+  .brand-mark img { width: 24px; height: 24px; }
   .text-button { font-size: 9px; }
   .game-layout { width: 100%; margin: 16px auto 32px; gap: 28px; }
   .eyebrow-row, .player-card, .match-panel { margin-left: 14px; margin-right: 14px; }
