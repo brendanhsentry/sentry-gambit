@@ -60,4 +60,7 @@ Set these Cloud Run environment variables:
 Move logs include the room code, game ID, ply and move numbers, color, SAN and
 UCI notation, resulting FEN, remaining clock time, and whether the move ended
 the game. Grade logs add the Stockfish grade and expected-points loss. Player
-names are not sent.
+names are not sent. All logs for a game share one `chess.game` trace. When the
+game ends, the server captures a `Pawn Patrol game finished` Sentry message on
+that trace, creating an issue with the result, move count, and final position
+for Seer analysis.

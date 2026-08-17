@@ -34,20 +34,82 @@ const MOVE_GRADES = new Set([
   "blunder",
 ]);
 
+function createGameTrace(roomId, gameId) {
+  return Sentry.startNewTrace(() =>
+    Sentry.startInactiveSpan({
+      name: "chess.game",
+      op: "chess.game",
+      attributes: {
+        "chess.room.id": roomId,
+        "chess.game.id": gameId,
+      },
+    }),
+  );
+}
+
+function logGameEvent(table, name, attributes) {
+  Sentry.withActiveSpan(table.sentrySpan, () => {
+    Sentry.logger.info(name, attributes);
+  });
+}
+
+function endGameTraceWhenReady(table) {
+  if (
+    table.sentryTraceEnded ||
+    !table.result ||
+    table.gradedPlies.size < table.chess.history().length
+  )
+    return;
+  table.sentryTraceEnded = true;
+  table.sentrySpan.end();
+}
+
+function captureFinishedGame(table) {
+  if (!table.result || table.finishedIssueSent) return;
+  table.finishedIssueSent = true;
+
+  const plyCount = table.chess.history().length;
+  table.sentrySpan.setAttributes({
+    "chess.game.result": table.result,
+    "chess.game.ply_count": plyCount,
+  });
+
+  Sentry.withActiveSpan(table.sentrySpan, (scope) => {
+    scope.setTag("chess.game.id", table.gameId);
+    scope.setTag("chess.room.id", table.id);
+    scope.setTag("chess.game.result", table.result);
+    scope.setContext("chess_game", {
+      game_id: table.gameId,
+      room_id: table.id,
+      result: table.result,
+      ply_count: plyCount,
+      final_fen: table.chess.fen(),
+    });
+    scope.setFingerprint(["chess.game.finished"]);
+    Sentry.captureMessage("Pawn Patrol game finished");
+  });
+
+  endGameTraceWhenReady(table);
+}
+
 /** All live tables, keyed by room code. State is in-memory only, so the
  * service must run as a single instance (Cloud Run --max-instances=1). */
 const tables = new Map();
 
 function createTable(id) {
+  const gameId = randomUUID();
   return {
     id,
-    gameId: randomUUID(),
+    gameId,
     chess: new Chess(),
     clients: new Set(),
     seats: { w: null, b: null },
     result: null,
     clock: { w: STARTING_TIME, b: STARTING_TIME, running: null, since: null },
     gradedPlies: new Set(),
+    sentrySpan: createGameTrace(id, gameId),
+    sentryTraceEnded: false,
+    finishedIssueSent: false,
     touchedAt: Date.now(),
   };
 }
@@ -160,6 +222,7 @@ function handleTableMessage(table, client, raw) {
       return;
     }
     if (flagIfExpired(table)) {
+      captureFinishedGame(table);
       broadcast(table);
       return;
     }
@@ -182,7 +245,7 @@ function handleTableMessage(table, client, raw) {
     setBoardResult(table);
     if (!table.result) resumeClock(table, now);
     const ply = table.chess.history().length;
-    Sentry.logger.info("chess.move.accepted", {
+    logGameEvent(table, "chess.move.accepted", {
       "chess.room.id": table.id,
       "chess.game.id": table.gameId,
       "chess.move.ply": ply,
@@ -197,6 +260,7 @@ function handleTableMessage(table, client, raw) {
       "chess.game.finished": Boolean(table.result),
       "chess.game.result": table.result ?? "in_progress",
     });
+    captureFinishedGame(table);
     broadcast(table);
     return;
   }
@@ -242,7 +306,8 @@ function handleTableMessage(table, client, raw) {
       "chess.analysis.search_nodes": 12_000,
     };
     if (loss !== null) attributes["chess.move.expected_points_loss"] = loss;
-    Sentry.logger.info("chess.move.graded", attributes);
+    logGameEvent(table, "chess.move.graded", attributes);
+    endGameTraceWhenReady(table);
     return;
   }
 
@@ -250,13 +315,18 @@ function handleTableMessage(table, client, raw) {
     if (table.result || (client.role !== "w" && client.role !== "b")) return;
     table.result = `${client.role === "w" ? "Black" : "White"} wins by resignation`;
     pauseClock(table);
+    captureFinishedGame(table);
     broadcast(table);
     return;
   }
 
   if (message.type === "reset") {
     if (client.role === "spectator") return;
+    if (!table.sentryTraceEnded) table.sentrySpan.end();
     table.gameId = randomUUID();
+    table.sentrySpan = createGameTrace(table.id, table.gameId);
+    table.sentryTraceEnded = false;
+    table.finishedIssueSent = false;
     table.chess.reset();
     table.result = null;
     table.clock = {
@@ -272,6 +342,7 @@ function handleTableMessage(table, client, raw) {
   }
 
   if (message.type === "flag" && flagIfExpired(table)) {
+    captureFinishedGame(table);
     broadcast(table);
   }
 }
@@ -331,8 +402,10 @@ setInterval(
   () => {
     const now = Date.now();
     for (const [id, table] of tables) {
-      if (table.clients.size === 0 && now - table.touchedAt > IDLE_ROOM_TTL)
+      if (table.clients.size === 0 && now - table.touchedAt > IDLE_ROOM_TTL) {
+        if (!table.sentryTraceEnded) table.sentrySpan.end();
         tables.delete(id);
+      }
     }
   },
   10 * 60 * 1000,
