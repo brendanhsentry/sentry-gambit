@@ -38,3 +38,8 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+
+# Local game database
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal

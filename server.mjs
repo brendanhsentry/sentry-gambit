@@ -5,9 +5,11 @@ import * as Sentry from "@sentry/node";
 import next from "next";
 import { WebSocketServer } from "ws";
 import { Chess } from "chess.js";
+import { openGameStore } from "./game-store.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = Number(process.env.PORT) || 3000;
+const gameStore = openGameStore();
 
 Sentry.init({
   dsn: "https://69f4666f8a913ed118913d18660fe20d@o4511927634296832.ingest.us.sentry.io/4511927685939200",
@@ -67,6 +69,7 @@ function endGameTraceWhenReady(table) {
 function captureFinishedGame(table) {
   if (!table.result || table.finishedIssueSent) return;
   table.finishedIssueSent = true;
+  gameStore.finishGame(table.gameId, table.result, table.chess.fen(), table.clock);
 
   const plyCount = table.chess.history().length;
   table.sentrySpan.setAttributes({
@@ -100,7 +103,7 @@ const tables = new Map();
 
 function createTable(id) {
   const gameId = randomUUID();
-  return {
+  const table = {
     id,
     gameId,
     chess: new Chess(),
@@ -114,6 +117,13 @@ function createTable(id) {
     finishedIssueSent: false,
     touchedAt: Date.now(),
   };
+  gameStore.createGame({
+    id: gameId,
+    room: id,
+    fen: table.chess.fen(),
+    clock: table.clock,
+  });
+  return table;
 }
 
 function serializeTable(table) {
@@ -247,6 +257,7 @@ function handleTableMessage(table, client, raw) {
     setBoardResult(table);
     if (!table.result) resumeClock(table, now);
     const ply = table.chess.history().length;
+    gameStore.recordMove(table.gameId, ply, acceptedMove, table.chess.fen(), table.clock);
     logGameEvent(table, "chess.move.accepted", {
       "chess.room.id": table.id,
       "chess.game.id": table.gameId,
@@ -325,6 +336,16 @@ function handleTableMessage(table, client, raw) {
   if (message.type === "reset") {
     if (client.role === "spectator") return;
     if (!table.sentryTraceEnded) table.sentrySpan.end();
+    if (table.chess.history().length) {
+      gameStore.finishGame(
+        table.gameId,
+        table.result ?? "Game reset",
+        table.chess.fen(),
+        table.clock,
+      );
+    } else {
+      gameStore.deleteGame(table.gameId);
+    }
     table.gameId = randomUUID();
     table.sentrySpan = createGameTrace(table.id, table.gameId);
     table.sentryTraceEnded = false;
@@ -338,6 +359,20 @@ function handleTableMessage(table, client, raw) {
       since: null,
     };
     table.gradedPlies.clear();
+    gameStore.createGame({
+      id: table.gameId,
+      room: table.id,
+      fen: table.chess.fen(),
+      clock: table.clock,
+    });
+    gameStore.updatePlayers(table.gameId, {
+      w: table.seats.w?.name ?? null,
+      b: table.seats.b?.name ?? null,
+    });
+    for (const color of ["w", "b"]) {
+      const seated = table.seats[color];
+      if (seated?.playerKey) gameStore.addPlayer(table.gameId, seated.playerKey, color);
+    }
     resumeClock(table);
     broadcast(table);
     return;
@@ -362,6 +397,9 @@ function joinTable(request, socket) {
   const name =
     (url.searchParams.get("name") || "Guest player").trim().slice(0, 24) ||
     "Guest player";
+  const playerKey = (url.searchParams.get("playerKey") || "")
+    .replace(/[^a-zA-Z0-9-]/g, "")
+    .slice(0, 64);
 
   let table = tables.get(roomId);
   if (!table) {
@@ -370,9 +408,16 @@ function joinTable(request, socket) {
   }
 
   const role = !table.seats.w ? "w" : !table.seats.b ? "b" : "spectator";
-  const client = { id: randomUUID(), name, role, socket };
+  const client = { id: randomUUID(), name, role, playerKey, socket };
   table.clients.add(client);
-  if (role === "w" || role === "b") table.seats[role] = client;
+  if (role === "w" || role === "b") {
+    table.seats[role] = client;
+    if (playerKey) gameStore.addPlayer(table.gameId, playerKey, role);
+  }
+  gameStore.updatePlayers(table.gameId, {
+    w: table.seats.w?.name ?? null,
+    b: table.seats.b?.name ?? null,
+  });
   table.touchedAt = Date.now();
   if (!table.clock.running) resumeClock(table);
 
@@ -433,8 +478,29 @@ const REVIEW_PROMPT = [
 ].join(" ");
 
 function sendJson(res, status, payload) {
-  res.writeHead(status, { "Content-Type": "application/json" });
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+  });
   res.end(JSON.stringify(payload));
+}
+
+function handleGamesRequest(req, res, url) {
+  if (req.method !== "GET") return false;
+  const playerKey = (url.searchParams.get("playerKey") || "")
+    .replace(/[^a-zA-Z0-9-]/g, "")
+    .slice(0, 64);
+  if (url.pathname === "/api/games") {
+    sendJson(res, 200, {
+      games: gameStore.listGames(playerKey, url.searchParams.get("limit") ?? 20),
+    });
+    return true;
+  }
+  const match = url.pathname.match(/^\/api\/games\/([^/]+)$/);
+  if (!match) return false;
+  const game = gameStore.getGame(decodeURIComponent(match[1]), playerKey);
+  sendJson(res, game ? 200 : 404, game ?? { error: "Game not found" });
+  return true;
 }
 
 async function sentryApi(path, options = {}) {
@@ -509,6 +575,7 @@ async function handleReviewRequest(req, res, url) {
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
+  if (handleGamesRequest(req, res, url)) return;
   if (url.pathname.startsWith("/api/review")) {
     void handleReviewRequest(req, res, url);
     return;

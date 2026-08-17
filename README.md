@@ -1,8 +1,9 @@
 # Pawn Patrol
 
-Live chess with private tables and shared clocks. Next.js frontend plus a Node
-WebSocket server (`server.mjs`) that keeps each game's board, clocks, and
-connected players in memory.
+Live chess with private tables, shared clocks, and a private game archive.
+The Next.js frontend talks to a Node WebSocket server (`server.mjs`); live
+connections stay in memory while completed games and their moves are stored in
+SQLite.
 
 ## Prerequisites
 
@@ -17,11 +18,31 @@ npm run build    # production build
 npm run start    # production server
 ```
 
+## Saved games and replay
+
+The server creates `data/pawn-patrol.sqlite` automatically. Every accepted move
+is stored with its notation and resulting position, and results are finalized
+on checkmate, draw, resignation, timeout, or rematch. The Past Games panel lists
+games played from the current browser; a random player key in `localStorage`
+keeps the account-free archive from becoming a public game list.
+
+Click a saved game, a move in the move sheet, or the replay arrows to step
+through its positions. You can change the database location with:
+
+```bash
+DATABASE_PATH=/persistent/path/pawn-patrol.sqlite npm run start
+```
+
+Back up the database file together with its `-wal` and `-shm` files, or stop the
+server before copying just the main file.
+
 ## Deploying (Google Cloud Run)
 
-The app runs as a single container (see `Dockerfile`). Game state is held in
-memory, so the service must run as one instance — a lost instance means live
-games reset, which is acceptable for casual play.
+The app runs as a single container (see `Dockerfile`). Active sockets and clocks
+are held in memory, so the service must run as one instance. SQLite also requires
+`DATABASE_PATH` to point at a persistent, POSIX-compatible mounted volume in
+production. Cloud Run's default container filesystem is ephemeral, so without a
+mount saved games will not survive a new revision or instance.
 
 Build the image locally and deploy it (`gcloud run deploy --source` is blocked
 in this project — the default build service account is denied by org policy):

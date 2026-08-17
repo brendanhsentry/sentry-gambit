@@ -25,6 +25,19 @@ type GameState = {
   clock: ClockState;
 };
 
+type PastGameSummary = {
+  id: string;
+  room: string;
+  players: { w: string | null; b: string | null };
+  result: string;
+  finishedAt: number;
+  finalFen: string;
+  clock: { w: number; b: number };
+  plyCount: number;
+};
+
+type PastGame = PastGameSummary & { history: ReviewMove[] };
+
 type ServerMessage =
   | { type: "welcome"; role: Role; playerId: string; state: GameState }
   | { type: "state"; state: GameState }
@@ -40,6 +53,15 @@ const PIECES: Record<Color, Record<PieceSymbol, string>> = {
 function makeRoomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+}
+
+function browserPlayerKey() {
+  const storageKey = "pawn-patrol-player-key";
+  const existing = window.localStorage.getItem(storageKey);
+  if (existing) return existing;
+  const created = window.crypto.randomUUID();
+  window.localStorage.setItem(storageKey, created);
+  return created;
 }
 
 function formatClock(ms: number) {
@@ -131,6 +153,10 @@ export function ChessRoom() {
   const [promotion, setPromotion] = useState<{ from: Square; to: Square; color: Color } | null>(null);
   const [notice, setNotice] = useState("");
   const [copied, setCopied] = useState(false);
+  const [pastGames, setPastGames] = useState<PastGameSummary[]>([]);
+  const [pastGamesLoading, setPastGamesLoading] = useState(true);
+  const [pastGame, setPastGame] = useState<PastGame | null>(null);
+  const [replayPly, setReplayPly] = useState<number | null>(null);
   const reportedGradesRef = useRef(new Set<string>());
 
   const send = useCallback((payload: object) => {
@@ -140,6 +166,42 @@ export function ChessRoom() {
     }
     return false;
   }, []);
+
+  const loadPastGames = useCallback(async () => {
+    setPastGamesLoading(true);
+    try {
+      const key = browserPlayerKey();
+      const response = await fetch(`/api/games?limit=12&playerKey=${encodeURIComponent(key)}`);
+      if (!response.ok) throw new Error("Game archive unavailable");
+      const data = await response.json() as { games: PastGameSummary[] };
+      setPastGames(data.games);
+    } catch {
+      setPastGames([]);
+    } finally {
+      setPastGamesLoading(false);
+    }
+  }, []);
+
+  const openPastGame = useCallback(async (gameId: string) => {
+    try {
+      const key = browserPlayerKey();
+      const response = await fetch(`/api/games/${encodeURIComponent(gameId)}?playerKey=${encodeURIComponent(key)}`);
+      if (!response.ok) throw new Error("Game not found");
+      const game = await response.json() as PastGame;
+      setPastGame(game);
+      setReplayPly(game.history.length);
+      setSelected(null);
+      setPromotion(null);
+    } catch {
+      setNotice("That saved game could not be opened.");
+    }
+  }, []);
+
+  useEffect(() => {
+    // Fetching the browser-owned archive is a mount-time synchronization.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadPastGames();
+  }, [loadPastGames]);
 
   // Record a Sentry session replay only while a game is being played:
   // both seats filled, no result yet, and this client is one of the players.
@@ -154,6 +216,12 @@ export function ChessRoom() {
 
   const currentGameId = state?.gameId;
 
+  useEffect(() => {
+    // A result changes the server-side archive, so refresh its local snapshot.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (state?.result) void loadPastGames();
+  }, [state?.result, loadPastGames]);
+
   type SeerReview =
     | { phase: "idle" }
     | { phase: "requesting" }
@@ -166,6 +234,7 @@ export function ChessRoom() {
     // A new game means the previous review no longer applies.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSeer({ phase: "idle" });
+    setReplayPly(null);
   }, [currentGameId]);
 
   const requestSeerReview = useCallback(async () => {
@@ -241,13 +310,28 @@ export function ChessRoom() {
   const flagClock = useCallback(() => send({ type: "flag" }), [send]);
   const now = useClock(state?.clock ?? null, flagClock);
 
+  const viewHistory = useMemo(
+    () => pastGame?.history ?? state?.history ?? [],
+    [pastGame?.history, state?.history],
+  );
+  const lastPly = viewHistory.length;
+  const viewedPly = replayPly ?? lastPly;
+  const viewFen = useMemo(() => {
+    if (viewedPly === lastPly) return pastGame?.finalFen ?? state?.fen ?? START_FEN;
+    const position = new Chess();
+    for (const move of viewHistory.slice(0, viewedPly)) {
+      position.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
+    }
+    return position.fen();
+  }, [lastPly, pastGame?.finalFen, state?.fen, viewHistory, viewedPly]);
+
   const chess = useMemo(() => {
     try {
-      return new Chess(state?.fen || START_FEN);
+      return new Chess(viewFen);
     } catch {
       return new Chess();
     }
-  }, [state?.fen]);
+  }, [viewFen]);
 
   const legalTargets = useMemo(() => {
     if (!selected) return new Set<string>();
@@ -260,12 +344,15 @@ export function ChessRoom() {
     if (!cleanRoom) return;
 
     socketRef.current?.close();
+    setPastGame(null);
+    setReplayPly(null);
     setConnection("connecting");
     setRoom(cleanRoom);
     setNotice("");
     setSelected(null);
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}`);
+    const playerKey = browserPlayerKey();
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}&playerKey=${encodeURIComponent(playerKey)}`);
     socketRef.current = socket;
 
     socket.addEventListener("open", () => {
@@ -307,17 +394,22 @@ export function ChessRoom() {
     return () => window.clearTimeout(id);
   }, [connection, room, name, connect]);
 
-  const orientation: Color = role === "b" ? "b" : "w";
+  const orientation: Color = pastGame ? "w" : role === "b" ? "b" : "w";
   const ranks = orientation === "w" ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
   const files = orientation === "w" ? [...FILES] : [...FILES].reverse();
-  const lastMove = state?.history.at(-1);
+  const lastMove = viewHistory[viewedPly - 1];
   const topColor: Color = orientation === "w" ? "b" : "w";
   const bottomColor: Color = orientation;
-  const topTime = state ? projectedTime(state.clock, topColor, now) : 600_000;
-  const bottomTime = state ? projectedTime(state.clock, bottomColor, now) : 600_000;
+  const displayedPlayers = pastGame?.players ?? state?.players ?? { w: null, b: null };
+  const topTime = pastGame
+    ? pastGame.clock[topColor]
+    : state ? projectedTime(state.clock, topColor, now) : 600_000;
+  const bottomTime = pastGame
+    ? pastGame.clock[bottomColor]
+    : state ? projectedTime(state.clock, bottomColor, now) : 600_000;
 
   function handleSquare(square: Square) {
-    if (!state || state.result || role === "spectator" || chess.turn() !== role) return;
+    if (pastGame || replayPly !== null || !state || state.result || role === "spectator" || chess.turn() !== role) return;
     const piece = chess.get(square);
     if (!selected) {
       if (piece?.color === role) setSelected(square);
@@ -339,6 +431,13 @@ export function ChessRoom() {
     send({ type: "move", from: selected, to: square });
   }
 
+  function goToPly(ply: number) {
+    const next = Math.max(0, Math.min(lastPly, ply));
+    setReplayPly(!pastGame && next === lastPly ? null : next);
+    setSelected(null);
+    setPromotion(null);
+  }
+
   function startTable() {
     const nextRoom = makeRoomCode();
     setRoomInput(nextRoom);
@@ -356,23 +455,28 @@ export function ChessRoom() {
     }
   }
 
-  const movePairs = state?.history.reduce<Array<{ number: number; w?: { san: string; index: number }; b?: { san: string; index: number } }>>((pairs, move, index) => {
+  const movePairs = viewHistory.reduce<Array<{ number: number; w?: { san: string; index: number }; b?: { san: string; index: number } }>>((pairs, move, index) => {
     if (index % 2 === 0) pairs.push({ number: Math.floor(index / 2) + 1, w: { san: move.san, index } });
     else pairs[pairs.length - 1].b = { san: move.san, index };
     return pairs;
-  }, []) ?? [];
+  }, []);
 
   function moveCell(move?: { san: string; index: number }) {
-    if (!move) return <strong className="move-cell"><span>—</span></strong>;
-    const reviewed = state?.result ? analysis.moves[move.index] : null;
+    if (!move) return <span className="move-cell"><span>—</span></span>;
+    const reviewed = !pastGame && state?.result ? analysis.moves[move.index] : null;
     const title = reviewed
       ? `${gradeLabel(reviewed.grade)}${reviewed.expectedPointsLoss === null ? "" : ` · ${(reviewed.expectedPointsLoss * 100).toFixed(1)} expected points lost`}`
       : undefined;
     return (
-      <strong className="move-cell" title={title}>
+      <button
+        className={`move-cell ${viewedPly === move.index + 1 ? "is-current" : ""}`}
+        title={title}
+        onClick={() => goToPly(move.index + 1)}
+        aria-label={`Show position after ${move.san}`}
+      >
         <span>{move.san}</span>
         {reviewed && <small className={`move-grade move-grade--${reviewed.grade}`}>{gradeLabel(reviewed.grade)}</small>}
-      </strong>
+      </button>
     );
   }
 
@@ -384,21 +488,21 @@ export function ChessRoom() {
           <span>PAWN <em>PATROL</em></span>
         </Link>
         <div className="topbar-note"><span className="live-dot" /> LIVE TABLES · RAPID 10</div>
-        <button className="text-button" onClick={() => { socketRef.current?.close(); setConnection("idle"); setRoom(""); setState(null); setInvitedRoom(null); setRoomInput(""); window.history.replaceState({}, "", "/"); }}>New table</button>
+        <button className="text-button" onClick={() => { socketRef.current?.close(); setConnection("idle"); setRoom(""); setState(null); setPastGame(null); setReplayPly(null); setInvitedRoom(null); setRoomInput(""); window.history.replaceState({}, "", "/"); }}>New table</button>
       </header>
 
       <section className="game-layout">
         <div className="board-column">
           <div className="eyebrow-row">
-            <span>{room ? `PRIVATE TABLE · ${room}` : "PRIVATE TABLE"}</span>
-            <span className={`connection ${connection}`}>{connection === "online" ? "CONNECTED" : connection === "connecting" ? "CONNECTING" : connection === "offline" ? "RECONNECTING" : "READY"}</span>
+            <span>{pastGame ? `SAVED GAME · ${pastGame.room}` : room ? `PRIVATE TABLE · ${room}` : "PRIVATE TABLE"}</span>
+            <span className={`connection ${connection}`}>{pastGame ? "REPLAY" : connection === "online" ? "CONNECTED" : connection === "connecting" ? "CONNECTING" : connection === "offline" ? "RECONNECTING" : "READY"}</span>
           </div>
 
           <PlayerCard
-            name={state?.players[topColor] ?? null}
+            name={displayedPlayers[topColor]}
             color={topColor}
             time={topTime}
-            active={state?.clock.running === topColor && !state.result}
+            active={!pastGame && state?.clock.running === topColor && !state.result}
           />
 
           <div className="board-wrap">
@@ -428,7 +532,7 @@ export function ChessRoom() {
               }))}
             </div>
 
-            {connection === "idle" && (
+            {connection === "idle" && !pastGame && (
               <div className="lobby-card">
                 {invitedRoom ? (
                   <>
@@ -476,22 +580,28 @@ export function ChessRoom() {
           </div>
 
           <PlayerCard
-            name={state?.players[bottomColor] ?? null}
+            name={displayedPlayers[bottomColor]}
             color={bottomColor}
             time={bottomTime}
-            active={state?.clock.running === bottomColor && !state.result}
+            active={!pastGame && state?.clock.running === bottomColor && !state.result}
             bottom
           />
         </div>
 
         <aside className="match-panel">
           <div className="match-heading">
-            <span className="panel-kicker">MATCH ROOM</span>
-            <h2>{state ? relativeStatus(state, role) : "Ready when you are"}</h2>
-            <p>{state ? playerLabel(role) : "One table. Two players. Every move live."}</p>
+            <span className="panel-kicker">{pastGame ? "GAME ARCHIVE" : "MATCH ROOM"}</span>
+            <h2>{pastGame ? pastGame.result : replayPly !== null ? `Position ${viewedPly} of ${lastPly}` : state ? relativeStatus(state, role) : "Ready when you are"}</h2>
+            <p>{pastGame ? `${pastGame.players.w || "White"} vs ${pastGame.players.b || "Black"}` : replayPly !== null ? "Reviewing the live game. The clock is still running." : state ? playerLabel(role) : "One table. Two players. Every move live."}</p>
           </div>
 
-          {room ? (
+          {pastGame ? (
+            <div className="invite-card archive-summary">
+              <span>PLAYED {new Date(pastGame.finishedAt).toLocaleDateString()}</span>
+              <div><strong>{pastGame.room}</strong><button onClick={() => { setPastGame(null); setReplayPly(null); }}>Return {state ? "live" : "home"}</button></div>
+              <p>{pastGame.history.length} half-moves saved.</p>
+            </div>
+          ) : room ? (
             <div className="invite-card">
               <span>INVITE CODE</span>
               <div><strong>{room}</strong><button onClick={copyInvite}>{copied ? "Copied!" : "Copy link"}</button></div>
@@ -512,7 +622,9 @@ export function ChessRoom() {
             <div className="moves-header">
               <span>MOVE SHEET</span>
               <span>
-                {!state?.result
+                {pastGame
+                  ? `${pastGame.history.length} PLIES`
+                  : !state?.result
                   ? "REVIEW AFTER GAME"
                   : analysis.status === "loading" || analysis.status === "analyzing"
                     ? `REVIEWING ${analysis.completed}/${state.history.length}`
@@ -523,6 +635,15 @@ export function ChessRoom() {
                         : `${state.history.length} PLIES`}
               </span>
             </div>
+            {lastPly > 0 && (
+              <div className="replay-controls" aria-label="Replay controls">
+                <button onClick={() => goToPly(0)} disabled={viewedPly === 0} aria-label="Starting position">|‹</button>
+                <button onClick={() => goToPly(viewedPly - 1)} disabled={viewedPly === 0} aria-label="Previous move">‹</button>
+                <span>{viewedPly === 0 ? "Start" : `${Math.ceil(viewedPly / 2)}${viewedPly % 2 ? ". White" : "… Black"}`}</span>
+                <button onClick={() => goToPly(viewedPly + 1)} disabled={viewedPly === lastPly} aria-label="Next move">›</button>
+                <button onClick={() => goToPly(lastPly)} disabled={viewedPly === lastPly} aria-label="Latest position">›|</button>
+              </div>
+            )}
             <div className="moves-table">
               {movePairs.length ? movePairs.map((pair) => (
                 <div className="move-row" key={pair.number}>
@@ -532,13 +653,13 @@ export function ChessRoom() {
             </div>
           </div>
 
-          {state && (
+          {state && !pastGame && (
             <div className="match-actions">
               <button onClick={() => send({ type: "reset" })}>↻ Rematch</button>
               <button onClick={() => send({ type: "resign" })} disabled={role === "spectator" || Boolean(state.result)}>Resign</button>
             </div>
           )}
-          {state?.result && (
+          {state?.result && !pastGame && (
             <div className="seer-panel">
               <div className="moves-header">
                 <span>SEER GAME REVIEW</span>
@@ -564,6 +685,24 @@ export function ChessRoom() {
               )}
             </div>
           )}
+          <div className="archive-panel">
+            <div className="moves-header">
+              <span>PAST GAMES</span>
+              <button onClick={() => void loadPastGames()}>Refresh</button>
+            </div>
+            <div className="archive-list">
+              {pastGamesLoading ? (
+                <p>Loading your games…</p>
+              ) : pastGames.length ? pastGames.map((game) => (
+                <button className={pastGame?.id === game.id ? "is-active" : ""} key={game.id} onClick={() => void openPastGame(game.id)}>
+                  <span><b>{game.players.w || "White"}</b> vs <b>{game.players.b || "Black"}</b></span>
+                  <small>{game.result} · {game.plyCount} plies · {new Date(game.finishedAt).toLocaleDateString()}</small>
+                </button>
+              )) : (
+                <p>Finished games you play will appear here.</p>
+              )}
+            </div>
+          </div>
           {notice && <div className="notice" role="status">{notice}</div>}
         </aside>
       </section>

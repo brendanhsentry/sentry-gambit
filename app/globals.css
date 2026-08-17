@@ -217,3 +217,123 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 .seer-panel { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
 .seer-status { font-size: 13px; opacity: 0.85; }
 .seer-review { white-space: pre-wrap; font-size: 13px; line-height: 1.5; max-height: 300px; overflow-y: auto; border: 1px solid var(--line); padding: 10px; }
+
+/* Saved-game replay controls extend the original theme. */
+button.move-cell {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.move-cell:hover,
+button.move-cell.is-current {
+  color: var(--green);
+  background: rgba(23, 63, 53, 0.07);
+  box-shadow: inset 2px 0 var(--amber);
+}
+
+button.move-cell > span {
+  color: inherit;
+}
+
+.replay-controls {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 34px 34px 1fr 34px 34px;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.replay-controls button {
+  height: 28px;
+  border: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.replay-controls button:hover:not(:disabled) {
+  background: var(--green);
+  color: white;
+}
+
+.replay-controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.replay-controls span {
+  text-align: center;
+  color: #718078;
+  font: 650 9px/1 var(--font-geist-mono), monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.archive-summary strong {
+  font-size: 18px;
+}
+
+.archive-panel {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.archive-panel .moves-header button {
+  border: 0;
+  border-bottom: 1px solid var(--green);
+  background: transparent;
+  padding: 4px 0;
+  cursor: pointer;
+  color: var(--green);
+  font: 700 8px/1 var(--font-geist-mono), monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.archive-list {
+  max-height: 210px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.archive-list > button {
+  width: 100%;
+  display: grid;
+  gap: 5px;
+  border: 0;
+  border-bottom: 1px solid rgba(23, 63, 53, 0.09);
+  background: transparent;
+  padding: 11px 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.archive-list > button:hover,
+.archive-list > button.is-active {
+  background: rgba(23, 63, 53, 0.07);
+}
+
+.archive-list > button span {
+  color: #354a42;
+  font-size: 10px;
+}
+
+.archive-list > button small,
+.archive-list > p {
+  color: #718078;
+  font: 500 8px/1.35 var(--font-geist-mono), monospace;
+  text-transform: uppercase;
+}
+
+.archive-list > p {
+  margin: 0;
+  padding: 16px 0;
+  font-size: 10px;
+  line-height: 1.5;
+  text-transform: none;
+}
