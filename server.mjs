@@ -85,8 +85,10 @@ function captureFinishedGame(table) {
       ply_count: plyCount,
       final_fen: table.chess.fen(),
     });
-    scope.setFingerprint(["chess.game.finished"]);
-    Sentry.captureMessage("Pawn Patrol game finished");
+    // One issue per game (not one shared issue), so Seer can review a single
+    // game when asked about its short ID.
+    scope.setFingerprint(["chess.game.finished", table.gameId]);
+    Sentry.captureMessage(`Pawn Patrol game finished — room ${table.id}`);
   });
 
   endGameTraceWhenReady(table);
