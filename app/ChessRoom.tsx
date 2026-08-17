@@ -139,27 +139,32 @@ export function ChessRoom() {
     return false;
   }, []);
 
-  const analysis = useMoveAnalysis(state?.gameId ?? room, state?.history ?? [], Boolean(state?.result));
+  const currentGameId = state?.gameId;
+  const analysis = useMoveAnalysis(
+    currentGameId ?? room,
+    state?.history ?? [],
+    Boolean(state?.history.length),
+  );
 
   useEffect(() => {
-    if (!state?.result || connection !== "online") return;
+    if (!currentGameId || connection !== "online") return;
 
     analysis.moves.forEach((reviewed, index) => {
       if (!reviewed) return;
       const ply = index + 1;
-      const reportKey = `${state.gameId}:${ply}`;
+      const reportKey = `${currentGameId}:${ply}`;
       if (reportedGradesRef.current.has(reportKey)) return;
 
       const sent = send({
         type: "move_grade",
-        gameId: state.gameId,
+        gameId: currentGameId,
         ply,
         grade: reviewed.grade,
         expectedPointsLoss: reviewed.expectedPointsLoss,
       });
       if (sent) reportedGradesRef.current.add(reportKey);
     });
-  }, [analysis.moves, connection, send, state?.gameId, state?.result]);
+  }, [analysis.moves, connection, currentGameId, send]);
 
   const flagClock = useCallback(() => send({ type: "flag" }), [send]);
   const now = useClock(state?.clock ?? null, flagClock);
@@ -283,7 +288,7 @@ export function ChessRoom() {
 
   function moveCell(move?: { san: string; index: number }) {
     if (!move) return <strong className="move-cell"><span>—</span></strong>;
-    const reviewed = analysis.moves[move.index];
+    const reviewed = state?.result ? analysis.moves[move.index] : null;
     const title = reviewed
       ? `${gradeLabel(reviewed.grade)}${reviewed.expectedPointsLoss === null ? "" : ` · ${(reviewed.expectedPointsLoss * 100).toFixed(1)} expected points lost`}`
       : undefined;
@@ -416,15 +421,15 @@ export function ChessRoom() {
             <div className="moves-header">
               <span>MOVE SHEET</span>
               <span>
-                {analysis.status === "loading" || analysis.status === "analyzing"
-                  ? `REVIEWING ${analysis.completed}/${state?.history.length ?? 0}`
-                  : analysis.status === "complete"
-                    ? "LOCAL REVIEW COMPLETE"
-                    : analysis.status === "error"
-                      ? "REVIEW UNAVAILABLE"
-                      : state?.result
-                        ? `${state.history.length} PLIES`
-                        : "REVIEW AFTER GAME"}
+                {!state?.result
+                  ? "REVIEW AFTER GAME"
+                  : analysis.status === "loading" || analysis.status === "analyzing"
+                    ? `REVIEWING ${analysis.completed}/${state.history.length}`
+                    : analysis.status === "complete"
+                      ? "LOCAL REVIEW COMPLETE"
+                      : analysis.status === "error"
+                        ? "REVIEW UNAVAILABLE"
+                        : `${state.history.length} PLIES`}
               </span>
             </div>
             <div className="moves-table">

@@ -202,7 +202,7 @@ function handleTableMessage(table, client, raw) {
   }
 
   if (message.type === "move_grade") {
-    if (!table.result || message.gameId !== table.gameId) return;
+    if (message.gameId !== table.gameId) return;
 
     const ply = Number(message.ply);
     const grade = typeof message.grade === "string" ? message.grade : "";

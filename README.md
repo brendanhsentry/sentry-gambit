@@ -46,11 +46,11 @@ clients reconnect automatically on the same room code.
 ## Sentry Move Logs
 
 The Node server sends one structured `chess.move.accepted` Sentry log for every
-accepted move. Once the game ends, the browser sends each local Stockfish
-classification back to the server, which emits a corresponding
-`chess.move.graded` log. Grade reports from multiple browsers are deduplicated
-by game ID and ply. Logging is disabled automatically when no DSN is
-configured.
+accepted move. The browser analyzes moves with Stockfish in the background and
+sends each classification back to the server, which emits a corresponding
+`chess.move.graded` log. Grades remain hidden in the UI until the game ends.
+Grade reports from multiple browsers are deduplicated by game ID and ply.
+Logging is disabled automatically when no DSN is configured.
 
 Set these Cloud Run environment variables:
 
