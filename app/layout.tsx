@@ -23,19 +23,19 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: base,
     title: {
-      default: "Castle & Clock — Live chess",
-      template: "%s · Castle & Clock",
+      default: "Sentry Gambit — Live chess",
+      template: "%s · Sentry Gambit",
     },
     description: "Start a private chess table, share the code, and play live.",
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
     openGraph: {
-      title: "Castle & Clock",
+      title: "Sentry Gambit",
       description: "Live chess, one move at a time.",
       images: [{ url: socialImage, width: 1200, height: 630 }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Castle & Clock",
+      title: "Sentry Gambit",
       description: "Live chess, one move at a time.",
       images: [socialImage],
     },

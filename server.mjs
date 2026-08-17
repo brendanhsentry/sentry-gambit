@@ -238,5 +238,5 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Castle & Clock listening on http://0.0.0.0:${port}`);
+  console.log(`Sentry Gambit listening on http://0.0.0.0:${port}`);
 });

@@ -1,4 +1,4 @@
-# Castle & Clock
+# Sentry Gambit
 
 Live chess with private tables and shared clocks. Next.js frontend plus a Node
 WebSocket server (`server.mjs`) that keeps each game's board, clocks, and
@@ -23,9 +23,15 @@ The app runs as a single container (see `Dockerfile`). Game state is held in
 memory, so the service must run as one instance — a lost instance means live
 games reset, which is acceptable for casual play.
 
+Build the image locally and deploy it (`gcloud run deploy --source` is blocked
+in this project — the default build service account is denied by org policy):
+
 ```bash
-gcloud run deploy castle-and-clock \
-  --source . \
+gcloud auth configure-docker us-west1-docker.pkg.dev
+docker buildx build --platform linux/amd64 \
+  -t us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:latest --push .
+gcloud run deploy sentry-gambit \
+  --image us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:latest \
   --project devinfra-remote-dev \
   --region us-west1 \
   --allow-unauthenticated \
