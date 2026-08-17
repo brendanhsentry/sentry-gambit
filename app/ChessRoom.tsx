@@ -488,7 +488,10 @@ export function ChessRoom() {
           <span>PAWN <em>PATROL</em></span>
         </Link>
         <div className="topbar-note"><span className="live-dot" /> LIVE TABLES · RAPID 10</div>
-        <button className="text-button" onClick={() => { socketRef.current?.close(); setConnection("idle"); setRoom(""); setState(null); setPastGame(null); setReplayPly(null); setInvitedRoom(null); setRoomInput(""); window.history.replaceState({}, "", "/"); }}>New table</button>
+        <div className="topbar-actions">
+          <Link className="text-button" href="/games">Past games</Link>
+          <button className="text-button" onClick={() => { socketRef.current?.close(); setConnection("idle"); setRoom(""); setState(null); setPastGame(null); setReplayPly(null); setInvitedRoom(null); setRoomInput(""); window.history.replaceState({}, "", "/"); }}>New table</button>
+        </div>
       </header>
 
       <section className="game-layout">
