@@ -254,9 +254,9 @@ export function ChessRoom() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Castle and Clock home">
+        <a className="brand" href="/" aria-label="Sentry Gambit home">
           <span className="brand-mark">♞</span>
-          <span>CASTLE <em>&amp;</em> CLOCK</span>
+          <span>SENTRY <em>GAMBIT</em></span>
         </a>
         <div className="topbar-note"><span className="live-dot" /> LIVE TABLES · RAPID 10</div>
         <button className="text-button" onClick={() => { socketRef.current?.close(); setConnection("idle"); setRoom(""); setState(null); window.history.replaceState({}, "", "/"); }}>New table</button>
@@ -390,7 +390,7 @@ export function ChessRoom() {
       </section>
 
       <footer>
-        <span>CASTLE &amp; CLOCK · EST. 2026</span>
+        <span>SENTRY GAMBIT · EST. 2026</span>
         <span>PRIVATE ROOMS · REAL-TIME PLAY · NO SIGN-UP</span>
       </footer>
     </main>
