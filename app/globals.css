@@ -90,6 +90,9 @@ button { color: inherit; }
 .player-identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .player-identity strong { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-identity span { font: 500 9px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; color: #7d8883; text-transform: uppercase; }
+.captured-tray { display: flex; align-items: center; flex-shrink: 0; font-family: "Times New Roman", "Noto Sans Symbols 2", Georgia, serif; font-size: 16px; line-height: 1; }
+.captured-tray span { margin-right: -4px; }
+.captured-tray span:last-child { margin-right: 0; }
 .clock { margin-left: auto; min-width: 90px; padding: 8px 11px; background: rgba(23,63,53,.07); color: var(--green); text-align: right; font: 650 18px/1 var(--font-geist-mono), monospace; font-variant-numeric: tabular-nums; }
 .clock--active { background: var(--green); color: var(--ivory); box-shadow: inset 4px 0 var(--amber); }
 
@@ -213,7 +216,7 @@ button { color: inherit; }
 .takeback-bar button { height: 28px; padding: 0 12px; border: 1px solid var(--line); background: transparent; cursor: pointer; text-transform: uppercase; font-size: 9px; letter-spacing: .08em; font-weight: 700; }
 .takeback-bar button:first-child { border-color: var(--green); background: var(--green); color: white; }
 .takeback-bar button:hover { background: var(--green); color: white; }
-.match-actions { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 12px; gap: 8px; }
+.match-actions { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 12px; gap: 8px; }
 .match-actions button { height: 38px; border: 1px solid var(--line); background: transparent; cursor: pointer; text-transform: uppercase; font-size: 9px; letter-spacing: .08em; font-weight: 700; }
 .match-actions button:hover:not(:disabled) { background: var(--green); color: white; }
 .match-actions button:disabled { opacity: .45; cursor: default; }

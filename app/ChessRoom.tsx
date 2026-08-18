@@ -48,6 +48,7 @@ type GameState = {
   clock: ClockState;
   bot: { key: BotKey; name: string; elo: number; color: Color } | null;
   undoRequest?: { by: Color } | null;
+  drawOffer?: { by: Color } | null;
 };
 
 type PastGameSummary = {
@@ -126,6 +127,39 @@ const SEER_QUOTES = [
 
 const START_FEN = new Chess().fen();
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
+const TRAY_ORDER = ["q", "r", "b", "n", "p"] as const;
+const STARTING_COUNTS = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+
+// Pieces missing from the board versus what each side should still own,
+// with promotions counted so a promoted queen is not mistaken for a capture.
+function capturedPieces(fen: string, history: ReviewMove[]) {
+  const expected: Record<Color, Record<string, number>> = {
+    w: { ...STARTING_COUNTS },
+    b: { ...STARTING_COUNTS },
+  };
+  for (const move of history) {
+    if (move.promotion) {
+      expected[move.color].p -= 1;
+      expected[move.color][move.promotion] += 1;
+    }
+  }
+  const onBoard: Record<Color, Record<string, number>> = {
+    w: { p: 0, n: 0, b: 0, r: 0, q: 0 },
+    b: { p: 0, n: 0, b: 0, r: 0, q: 0 },
+  };
+  for (const ch of fen.split(" ")[0]) {
+    const lower = ch.toLowerCase();
+    if (lower in onBoard.w) onBoard[ch === lower ? "b" : "w"][lower] += 1;
+  }
+  const captured: Record<Color, PieceSymbol[]> = { w: [], b: [] };
+  for (const color of ["w", "b"] as const) {
+    for (const type of TRAY_ORDER) {
+      const missing = expected[color][type] - onBoard[color][type];
+      for (let i = 0; i < missing; i++) captured[color].push(type);
+    }
+  }
+  return captured;
+}
 const EXPLAINABLE_GRADES = new Set([
   "inaccuracy",
   "mistake",
@@ -211,12 +245,14 @@ function PlayerCard({
   time,
   active,
   bottom,
+  captured,
 }: {
   name: string | null;
   color: Color;
   time: number;
   active: boolean;
   bottom?: boolean;
+  captured?: PieceSymbol[];
 }) {
   const fallback = color === "w" ? "Waiting for white" : "Waiting for black";
   return (
@@ -230,6 +266,16 @@ function PlayerCard({
           {name ? (active ? "Thinking…" : "At the table") : "Open seat"}
         </span>
       </div>
+      {captured && captured.length > 0 && (
+        <div
+          className={`captured-tray piece--${color === "w" ? "b" : "w"}`}
+          aria-label={`Pieces captured by ${color === "w" ? "white" : "black"}`}
+        >
+          {captured.map((type, index) => (
+            <span key={`${type}${index}`}>{PIECE_GLYPHS[type]}</span>
+          ))}
+        </div>
+      )}
       <div
         className={`clock ${active ? "clock--active" : ""}`}
         aria-label={`${color === "w" ? "White" : "Black"} clock`}
@@ -906,6 +952,11 @@ export function ChessRoom() {
       ? projectedTime(state.clock, bottomColor, now)
       : 600_000;
 
+  const captured = useMemo(
+    () => capturedPieces(viewFen, viewHistory.slice(0, viewedPly)),
+    [viewFen, viewHistory, viewedPly],
+  );
+
   const canInteract =
     !pastGame &&
     replayPly === null &&
@@ -1189,6 +1240,7 @@ export function ChessRoom() {
             active={
               !pastGame && state?.clock.running === topColor && !state.result
             }
+            captured={captured[bottomColor]}
           />
 
           <div className="board-wrap">
@@ -1431,6 +1483,7 @@ export function ChessRoom() {
               !pastGame && state?.clock.running === bottomColor && !state.result
             }
             bottom
+            captured={captured[topColor]}
           />
         </div>
 
@@ -1742,6 +1795,33 @@ export function ChessRoom() {
                 </div>
               </div>
             )}
+          {state &&
+            !pastGame &&
+            !state.result &&
+            state.drawOffer &&
+            state.drawOffer.by !== role &&
+            role !== "spectator" && (
+              <div className="takeback-bar" role="alert">
+                <span>
+                  {state.players[state.drawOffer.by] || "Your opponent"} offers
+                  a draw
+                </span>
+                <div>
+                  <button
+                    onClick={() => send({ type: "draw_response", accept: true })}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() =>
+                      send({ type: "draw_response", accept: false })
+                    }
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
           {state && !pastGame && (
             <div className="match-actions">
               <button onClick={() => send({ type: "reset" })}>↻ Rematch</button>
@@ -1759,6 +1839,16 @@ export function ChessRoom() {
                 }
               >
                 {state.undoRequest?.by === role ? "Asked…" : "↶ Undo"}
+              </button>
+              <button
+                onClick={() => send({ type: "draw_offer" })}
+                disabled={
+                  role === "spectator" ||
+                  Boolean(state.result) ||
+                  Boolean(state.drawOffer)
+                }
+              >
+                {state.drawOffer?.by === role ? "Offered…" : "½ Draw"}
               </button>
               <button
                 onClick={() => send({ type: "resign" })}

@@ -238,6 +238,7 @@ function serializeTable(table) {
     clock: table.clock,
     bot: table.bot ?? null,
     undoRequest: table.undoRequest ?? null,
+    drawOffer: table.drawOffer ?? null,
   };
 }
 
@@ -311,8 +312,23 @@ function setBoardResult(table) {
   if (table.result) pauseClock(table);
 }
 
+function applyDrawAgreement(table) {
+  table.drawOffer = null;
+  table.undoRequest = null;
+  if (flagIfExpired(table)) {
+    captureFinishedGame(table);
+    broadcast(table);
+    return;
+  }
+  table.result = "Draw by agreement";
+  pauseClock(table);
+  captureFinishedGame(table);
+  broadcast(table);
+}
+
 function applyUndo(table, color) {
   table.undoRequest = null;
+  table.drawOffer = null;
   const plies = table.chess.turn() === color ? 2 : 1;
   if (table.chess.history().length < plies) {
     broadcast(table);
@@ -389,6 +405,7 @@ function handleTableMessage(table, client, raw) {
       return;
     }
     table.undoRequest = null;
+    table.drawOffer = null;
     setBoardResult(table);
     if (!table.result) resumeClock(table, now);
     const ply = table.chess.history().length;
@@ -470,6 +487,7 @@ function handleTableMessage(table, client, raw) {
     if (table.result || (client.role !== "w" && client.role !== "b")) return;
     table.result = `${client.role === "w" ? "Black" : "White"} wins by resignation`;
     table.undoRequest = null;
+    table.drawOffer = null;
     pauseClock(table);
     captureFinishedGame(table);
     broadcast(table);
@@ -505,6 +523,32 @@ function handleTableMessage(table, client, raw) {
     return;
   }
 
+  // A draw needs both players to agree; a bot or empty seat accepts as-is.
+  if (message.type === "draw_offer") {
+    if (table.result || (client.role !== "w" && client.role !== "b")) return;
+    const opponent = client.role === "w" ? "b" : "w";
+    const opponentIsHuman =
+      table.seats[opponent] && table.bot?.color !== opponent;
+    if (opponentIsHuman) {
+      if (table.drawOffer) return;
+      table.drawOffer = { by: client.role };
+      broadcast(table);
+      return;
+    }
+    applyDrawAgreement(table);
+    return;
+  }
+
+  if (message.type === "draw_response") {
+    const offer = table.drawOffer;
+    if (!offer || table.result) return;
+    if (client.role !== (offer.by === "w" ? "b" : "w")) return;
+    table.drawOffer = null;
+    if (message.accept) applyDrawAgreement(table);
+    else broadcast(table);
+    return;
+  }
+
   if (message.type === "reset") {
     if (client.role === "spectator") return;
     if (!table.sentryTraceEnded) table.sentrySpan.end();
@@ -525,6 +569,7 @@ function handleTableMessage(table, client, raw) {
     table.chess.reset();
     table.result = null;
     table.undoRequest = null;
+    table.drawOffer = null;
     table.clock = {
       w: STARTING_TIME,
       b: STARTING_TIME,
@@ -620,6 +665,7 @@ async function joinTable(request, socket) {
       if (table.seats[client.role]?.id === client.id)
         table.seats[client.role] = null;
       if (table.undoRequest?.by === client.role) table.undoRequest = null;
+      if (table.drawOffer?.by === client.role) table.drawOffer = null;
     }
     table.touchedAt = Date.now();
     broadcast(table);
