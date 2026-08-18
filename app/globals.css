@@ -354,7 +354,9 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 .seer-scan-log .seer-step--current { color: var(--green); font-weight: 650; }
 .seer-draft { display: grid; gap: 6px; }
 .seer-draft-label { font: 650 8px/1 var(--font-geist-mono), monospace; letter-spacing: .14em; color: #8f6a2d; }
-.seer-draft .seer-md--preview { max-height: 120px; }
+/* The draft clips at the top so the newest text stays visible while Seer writes. */
+.seer-draft .seer-md--preview { max-height: 120px; display: flex; flex-direction: column; justify-content: flex-end; }
+.seer-draft .seer-fade { top: 0; bottom: auto; background: linear-gradient(var(--paper), rgba(250, 247, 239, 0)); }
 .seer-chip {
   font-size: 10px; font-weight: 500;
   padding: 2px 7px; border-radius: 20px;
@@ -492,63 +494,6 @@ button.move-cell > span {
   color: #718078;
   font: 650 9px/1 var(--font-geist-mono), monospace;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.archive-summary strong {
-  font-size: 18px;
-}
-
-.archive-panel {
-  margin-top: 16px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-
-.archive-panel .moves-header button {
-  border: 0;
-  border-bottom: 1px solid var(--green);
-  background: transparent;
-  padding: 4px 0;
-  cursor: pointer;
-  color: var(--green);
-  font: 700 8px/1 var(--font-geist-mono), monospace;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.archive-list {
-  max-height: 210px;
-  overflow: auto;
-  scrollbar-width: thin;
-}
-
-.archive-list > button {
-  width: 100%;
-  display: grid;
-  gap: 5px;
-  border: 0;
-  border-bottom: 1px solid rgba(23, 63, 53, 0.09);
-  background: transparent;
-  padding: 11px 0;
-  cursor: pointer;
-  text-align: left;
-}
-
-.archive-list > button:hover,
-.archive-list > button.is-active {
-  background: rgba(23, 63, 53, 0.07);
-}
-
-.archive-list > button span {
-  color: #354a42;
-  font-size: 10px;
-}
-
-.archive-list > button small,
-.archive-list > p {
-  color: #718078;
-  font: 500 8px/1.35 var(--font-geist-mono), monospace;
   text-transform: uppercase;
 }
 
@@ -702,10 +647,3 @@ button.move-cell > span {
   .record-board .piece { font-size: 9vw; }
 }
 
-.archive-list > p {
-  margin: 0;
-  padding: 16px 0;
-  font-size: 10px;
-  line-height: 1.5;
-  text-transform: none;
-}

@@ -51,19 +51,6 @@ type GameState = {
   drawOffer?: { by: Color } | null;
 };
 
-type PastGameSummary = {
-  id: string;
-  room: string;
-  players: { w: string | null; b: string | null };
-  result: string;
-  finishedAt: number;
-  finalFen: string;
-  clock: { w: number; b: number };
-  plyCount: number;
-};
-
-type PastGame = PastGameSummary & { history: ReviewMove[] };
-
 type BoardGhost = {
   from: Square;
   to: Square;
@@ -90,40 +77,6 @@ type MoveExplanation =
       requestId?: string;
       message?: string;
     };
-
-// Shown one at a time while a real Seer review runs (they take minutes).
-const SEER_QUOTES = [
-  "Reading the game event…",
-  "Replaying the moves…",
-  "Locating the eval swings…",
-  "Interviewing the knight who saw everything…",
-  "Checking if the queen was en prise… she was.",
-  "Blaming time pressure…",
-  "Consulting opening theory (1. e4 is still fine)…",
-  "Measuring centipawn loss with a tiny ruler…",
-  "Asking Stockfish to be gentle…",
-  "Cross-referencing every game Magnus ever played…",
-  "Looking for the brilliant move you missed… still looking…",
-  "Filing a bug report against your bishop…",
-  "Rewinding to the last moment things were fine…",
-  "Counting the pawns twice, just to be sure…",
-  "The rook says it was 'just following orders'…",
-  "Detecting hope chess…",
-  "Grepping the middlegame for blunders…",
-  "Escalating to the back rank…",
-  "Reviewing your king's safety posture…",
-  "Running the resignation post-mortem…",
-  "Comparing you to a 3500-rated engine (be brave)…",
-  "Deciding if that sacrifice was sound or just vibes…",
-  "Tracing the eval bar's cliff dive…",
-  "Assigning blame to individual pieces…",
-  "Reconstructing the crime scene on f7…",
-  "Polling the spectators — they saw it too…",
-  "Verifying the touch-move rule was honored…",
-  "Estimating how long that knight was hanging…",
-  "Applying the 'everyone blunders' consolation protocol…",
-  "Almost done… in engine time, which is different…",
-];
 
 const START_FEN = new Chess().fen();
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
@@ -308,9 +261,6 @@ export function ChessRoom() {
     null,
   );
   const [copied, setCopied] = useState(false);
-  const [pastGames, setPastGames] = useState<PastGameSummary[]>([]);
-  const [pastGamesLoading, setPastGamesLoading] = useState(true);
-  const [pastGame, setPastGame] = useState<PastGame | null>(null);
   const [replayPly, setReplayPly] = useState<number | null>(null);
   const [analysisPly, setAnalysisPly] = useState<number | null>(null);
   const [moveExplanations, setMoveExplanations] = useState<
@@ -336,46 +286,6 @@ export function ChessRoom() {
     return false;
   }, []);
 
-  const loadPastGames = useCallback(async () => {
-    setPastGamesLoading(true);
-    try {
-      const key = browserPlayerKey();
-      const response = await fetch(
-        `/api/games?limit=12&playerKey=${encodeURIComponent(key)}`,
-      );
-      if (!response.ok) throw new Error("Game archive unavailable");
-      const data = (await response.json()) as { games: PastGameSummary[] };
-      setPastGames(data.games);
-    } catch {
-      setPastGames([]);
-    } finally {
-      setPastGamesLoading(false);
-    }
-  }, []);
-
-  const openPastGame = useCallback(async (gameId: string) => {
-    try {
-      const key = browserPlayerKey();
-      const response = await fetch(
-        `/api/games/${encodeURIComponent(gameId)}?playerKey=${encodeURIComponent(key)}`,
-      );
-      if (!response.ok) throw new Error("Game not found");
-      const game = (await response.json()) as PastGame;
-      setPastGame(game);
-      setReplayPly(game.history.length);
-      setSelected(null);
-      setPromotion(null);
-    } catch {
-      setNotice("That saved game could not be opened.");
-    }
-  }, []);
-
-  useEffect(() => {
-    // Fetching the browser-owned archive is a mount-time synchronization.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadPastGames();
-  }, [loadPastGames]);
-
   // Record a Sentry session replay only while a game is being played:
   // both seats filled, no result yet, and this client is one of the players.
   const gameActive = Boolean(
@@ -392,12 +302,6 @@ export function ChessRoom() {
   useEffect(() => () => void stopGameReplay(), []);
 
   const currentGameId = state?.gameId;
-
-  useEffect(() => {
-    // A result changes the server-side archive, so refresh its local snapshot.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (state?.result) void loadPastGames();
-  }, [state?.result, loadPastGames]);
 
   type SeerReview =
     | { phase: "idle" }
@@ -462,33 +366,6 @@ export function ChessRoom() {
       message: "The game has not reached Sentry yet. Try again in a minute.",
     });
   }, [currentGameId]);
-
-  // Rolling ticker of quips while a review runs: a shuffled deck cycles so
-  // nothing repeats until the whole pool has been shown.
-  const [seerTicker, setSeerTicker] = useState<{ id: number; text: string }[]>(
-    [],
-  );
-  useEffect(() => {
-    if (seer.phase !== "requesting" && seer.phase !== "running") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSeerTicker([]);
-      return;
-    }
-    const deck = [...SEER_QUOTES];
-    for (let i = deck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-    let count = 0;
-    const push = () => {
-      const entry = { id: count, text: deck[count % deck.length] };
-      count += 1;
-      setSeerTicker((prev) => [...prev, entry].slice(-4));
-    };
-    push();
-    const interval = window.setInterval(push, 4000);
-    return () => window.clearInterval(interval);
-  }, [seer.phase]);
 
   // The full verdict opens in a slide-out panel; the widget stays as a preview.
   const [seerExpanded, setSeerExpanded] = useState(false);
@@ -648,10 +525,7 @@ export function ChessRoom() {
     }
   }
 
-  const viewHistory = useMemo(
-    () => pastGame?.history ?? state?.history ?? [],
-    [pastGame?.history, state?.history],
-  );
+  const viewHistory = useMemo(() => state?.history ?? [], [state?.history]);
 
   async function requestMoveExplanation(index: number) {
     const ply = index + 1;
@@ -660,7 +534,6 @@ export function ChessRoom() {
 
     const reviewed = analysis.moves[index];
     if (
-      pastGame ||
       !state?.result ||
       !reviewed?.evidence ||
       (role !== "spectator" && state.history[index]?.color !== role) ||
@@ -738,8 +611,7 @@ export function ChessRoom() {
   const lastPly = viewHistory.length;
   const viewedPly = replayPly ?? lastPly;
   const viewFen = useMemo(() => {
-    if (viewedPly === lastPly)
-      return pastGame?.finalFen ?? state?.fen ?? START_FEN;
+    if (viewedPly === lastPly) return state?.fen ?? START_FEN;
     const position = new Chess();
     for (const move of viewHistory.slice(0, viewedPly)) {
       position.move({
@@ -749,7 +621,7 @@ export function ChessRoom() {
       });
     }
     return position.fen();
-  }, [lastPly, pastGame?.finalFen, state?.fen, viewHistory, viewedPly]);
+  }, [lastPly, state?.fen, viewHistory, viewedPly]);
 
   const chess = useMemo(() => {
     try {
@@ -783,7 +655,7 @@ export function ChessRoom() {
   const prevBoardRef = useRef<{ key: string; ply: number; fen: string } | null>(
     null,
   );
-  const boardKey = pastGame?.id ?? currentGameId ?? "";
+  const boardKey = currentGameId ?? "";
 
   // Slide pieces between squares whenever the position advances by one ply.
   useLayoutEffect(() => {
@@ -876,7 +748,6 @@ export function ChessRoom() {
     if (!cleanRoom) return;
 
     socketRef.current?.close();
-    setPastGame(null);
     setReplayPly(null);
     setConnection("connecting");
     setRoom(cleanRoom);
@@ -935,25 +806,18 @@ export function ChessRoom() {
     return () => window.clearTimeout(id);
   }, [connection, room, name, currentBotKey, connect]);
 
-  const orientation: Color = pastGame ? "w" : role === "b" ? "b" : "w";
+  const orientation: Color = role === "b" ? "b" : "w";
   const ranks =
     orientation === "w" ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
   const files = orientation === "w" ? [...FILES] : [...FILES].reverse();
   const lastMove = viewHistory[viewedPly - 1];
   const topColor: Color = orientation === "w" ? "b" : "w";
   const bottomColor: Color = orientation;
-  const displayedPlayers = pastGame?.players ??
-    state?.players ?? { w: null, b: null };
-  const topTime = pastGame
-    ? pastGame.clock[topColor]
-    : state
-      ? projectedTime(state.clock, topColor, now)
-      : 600_000;
-  const bottomTime = pastGame
-    ? pastGame.clock[bottomColor]
-    : state
-      ? projectedTime(state.clock, bottomColor, now)
-      : 600_000;
+  const displayedPlayers = state?.players ?? { w: null, b: null };
+  const topTime = state ? projectedTime(state.clock, topColor, now) : 600_000;
+  const bottomTime = state
+    ? projectedTime(state.clock, bottomColor, now)
+    : 600_000;
 
   const captured = useMemo(
     () => capturedPieces(viewFen, viewHistory.slice(0, viewedPly)),
@@ -961,7 +825,6 @@ export function ChessRoom() {
   );
 
   const canInteract =
-    !pastGame &&
     replayPly === null &&
     !!state &&
     !state.result &&
@@ -1054,7 +917,7 @@ export function ChessRoom() {
 
   function goToPly(ply: number) {
     const next = Math.max(0, Math.min(lastPly, ply));
-    setReplayPly(!pastGame && next === lastPly ? null : next);
+    setReplayPly(next === lastPly ? null : next);
     setSelected(null);
     setPromotion(null);
   }
@@ -1109,8 +972,7 @@ export function ChessRoom() {
           <span>—</span>
         </span>
       );
-    const reviewed =
-      !pastGame && state?.result ? analysis.moves[move.index] : null;
+    const reviewed = state?.result ? analysis.moves[move.index] : null;
     const title = reviewed
       ? `${gradeLabel(reviewed.grade)}${reviewed.expectedPointsLoss === null ? "" : ` · ${(reviewed.expectedPointsLoss * 100).toFixed(1)} expected points lost`}`
       : undefined;
@@ -1164,7 +1026,6 @@ export function ChessRoom() {
               setConnection("idle");
               setRoom("");
               setState(null);
-              setPastGame(null);
               setReplayPly(null);
               setInvitedRoom(null);
               setRoomInput("");
@@ -1179,13 +1040,7 @@ export function ChessRoom() {
       <section className="game-layout">
         <div className="board-column">
           <div className="eyebrow-row">
-            <span>
-              {pastGame
-                ? `SAVED GAME · ${pastGame.room}`
-                : room
-                  ? `PRIVATE TABLE · ${room}`
-                  : "PRIVATE TABLE"}
-            </span>
+            <span>{room ? `PRIVATE TABLE · ${room}` : "PRIVATE TABLE"}</span>
             <span className="eyebrow-tools">
               <button
                 className="sound-toggle"
@@ -1212,15 +1067,13 @@ export function ChessRoom() {
                 </svg>
               </button>
               <span className={`connection ${connection}`}>
-                {pastGame
-                  ? "REPLAY"
-                  : connection === "online"
-                    ? "CONNECTED"
-                    : connection === "connecting"
-                      ? "CONNECTING"
-                      : connection === "offline"
-                        ? "RECONNECTING"
-                        : "READY"}
+                {connection === "online"
+                  ? "CONNECTED"
+                  : connection === "connecting"
+                    ? "CONNECTING"
+                    : connection === "offline"
+                      ? "RECONNECTING"
+                      : "READY"}
               </span>
             </span>
           </div>
@@ -1240,9 +1093,7 @@ export function ChessRoom() {
             name={displayedPlayers[topColor]}
             color={topColor}
             time={topTime}
-            active={
-              !pastGame && state?.clock.running === topColor && !state.result
-            }
+            active={state?.clock.running === topColor && !state.result}
             captured={captured[bottomColor]}
           />
 
@@ -1344,7 +1195,7 @@ export function ChessRoom() {
               )}
             </div>
 
-            {connection === "idle" && !pastGame && (
+            {connection === "idle" && (
               <div className="lobby-card">
                 {invitedRoom ? (
                   <>
@@ -1444,7 +1295,6 @@ export function ChessRoom() {
             )}
 
             {state?.result &&
-              !pastGame &&
               replayPly === null &&
               resultDismissedFor !== state.gameId && (
                 <div className="game-over" role="alertdialog" aria-label="Game over">
@@ -1508,9 +1358,7 @@ export function ChessRoom() {
             name={displayedPlayers[bottomColor]}
             color={bottomColor}
             time={bottomTime}
-            active={
-              !pastGame && state?.clock.running === bottomColor && !state.result
-            }
+            active={state?.clock.running === bottomColor && !state.result}
             bottom
             captured={captured[topColor]}
           />
@@ -1518,48 +1366,24 @@ export function ChessRoom() {
 
         <aside className="match-panel">
           <div className="match-heading">
-            <span className="panel-kicker">
-              {pastGame ? "GAME ARCHIVE" : "MATCH ROOM"}
-            </span>
+            <span className="panel-kicker">MATCH ROOM</span>
             <h2>
-              {pastGame
-                ? pastGame.result
-                : replayPly !== null
-                  ? `Position ${viewedPly} of ${lastPly}`
-                  : state
-                    ? relativeStatus(state, role)
-                    : "Ready when you are"}
+              {replayPly !== null
+                ? `Position ${viewedPly} of ${lastPly}`
+                : state
+                  ? relativeStatus(state, role)
+                  : "Ready when you are"}
             </h2>
             <p>
-              {pastGame
-                ? `${pastGame.players.w || "White"} vs ${pastGame.players.b || "Black"}`
-                : replayPly !== null
-                  ? "Reviewing the live game. The clock is still running."
-                  : state
-                    ? playerLabel(role)
-                    : "One table. Two players. Every move live."}
+              {replayPly !== null
+                ? "Reviewing the live game. The clock is still running."
+                : state
+                  ? playerLabel(role)
+                  : "One table. Two players. Every move live."}
             </p>
           </div>
 
-          {pastGame ? (
-            <div className="invite-card archive-summary">
-              <span>
-                PLAYED {new Date(pastGame.finishedAt).toLocaleDateString()}
-              </span>
-              <div>
-                <strong>{pastGame.room}</strong>
-                <button
-                  onClick={() => {
-                    setPastGame(null);
-                    setReplayPly(null);
-                  }}
-                >
-                  Return {state ? "live" : "home"}
-                </button>
-              </div>
-              <p>{pastGame.history.length} half-moves saved.</p>
-            </div>
-          ) : room ? (
+          {room ? (
             <div className="invite-card">
               <span>INVITE CODE</span>
               <div>
@@ -1597,18 +1421,16 @@ export function ChessRoom() {
             <div className="moves-header">
               <span>MOVE SHEET</span>
               <span>
-                {pastGame
-                  ? `${pastGame.history.length} PLIES`
-                  : !state?.result
-                    ? "REVIEW AFTER GAME"
-                    : analysis.status === "loading" ||
-                        analysis.status === "analyzing"
-                      ? `REVIEWING ${analysis.completed}/${state.history.length}`
-                      : analysis.status === "complete"
-                        ? "LOCAL REVIEW COMPLETE"
-                        : analysis.status === "error"
-                          ? "REVIEW UNAVAILABLE"
-                          : `${state.history.length} PLIES`}
+                {!state?.result
+                  ? "REVIEW AFTER GAME"
+                  : analysis.status === "loading" ||
+                      analysis.status === "analyzing"
+                    ? `REVIEWING ${analysis.completed}/${state.history.length}`
+                    : analysis.status === "complete"
+                      ? "LOCAL REVIEW COMPLETE"
+                      : analysis.status === "error"
+                        ? "REVIEW UNAVAILABLE"
+                        : `${state.history.length} PLIES`}
               </span>
             </div>
             {lastPly > 0 && (
@@ -1674,12 +1496,7 @@ export function ChessRoom() {
             <div className="ai-coach-head">
               <span id="ai-coach-title">COACH MING</span>
             </div>
-            {pastGame ? (
-              <p>
-                AI explanations are available immediately after a live game.
-                Past-game support is coming next.
-              </p>
-            ) : !state?.result ? (
+            {!state?.result ? (
               <p>
                 Finish this game, then the coach will explain any inaccuracies,
                 mistakes, misses, or blunders found by Stockfish.
@@ -1798,7 +1615,6 @@ export function ChessRoom() {
             )}
 
           {state &&
-            !pastGame &&
             !state.result &&
             state.undoRequest &&
             state.undoRequest.by !== role &&
@@ -1825,7 +1641,6 @@ export function ChessRoom() {
               </div>
             )}
           {state &&
-            !pastGame &&
             !state.result &&
             state.drawOffer &&
             state.drawOffer.by !== role &&
@@ -1851,7 +1666,7 @@ export function ChessRoom() {
                 </div>
               </div>
             )}
-          {state && !pastGame && (
+          {state && (
             <div className="match-actions">
               <button onClick={() => send({ type: "reset" })}>↻ Rematch</button>
               <button
@@ -1887,7 +1702,7 @@ export function ChessRoom() {
               </button>
             </div>
           )}
-          {state?.result && !pastGame && (
+          {state?.result && (
             <div className="seer-widget">
               <div className="seer-head">
                 <span className="seer-eye">
@@ -1995,28 +1810,23 @@ export function ChessRoom() {
                         ? "Seer is writing the review…"
                         : "Seer is reviewing the game…"}
                     </div>
-                    {seer.phase === "running" && seer.activity.length ? (
-                      <div className="seer-scan-log">
-                        {seer.activity.map((line, index) => (
-                          <div
-                            key={`${index}-${line}`}
-                            className={
-                              index === seer.activity.length - 1
-                                ? "seer-step--current"
-                                : undefined
-                            }
-                          >
-                            {line}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="seer-scan-log">
-                        {seerTicker.map((line) => (
-                          <div key={line.id}>{line.text}</div>
-                        ))}
-                      </div>
-                    )}
+                    <div className="seer-scan-log">
+                      {(seer.phase === "running" && seer.activity.length
+                        ? seer.activity
+                        : ["Connecting to Seer"]
+                      ).map((line, index, lines) => (
+                        <div
+                          key={`${index}-${line}`}
+                          className={
+                            index === lines.length - 1
+                              ? "seer-step--current"
+                              : undefined
+                          }
+                        >
+                          {line}
+                        </div>
+                      ))}
+                    </div>
                     {seer.phase === "running" && seer.draft && (
                       <div className="seer-draft">
                         <span className="seer-draft-label">LIVE DRAFT</span>
@@ -2068,36 +1878,6 @@ export function ChessRoom() {
               </div>
             </div>
           )}
-          <div className="archive-panel">
-            <div className="moves-header">
-              <span>PAST GAMES</span>
-              <button onClick={() => void loadPastGames()}>Refresh</button>
-            </div>
-            <div className="archive-list">
-              {pastGamesLoading ? (
-                <p>Loading your games…</p>
-              ) : pastGames.length ? (
-                pastGames.map((game) => (
-                  <button
-                    className={pastGame?.id === game.id ? "is-active" : ""}
-                    key={game.id}
-                    onClick={() => void openPastGame(game.id)}
-                  >
-                    <span>
-                      <b>{game.players.w || "White"}</b> vs{" "}
-                      <b>{game.players.b || "Black"}</b>
-                    </span>
-                    <small>
-                      {game.result} · {game.plyCount} plies ·{" "}
-                      {new Date(game.finishedAt).toLocaleDateString()}
-                    </small>
-                  </button>
-                ))
-              ) : (
-                <p>Finished games you play will appear here.</p>
-              )}
-            </div>
-          </div>
           {notice && (
             <div className="notice" role="status">
               {notice}
