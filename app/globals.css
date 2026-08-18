@@ -93,6 +93,7 @@ button { color: inherit; }
 .captured-tray { display: flex; align-items: center; flex-shrink: 0; font-family: "Times New Roman", "Noto Sans Symbols 2", Georgia, serif; font-size: 16px; line-height: 1; }
 .captured-tray span { margin-right: -4px; }
 .captured-tray span:last-child { margin-right: 0; }
+.captured-lead { margin-left: 8px; font: 650 10px/1 var(--font-geist-mono), monospace; color: #7d8883; text-shadow: none; }
 .clock { margin-left: auto; min-width: 90px; padding: 8px 11px; background: rgba(23,63,53,.07); color: var(--green); text-align: right; font: 650 18px/1 var(--font-geist-mono), monospace; font-variant-numeric: tabular-nums; }
 .clock--active { background: var(--green); color: var(--ivory); box-shadow: inset 4px 0 var(--amber); }
 
@@ -125,6 +126,11 @@ button { color: inherit; }
 .piece--b { color: #142c25; text-shadow: 0 1px 0 rgba(255,255,255,.3), 0 2px 2px rgba(0,0,0,.28); }
 .move-dot { position: absolute; z-index: 3; width: 19%; aspect-ratio: 1; border-radius: 50%; background: rgba(12,47,40,.47); pointer-events: none; }
 .capture-ring { position: absolute; z-index: 3; inset: 7%; border: clamp(3px, .45vw, 6px) solid rgba(217,154,66,.7); border-radius: 50%; pointer-events: none; }
+.king-badge { position: absolute; z-index: 4; top: 4%; right: 4%; width: 30%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font: 700 clamp(10px, 1.7vw, 17px)/1 var(--font-geist-mono), monospace; color: white; border: 2px solid rgba(255,255,255,.85); box-shadow: 0 2px 6px rgba(0,0,0,.4); animation: badge-pop 240ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both; pointer-events: none; }
+@keyframes badge-pop { from { transform: scale(.4); opacity: 0; } }
+.king-badge--win { background: #3d8a52; }
+.king-badge--draw { background: #7d8883; }
+.king-badge--mate, .king-badge--time, .king-badge--resign { background: #ae372b; }
 .rank-label, .file-label { position: absolute; z-index: 4; font: 700 8px/1 var(--font-geist-mono), monospace; opacity: .68; }
 .rank-label { left: 5px; top: 5px; }
 .file-label { right: 5px; bottom: 4px; text-transform: uppercase; }
@@ -232,6 +238,15 @@ button { color: inherit; }
 .match-actions button { height: 38px; border: 1px solid var(--line); background: transparent; cursor: pointer; text-transform: uppercase; font-size: 9px; letter-spacing: .08em; font-weight: 700; }
 .match-actions button:hover:not(:disabled) { background: var(--green); color: white; }
 .match-actions button:disabled { opacity: .45; cursor: default; }
+.resign-wrap { position: relative; }
+.resign-wrap > button { width: 100%; }
+.resign-confirm { position: absolute; z-index: 8; bottom: calc(100% + 9px); right: 0; min-width: 190px; padding: 12px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 14px 34px rgba(9,38,32,.28); display: flex; flex-direction: column; gap: 9px; }
+.resign-confirm::after { content: ""; position: absolute; top: 100%; right: 22px; border: 7px solid transparent; border-top-color: var(--paper); }
+.resign-confirm > span { font: 650 10px/1.4 var(--font-geist-mono), monospace; letter-spacing: .05em; text-transform: uppercase; }
+.resign-confirm div { display: flex; gap: 6px; }
+.resign-confirm div button { flex: 1; height: 30px; padding: 0; border: 1px solid var(--line); background: transparent; }
+.resign-confirm .resign-confirm-yes { border-color: #ae372b; background: #ae372b; color: white; }
+.resign-confirm .resign-confirm-yes:hover { background: #8f2c22; }
 .notice { margin-top: 12px; padding: 10px; background: #f0dfc3; color: #72511e; font-size: 10px; }
 
 .ai-coach {

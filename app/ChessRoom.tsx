@@ -81,6 +81,23 @@ type MoveExplanation =
 const START_FEN = new Chess().fen();
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 const TRAY_ORDER = ["q", "r", "b", "n", "p"] as const;
+const PIECE_VALUES: Record<PieceSymbol, number> = {
+  p: 1,
+  n: 3,
+  b: 3,
+  r: 5,
+  q: 9,
+  k: 0,
+};
+
+type BadgeKind = "win" | "draw" | "mate" | "time" | "resign";
+const BADGE_GLYPHS: Record<BadgeKind, string> = {
+  win: "✓",
+  draw: "½",
+  mate: "#",
+  time: "⌛︎",
+  resign: "⚑",
+};
 const STARTING_COUNTS = { p: 8, n: 2, b: 2, r: 2, q: 1 };
 
 // Pieces missing from the board versus what each side should still own,
@@ -199,6 +216,7 @@ function PlayerCard({
   active,
   bottom,
   captured,
+  advantage,
 }: {
   name: string | null;
   color: Color;
@@ -206,6 +224,7 @@ function PlayerCard({
   active: boolean;
   bottom?: boolean;
   captured?: PieceSymbol[];
+  advantage?: number;
 }) {
   const fallback = color === "w" ? "Waiting for white" : "Waiting for black";
   return (
@@ -227,6 +246,9 @@ function PlayerCard({
           {captured.map((type, index) => (
             <span key={`${type}${index}`}>{PIECE_GLYPHS[type]}</span>
           ))}
+          {(advantage ?? 0) > 0 && (
+            <small className="captured-lead">+{advantage}</small>
+          )}
         </div>
       )}
       <div
@@ -260,6 +282,7 @@ export function ChessRoom() {
   const [resultDismissedFor, setResultDismissedFor] = useState<string | null>(
     null,
   );
+  const [confirmResign, setConfirmResign] = useState(false);
   const [copied, setCopied] = useState(false);
   const [replayPly, setReplayPly] = useState<number | null>(null);
   const [analysisPly, setAnalysisPly] = useState<number | null>(null);
@@ -710,9 +733,10 @@ export function ChessRoom() {
     }
     animIdRef.current += 1;
     setAnim({ id: animIdRef.current, ghosts, hide });
-    if (forward && ghosts.some((ghost) => ghost.fade)) playCapture();
+    if (forward && (move.san.includes("+") || move.san.includes("#")))
+      playCheck();
+    else if (forward && ghosts.some((ghost) => ghost.fade)) playCapture();
     else playMove();
-    if (forward && move.san.includes("+")) playCheck();
     const timer = window.setTimeout(() => setAnim(null), 180);
     return () => window.clearTimeout(timer);
   }, [boardKey, viewedPly, viewFen, viewHistory]);
@@ -823,6 +847,33 @@ export function ChessRoom() {
     () => capturedPieces(viewFen, viewHistory.slice(0, viewedPly)),
     [viewFen, viewHistory, viewedPly],
   );
+  // Positive means white leads on material; the tray shows it on one side only.
+  const materialLead = useMemo(() => {
+    const points = (list: PieceSymbol[]) =>
+      list.reduce((sum, type) => sum + PIECE_VALUES[type], 0);
+    return points(captured.b) - points(captured.w);
+  }, [captured]);
+
+  // King badges only decorate the final position of a decided game.
+  const finishBadges = useMemo((): Record<Color, BadgeKind> | null => {
+    const result = state?.result;
+    if (!result || viewedPly !== lastPly) return null;
+    if (result.startsWith("Draw")) return { w: "draw", b: "draw" };
+    const winner = result.startsWith("White")
+      ? "w"
+      : result.startsWith("Black")
+        ? "b"
+        : null;
+    if (!winner) return null;
+    const reason: BadgeKind = result.includes("checkmate")
+      ? "mate"
+      : result.includes("time")
+        ? "time"
+        : "resign";
+    return winner === "w"
+      ? { w: "win", b: reason }
+      : { w: reason, b: "win" };
+  }, [state?.result, viewedPly, lastPly]);
 
   const canInteract =
     replayPly === null &&
@@ -848,11 +899,16 @@ export function ChessRoom() {
   function handleSquare(square: Square) {
     if (!canInteract) return;
     const piece = chess.get(square);
+    if (selected === square) {
+      setSelected(null);
+      return;
+    }
     if (!selected || piece?.color === role) {
       if (piece?.color === role) setSelected(square);
       return;
     }
-    if (!tryMove(selected, square)) setSelected(null);
+    // A failed target keeps the piece selected so a mis-click costs nothing.
+    tryMove(selected, square);
   }
 
   function handlePointerDown(event: ReactPointerEvent, square: Square) {
@@ -921,6 +977,19 @@ export function ChessRoom() {
     setSelected(null);
     setPromotion(null);
   }
+
+  useEffect(() => {
+    if (lastPly === 0) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      const target = event.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      event.preventDefault();
+      goToPly(viewedPly + (event.key === "ArrowRight" ? 1 : -1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   function startTable() {
     const nextRoom = makeRoomCode();
@@ -1095,6 +1164,7 @@ export function ChessRoom() {
             time={topTime}
             active={state?.clock.running === topColor && !state.result}
             captured={captured[bottomColor]}
+            advantage={topColor === "w" ? materialLead : -materialLead}
           />
 
           <div className="board-wrap">
@@ -1147,6 +1217,14 @@ export function ChessRoom() {
                       )}
                       {isTarget && (
                         <span className={piece ? "capture-ring" : "move-dot"} />
+                      )}
+                      {piece?.type === "k" && finishBadges && (
+                        <span
+                          className={`king-badge king-badge--${finishBadges[piece.color]}`}
+                          aria-hidden
+                        >
+                          {BADGE_GLYPHS[finishBadges[piece.color]]}
+                        </span>
                       )}
                     </button>
                   );
@@ -1361,6 +1439,7 @@ export function ChessRoom() {
             active={state?.clock.running === bottomColor && !state.result}
             bottom
             captured={captured[topColor]}
+            advantage={bottomColor === "w" ? materialLead : -materialLead}
           />
         </div>
 
@@ -1694,12 +1773,37 @@ export function ChessRoom() {
               >
                 {state.drawOffer?.by === role ? "Offered…" : "½ Draw"}
               </button>
-              <button
-                onClick={() => send({ type: "resign" })}
-                disabled={role === "spectator" || Boolean(state.result)}
-              >
-                Resign
-              </button>
+              <div className="resign-wrap">
+                {confirmResign && !state.result && (
+                  <div
+                    className="resign-confirm"
+                    role="alertdialog"
+                    aria-label="Confirm resignation"
+                  >
+                    <span>Resign the game?</span>
+                    <div>
+                      <button onClick={() => setConfirmResign(false)}>
+                        Cancel
+                      </button>
+                      <button
+                        className="resign-confirm-yes"
+                        onClick={() => {
+                          send({ type: "resign" });
+                          setConfirmResign(false);
+                        }}
+                      >
+                        Resign
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <button
+                  onClick={() => setConfirmResign((current) => !current)}
+                  disabled={role === "spectator" || Boolean(state.result)}
+                >
+                  Resign
+                </button>
+              </div>
             </div>
           )}
           {state?.result && (
