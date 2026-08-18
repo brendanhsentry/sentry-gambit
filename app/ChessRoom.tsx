@@ -49,6 +49,7 @@ type GameState = {
   history: ReviewMove[];
   players: { w: string | null; b: string | null };
   result: string | null;
+  initialTimeMs: number;
   clock: ClockState;
   bot: { key: BotKey; name: string; elo: number; color: Color } | null;
   undoRequest?: { by: Color } | null;
@@ -73,6 +74,15 @@ type MoveExplanation =
     };
 
 const START_FEN = new Chess().fen();
+const TIME_CONTROLS = [1, 3, 5, 10] as const;
+type TimeControl = (typeof TIME_CONTROLS)[number];
+const DEFAULT_TIME_CONTROL: TimeControl = 10;
+const TIME_CONTROL_NAMES: Record<TimeControl, string> = {
+  1: "Bullet",
+  3: "Blitz",
+  5: "Blitz",
+  10: "Rapid",
+};
 const TRAY_ORDER = ["q", "r", "b", "n", "p"] as const;
 const PIECE_VALUES: Record<PieceSymbol, number> = {
   p: 1,
@@ -252,6 +262,8 @@ export function ChessRoom() {
   const [roomInput, setRoomInput] = useState("");
   const [invitedRoom, setInvitedRoom] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [timeControl, setTimeControl] =
+    useState<TimeControl>(DEFAULT_TIME_CONTROL);
   const [room, setRoom] = useState("");
   const [role, setRole] = useState<Role>("spectator");
   const [connection, setConnection] = useState<
@@ -531,7 +543,7 @@ export function ChessRoom() {
       await loadMaia();
       const nextRoom = makeRoomCode();
       setRoomInput(nextRoom);
-      connect(nextRoom, name, bot);
+      connect(nextRoom, name, bot, timeControl * 60_000);
     } catch {
       setNotice("The bot engine could not be loaded. Try again.");
     } finally {
@@ -691,7 +703,12 @@ export function ChessRoom() {
       playGameEnd();
   }, [state]);
 
-  const connect = useCallback((nextRoom: string, nextName: string, bot?: BotKey) => {
+  const connect = useCallback((
+    nextRoom: string,
+    nextName: string,
+    bot?: BotKey,
+    initialTimeMs?: number,
+  ) => {
     const cleanRoom = nextRoom
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "")
@@ -707,7 +724,7 @@ export function ChessRoom() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const playerKey = browserPlayerKey();
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}&playerKey=${encodeURIComponent(playerKey)}${bot ? `&bot=${bot}` : ""}`,
+      `${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}&playerKey=${encodeURIComponent(playerKey)}${bot ? `&bot=${bot}` : ""}${initialTimeMs ? `&time=${initialTimeMs}` : ""}`,
     );
     socketRef.current = socket;
 
@@ -752,9 +769,12 @@ export function ChessRoom() {
   const currentBotKey = state?.bot?.key;
   useEffect(() => {
     if (connection !== "offline" || !room) return;
-    const id = window.setTimeout(() => connect(room, name, currentBotKey), 1600);
+    const id = window.setTimeout(
+      () => connect(room, name, currentBotKey, state?.initialTimeMs),
+      1600,
+    );
     return () => window.clearTimeout(id);
-  }, [connection, room, name, currentBotKey, connect]);
+  }, [connection, room, name, currentBotKey, state?.initialTimeMs, connect]);
 
   const orientation: Color = role === "b" ? "b" : "w";
   const lastMove = viewHistory[viewedPly - 1];
@@ -768,10 +788,11 @@ export function ChessRoom() {
   const topColor: Color = orientation === "w" ? "b" : "w";
   const bottomColor: Color = orientation;
   const displayedPlayers = state?.players ?? { w: null, b: null };
-  const topTime = state ? projectedTime(state.clock, topColor, now) : 600_000;
+  const idleTime = timeControl * 60_000;
+  const topTime = state ? projectedTime(state.clock, topColor, now) : idleTime;
   const bottomTime = state
     ? projectedTime(state.clock, bottomColor, now)
-    : 600_000;
+    : idleTime;
 
   const captured = useMemo(
     () => capturedPieces(viewFen, viewHistory.slice(0, viewedPly)),
@@ -875,7 +896,7 @@ export function ChessRoom() {
   function startTable() {
     const nextRoom = makeRoomCode();
     setRoomInput(nextRoom);
-    connect(nextRoom, name);
+    connect(nextRoom, name, undefined, timeControl * 60_000);
   }
 
   async function copyInvite() {
@@ -1133,6 +1154,25 @@ export function ChessRoom() {
                         maxLength={24}
                       />
                     </label>
+                    <fieldset className="time-control">
+                      <legend>Time control</legend>
+                      <div>
+                        {TIME_CONTROLS.map((minutes) => (
+                          <button
+                            key={minutes}
+                            type="button"
+                            className={
+                              timeControl === minutes ? "selected" : ""
+                            }
+                            onClick={() => setTimeControl(minutes)}
+                            aria-pressed={timeControl === minutes}
+                          >
+                            <strong>{minutes} min</strong>
+                            <small>{TIME_CONTROL_NAMES[minutes]}</small>
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
                     <button className="primary-button" onClick={startTable}>
                       Create a table <span>→</span>
                     </button>
@@ -1280,7 +1320,11 @@ export function ChessRoom() {
 
           {room ? (
             <div className="invite-card">
-              <span>INVITE CODE</span>
+              <span>
+                {state
+                  ? `${state.initialTimeMs / 60_000} MIN · INVITE CODE`
+                  : "INVITE CODE"}
+              </span>
               <div>
                 <strong>{room}</strong>
                 <button onClick={copyInvite}>

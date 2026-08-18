@@ -58,6 +58,7 @@ export function openFirestoreGameStore() {
             finalFen: game.fen,
             whiteTimeMs: game.clock.w,
             blackTimeMs: game.clock.b,
+            initialTimeMs: game.initialTimeMs ?? game.clock.w,
             playerKeys: [],
             plyCount: 0,
             shareable: true,
@@ -213,6 +214,7 @@ export function openFirestoreGameStore() {
       return {
         id: doc.id,
         room: data.room,
+        initialTimeMs: data.initialTimeMs ?? 600_000,
         clock: { w: data.whiteTimeMs, b: data.blackTimeMs },
         playerColors: data.playerColors ?? {},
         bot: data.botKey ? { key: data.botKey, color: data.botColor } : null,

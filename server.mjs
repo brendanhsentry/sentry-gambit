@@ -34,7 +34,10 @@ Sentry.init({
   streamGenAiSpans: true,
 });
 
-const STARTING_TIME = 10 * 60 * 1000;
+const DEFAULT_STARTING_TIME = 10 * 60 * 1000;
+const STARTING_TIMES = new Set(
+  [1, 3, 5, 10].map((minutes) => minutes * 60 * 1000),
+);
 const IDLE_ROOM_TTL = 60 * 60 * 1000;
 const BOTS = {
   haiku: { name: "Haiku", elo: 1100 },
@@ -124,7 +127,7 @@ function captureFinishedGame(table) {
  * service must run as a single instance (Cloud Run --max-instances=1). */
 const tables = new Map();
 
-function createTable(id) {
+function createTable(id, initialTimeMs = DEFAULT_STARTING_TIME) {
   const gameId = randomUUID();
   const table = {
     id,
@@ -134,7 +137,8 @@ function createTable(id) {
     seats: { w: null, b: null },
     seatOrder: randomInt(2) === 0 ? ["w", "b"] : ["b", "w"],
     result: null,
-    clock: { w: STARTING_TIME, b: STARTING_TIME, running: null, since: null },
+    initialTimeMs,
+    clock: { w: initialTimeMs, b: initialTimeMs, running: null, since: null },
     gradedPlies: new Set(),
     playerColors: new Map(),
     sentrySpan: createGameTrace(id, gameId),
@@ -147,6 +151,7 @@ function createTable(id) {
     room: id,
     fen: table.chess.fen(),
     clock: table.clock,
+    initialTimeMs: table.initialTimeMs,
   });
   return table;
 }
@@ -171,6 +176,7 @@ function restoreTable(id, saved) {
     seats: { w: null, b: null },
     seatOrder: randomInt(2) === 0 ? ["w", "b"] : ["b", "w"],
     result: null,
+    initialTimeMs: saved.initialTimeMs ?? DEFAULT_STARTING_TIME,
     clock: { w: saved.clock.w, b: saved.clock.b, running: null, since: null },
     gradedPlies: new Set(),
     playerColors: new Map(Object.entries(saved.playerColors ?? {})),
@@ -189,7 +195,7 @@ function restoreTable(id, saved) {
 
 const pendingRestores = new Map();
 
-function obtainTable(roomId) {
+function obtainTable(roomId, initialTimeMs) {
   const existing = tables.get(roomId);
   if (existing) return existing;
   const pending = pendingRestores.get(roomId);
@@ -205,7 +211,7 @@ function obtainTable(roomId) {
         error,
       );
     }
-    table ??= createTable(roomId);
+    table ??= createTable(roomId, initialTimeMs);
     tables.set(roomId, table);
     return table;
   })().finally(() => pendingRestores.delete(roomId));
@@ -241,6 +247,7 @@ function serializeTable(table) {
       b: table.seats.b?.name ?? null,
     },
     result: table.result,
+    initialTimeMs: table.initialTimeMs,
     clock: table.clock,
     bot: table.bot ?? null,
     undoRequest: table.undoRequest ?? null,
@@ -577,8 +584,8 @@ function handleTableMessage(table, client, raw) {
     table.undoRequest = null;
     table.drawOffer = null;
     table.clock = {
-      w: STARTING_TIME,
-      b: STARTING_TIME,
+      w: table.initialTimeMs,
+      b: table.initialTimeMs,
       running: null,
       since: null,
     };
@@ -588,6 +595,7 @@ function handleTableMessage(table, client, raw) {
       room: table.id,
       fen: table.chess.fen(),
       clock: table.clock,
+      initialTimeMs: table.initialTimeMs,
     });
     gameStore.updatePlayers(table.gameId, {
       w: table.seats.w?.name ?? null,
@@ -628,8 +636,12 @@ async function joinTable(request, socket) {
   const playerKey = (url.searchParams.get("playerKey") || "")
     .replace(/[^a-zA-Z0-9-]/g, "")
     .slice(0, 64);
+  const requestedTime = Number(url.searchParams.get("time"));
+  const initialTimeMs = STARTING_TIMES.has(requestedTime)
+    ? requestedTime
+    : DEFAULT_STARTING_TIME;
 
-  const table = await obtainTable(roomId);
+  const table = await obtainTable(roomId, initialTimeMs);
   if (socket.readyState !== socket.OPEN) return;
 
   const role = chooseSeat(table, playerKey);

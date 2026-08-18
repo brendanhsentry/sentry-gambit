@@ -27,6 +27,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       final_fen TEXT NOT NULL,
       white_time_ms INTEGER NOT NULL,
       black_time_ms INTEGER NOT NULL,
+      initial_time_ms INTEGER NOT NULL DEFAULT 600000,
       shareable INTEGER NOT NULL DEFAULT 1
     );
 
@@ -66,13 +67,18 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     database.exec("ALTER TABLE games ADD COLUMN bot_key TEXT");
     database.exec("ALTER TABLE games ADD COLUMN bot_color TEXT");
   }
+  if (!gameColumns.some((column) => column.name === "initial_time_ms")) {
+    database.exec(
+      "ALTER TABLE games ADD COLUMN initial_time_ms INTEGER NOT NULL DEFAULT 600000",
+    );
+  }
 
   const statements = {
     insertGame: database.prepare(`
       INSERT OR IGNORE INTO games (
         id, room, started_at, updated_at, final_fen, white_time_ms, black_time_ms,
-        shareable
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        initial_time_ms, shareable
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
     `),
     updatePlayers: database.prepare(`
       UPDATE games SET white_name = ?, black_name = ?, updated_at = ? WHERE id = ?
@@ -131,7 +137,8 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       FROM moves WHERE game_id = ? ORDER BY ply
     `),
     selectLiveGame: database.prepare(`
-      SELECT id, room, white_time_ms, black_time_ms, bot_key, bot_color
+      SELECT id, room, white_time_ms, black_time_ms, initial_time_ms,
+        bot_key, bot_color
       FROM games WHERE room = ? AND status = 'in_progress' AND updated_at >= ?
       ORDER BY updated_at DESC LIMIT 1
     `),
@@ -170,7 +177,16 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
   return {
     createGame(game) {
       const now = Date.now();
-      statements.insertGame.run(game.id, game.room, now, now, game.fen, game.clock.w, game.clock.b);
+      statements.insertGame.run(
+        game.id,
+        game.room,
+        now,
+        now,
+        game.fen,
+        game.clock.w,
+        game.clock.b,
+        game.initialTimeMs ?? game.clock.w,
+      );
     },
     updatePlayers(gameId, players) {
       statements.updatePlayers.run(players.w, players.b, Date.now(), gameId);
@@ -244,6 +260,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       return {
         id: row.id,
         room: row.room,
+        initialTimeMs: row.initial_time_ms,
         clock: { w: row.white_time_ms, b: row.black_time_ms },
         playerColors,
         bot: row.bot_key ? { key: row.bot_key, color: row.bot_color } : null,
