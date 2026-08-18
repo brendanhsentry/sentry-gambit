@@ -56,10 +56,6 @@ export function LeaderboardView() {
       <section className="leaderboard-page">
         <span className="panel-kicker">RATED PLAY</span>
         <h1>Leaderboard</h1>
-        <p>
-          Everyone starts at 1200. Games count when both seats are signed-in
-          players or Patrol bots.
-        </p>
 
         {loading ? (
           <div className="archive-empty">

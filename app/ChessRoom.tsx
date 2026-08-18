@@ -1642,14 +1642,9 @@ export function ChessRoom() {
                   )}
                 </div>
               )}
-              <div className="live-coach-feed">
-                {coachFeed.length === 0 ? (
-                  <p className="live-coach-idle">
-                    I&apos;m watching your game — I&apos;ll speak up when a move
-                    deserves it. Stuck? Ask for a hint.
-                  </p>
-                ) : (
-                  coachFeed.map((item) => {
+              {coachFeed.length > 0 && (
+                <div className="live-coach-feed">
+                  {coachFeed.map((item) => {
                     const takebackable =
                       item.kind === "mistake" &&
                       !state.result &&
@@ -1687,9 +1682,9 @@ export function ChessRoom() {
                         )}
                       </div>
                     );
-                  })
-                )}
-              </div>
+                  })}
+                </div>
+              )}
             </section>
           )}
 

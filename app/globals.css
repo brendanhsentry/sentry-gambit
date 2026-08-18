@@ -186,7 +186,6 @@ button { color: inherit; }
 .live-coach-hintbox button { margin-left: auto; padding: 4px 9px; border: 1px solid var(--line); background: var(--paper); color: var(--green); font: 650 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .05em; cursor: pointer; }
 .live-coach-hintbox button:hover { border-color: var(--green); }
 .live-coach-feed { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; max-height: 250px; overflow-y: auto; }
-.live-coach-idle { margin: 0; color: #5d6d66; font-size: 11.5px; line-height: 1.55; }
 .coach-bubble { padding: 9px 11px 10px; border: 1px solid var(--line); border-radius: 2px 10px 10px 10px; background: #fffdf8; font-size: 11.5px; line-height: 1.55; color: #3a463f; }
 .coach-bubble p { margin: 0; }
 .coach-bubble--mistake { border-left: 3px solid #b8433c; }
