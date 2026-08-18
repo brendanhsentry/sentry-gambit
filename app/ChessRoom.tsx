@@ -41,6 +41,28 @@ import { BOTS, useMaiaEngine, type BotKey } from "./maia-bot";
 import { authToken, useAuth } from "./auth";
 import { AuthDialog } from "./AuthDialog";
 
+// The captured trays reuse chessground's <piece> element and its piece SVGs.
+declare module "react" {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace JSX {
+    interface IntrinsicElements {
+      piece: React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement>,
+        HTMLElement
+      >;
+    }
+  }
+}
+
+const PIECE_NAMES: Record<PieceSymbol, string> = {
+  p: "pawn",
+  n: "knight",
+  b: "bishop",
+  r: "rook",
+  q: "queen",
+  k: "king",
+};
+
 type Role = "w" | "b" | "spectator";
 
 type ClockState = {
@@ -283,11 +305,14 @@ function PlayerCard({
       </div>
       {captured && captured.length > 0 && (
         <div
-          className={`captured-tray piece--${color === "w" ? "b" : "w"}`}
+          className="captured-tray cg-wrap"
           aria-label={`Pieces captured by ${color === "w" ? "white" : "black"}`}
         >
           {captured.map((type, index) => (
-            <span key={`${type}${index}`}>{PIECE_GLYPHS[type]}</span>
+            <piece
+              key={`${type}${index}`}
+              className={`${PIECE_NAMES[type]} ${color === "w" ? "black" : "white"}`}
+            />
           ))}
           {(advantage ?? 0) > 0 && (
             <small className="captured-lead">+{advantage}</small>
@@ -1015,6 +1040,9 @@ export function ChessRoom() {
       : { w: reason, b: "win" };
   }, [state?.result, viewedPly, lastPly]);
 
+  const matchUnderway = Boolean(
+    state && !state.result && state.players.w && state.players.b,
+  );
   const canControlBoard =
     replayPly === null &&
     !!state &&
@@ -1554,26 +1582,30 @@ export function ChessRoom() {
           />
         </div>
 
-        <aside className="match-panel">
-          <div className="match-heading">
-            <span className="panel-kicker">MATCH ROOM</span>
-            <h2>
-              {replayPly !== null
-                ? `Position ${viewedPly} of ${lastPly}`
-                : state
-                  ? relativeStatus(state, role)
-                  : "Ready when you are"}
-            </h2>
-            <p>
-              {replayPly !== null
-                ? "Reviewing the live game. The clock is still running."
-                : state
-                  ? playerLabel(role)
-                  : "One table. Two players. Every move live."}
-            </p>
-          </div>
+        <aside
+          className={`match-panel ${matchUnderway ? "match-panel--live" : ""}`}
+        >
+          {!matchUnderway && (
+            <div className="match-heading">
+              <span className="panel-kicker">MATCH ROOM</span>
+              <h2>
+                {replayPly !== null
+                  ? `Position ${viewedPly} of ${lastPly}`
+                  : state
+                    ? relativeStatus(state, role)
+                    : "Ready when you are"}
+              </h2>
+              <p>
+                {replayPly !== null
+                  ? "Reviewing the live game. The clock is still running."
+                  : state
+                    ? playerLabel(role)
+                    : "One table. Two players. Every move live."}
+              </p>
+            </div>
+          )}
 
-          {room ? (
+          {matchUnderway ? null : room ? (
             <div className="invite-card">
               <span>
                 {state
@@ -1777,16 +1809,12 @@ export function ChessRoom() {
             </div>
           </div>
 
+          {state?.result && (
           <section className="ai-coach" aria-labelledby="ai-coach-title">
             <div className="ai-coach-head">
               <span id="ai-coach-title">COACH</span>
             </div>
-            {!state?.result ? (
-              <p>
-                Finish this game, then the coach will explain any inaccuracies,
-                mistakes, misses, or blunders found by Stockfish.
-              </p>
-            ) : analysis.status === "loading" ||
+            {analysis.status === "loading" ||
               analysis.status === "analyzing" ||
               analysis.status === "idle" ? (
               <p>
@@ -1830,6 +1858,7 @@ export function ChessRoom() {
               </p>
             )}
           </section>
+          )}
 
           {analysisPly &&
             selectedReview?.evidence &&

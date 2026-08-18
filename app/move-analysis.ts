@@ -305,8 +305,11 @@ function classifyMove(
     else if (isBest) grade = "best";
     else if (loss <= 0.02) grade = "excellent";
     else if (loss <= 0.05) grade = "good";
-    else if (loss <= 0.1) grade = "inaccuracy";
-    else if (loss <= 0.2) grade = "mistake";
+    else if (loss <= 0.12) grade = "inaccuracy";
+    // A blunder must genuinely endanger the result, not just shed surplus
+    // advantage in a position that stays clearly winning.
+    else if (loss <= 0.28 || review.played.expectedPoints >= 0.65)
+      grade = "mistake";
     else grade = "blunder";
   }
 
