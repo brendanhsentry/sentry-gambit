@@ -12,7 +12,10 @@ self.onmessage = async (event) => {
     if (msg.type === "init") {
       const response = await fetch(msg.modelUrl);
       if (!response.ok) throw new Error(`Model download failed (${response.status})`);
-      const total = Number(response.headers.get("Content-Length")) || 0;
+      const total =
+        Number(response.headers.get("Content-Length")) ||
+        Number(response.headers.get("X-Model-Size")) ||
+        0;
       const reader = response.body.getReader();
       const chunks = [];
       let received = 0;

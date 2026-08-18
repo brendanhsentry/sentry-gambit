@@ -90,8 +90,15 @@ account needs Firestore access (`roles/datastore.user` or broader), and the
 games list query requires the composite index on
 `playerKeys (array) + status + finishedAt desc`.
 
-Build the image locally and deploy it (`gcloud run deploy --source` is blocked
-in this project — the default build service account is denied by org policy):
+Every push to `main` builds the image and deploys it automatically via GitHub
+Actions (`.github/workflows/deploy.yml`); a newer push cancels an in-flight
+deploy. Note that Cloud Run rejects fixed-length responses over 32 MB, so the
+Maia model is streamed by `server.mjs` with chunked encoding rather than served
+as a Next static file.
+
+To deploy manually instead, build the image locally and deploy it
+(`gcloud run deploy --source` is blocked in this project — the default build
+service account is denied by org policy):
 
 ```bash
 gcloud auth configure-docker us-west1-docker.pkg.dev

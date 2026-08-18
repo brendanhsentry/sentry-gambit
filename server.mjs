@@ -1,5 +1,6 @@
 /** Node server: Next.js frontend plus an in-memory WebSocket chess table service. */
 import { createServer } from "node:http";
+import { createReadStream, statSync } from "node:fs";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import * as Sentry from "@sentry/node";
 import next from "next";
@@ -1474,8 +1475,30 @@ async function handleReviewRequest(req, res, url) {
   }
 }
 
+// Cloud Run rejects fixed-length responses over 32 MB, so the ~46 MB Maia
+// model must be streamed with chunked encoding instead of served by Next.
+function serveMaiaModel(res) {
+  let size;
+  try {
+    size = statSync("public/maia3/maia3.onnx").size;
+  } catch {
+    sendJson(res, 404, { error: "The bot model is not available." });
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": "application/octet-stream",
+    "Cache-Control": "public, max-age=31536000, immutable",
+    "X-Model-Size": String(size),
+  });
+  createReadStream("public/maia3/maia3.onnx").pipe(res);
+}
+
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
+  if (req.method === "GET" && url.pathname === "/maia3/maia3.onnx") {
+    serveMaiaModel(res);
+    return;
+  }
   if (handleGamesRequest(req, res, url)) return;
   if (url.pathname === "/api/move-explanation") {
     void handleMoveExplanationRequest(req, res);
