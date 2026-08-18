@@ -157,14 +157,11 @@ type CoachItem = {
   thinking: boolean;
 };
 
-const SUGGESTION_ELO = 2500;
-
 type CoachHint =
-  | { phase: "loading"; tier: "nudge" | "move" }
-  | { phase: "shown"; tier: "nudge"; text: string; fen: string }
+  | { phase: "loading"; tier: "maia" | "best" }
   | {
       phase: "shown";
-      tier: "move";
+      tier: "maia" | "best";
       from: Square;
       to: Square;
       san: string;
@@ -693,31 +690,19 @@ export function ChessRoom() {
     });
   }, [analysis.moves, state, role]);
 
-  // First press nudges without revealing a move; the second suggests one.
-  async function requestHint(tier: "nudge" | "move") {
+  async function requestHint(tier: "maia" | "best") {
     const started = latestStateRef.current;
     if (!started?.bot || started.result) return;
     const fen = started.fen;
     setHint({ phase: "loading", tier });
     try {
-      if (tier === "nudge") {
-        const best = await engineBestMove(fen);
-        const response = await fetch("/api/move-hint", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fen, bestLine: best.pv.slice(0, 6) }),
-        });
-        const data = (await response.json()) as { hint?: string };
-        if (!response.ok || !data.hint) throw new Error("unavailable");
-        if (latestStateRef.current?.fen !== fen) {
-          setHint(null);
-          return;
-        }
-        setHint({ phase: "shown", tier, text: data.hint, fen });
-        return;
+      let uci: string;
+      if (tier === "best") {
+        uci = (await engineBestMove(fen)).move;
+      } else {
+        const picked = await pickMove(fen, started.bot.elo);
+        uci = `${picked.from}${picked.to}${picked.promotion ?? ""}`;
       }
-      const picked = await pickMove(fen, SUGGESTION_ELO);
-      const uci = `${picked.from}${picked.to}${picked.promotion ?? ""}`;
       const san = sanFromUci(fen, uci);
       if (!san || latestStateRef.current?.fen !== fen) {
         setHint(null);
@@ -1045,11 +1030,14 @@ export function ChessRoom() {
     hint?.phase === "shown" && hint.fen === state?.fen;
   const hintShapes = useMemo(
     () =>
-      hint?.phase === "shown" &&
-      hint.tier === "move" &&
-      hint.fen === state?.fen &&
-      replayPly === null
-        ? [{ orig: hint.from as Key, dest: hint.to as Key, brush: "green" }]
+      hint?.phase === "shown" && hint.fen === state?.fen && replayPly === null
+        ? [
+            {
+              orig: hint.from as Key,
+              dest: hint.to as Key,
+              brush: hint.tier === "best" ? "green" : "blue",
+            },
+          ]
         : [],
     [hint, replayPly, state?.fen],
   );
@@ -1645,29 +1633,29 @@ export function ChessRoom() {
                 </button>
                 <button
                   className="live-coach-hint"
-                  onClick={() =>
-                    void requestHint(
-                      hintVisible && hint?.phase === "shown" && hint.tier === "nudge"
-                        ? "move"
-                        : "nudge",
-                    )
-                  }
+                  onClick={() => void requestHint("maia")}
                   disabled={!canInteract || hint?.phase === "loading"}
-                  title={canInteract ? undefined : "Hints are available on your turn"}
+                  title={
+                    canInteract
+                      ? "Show a move a player at this level would consider"
+                      : "Hints are available on your turn"
+                  }
                 >
-                  {hint?.phase === "loading"
-                    ? "Thinking…"
-                    : hintVisible && hint?.phase === "shown" && hint.tier === "nudge"
-                      ? "◈ Suggest a move"
-                      : "◈ Hint"}
+                  {hint?.phase === "loading" ? "Thinking…" : "◈ Hint"}
                 </button>
               </div>
               {hintVisible && hint.phase === "shown" && (
                 <div className="live-coach-hintbox">
-                  {hint.tier === "nudge" ? (
-                    <span>{hint.text}</span>
-                  ) : (
-                    <strong>{hint.san}</strong>
+                  <strong>{hint.san}</strong>
+                  <span>
+                    {hint.tier === "best"
+                      ? "Stockfish's top move."
+                      : "a natural idea at this level."}
+                  </span>
+                  {hint.tier === "maia" && (
+                    <button onClick={() => void requestHint("best")}>
+                      Show best move
+                    </button>
                   )}
                 </div>
               )}
