@@ -4,6 +4,8 @@ import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { IconSeer } from "./IconSeer";
 import { PIECE_GLYPHS } from "./chess-pieces";
 import { startGameReplay, stopGameReplay } from "./sentry-replay";
@@ -56,6 +58,40 @@ type MoveExplanation =
       bestLine: string[];
       message?: string;
     };
+
+// Shown one at a time while a real Seer review runs (they take minutes).
+const SEER_QUOTES = [
+  "Reading the game event…",
+  "Replaying the moves…",
+  "Locating the eval swings…",
+  "Interviewing the knight who saw everything…",
+  "Checking if the queen was en prise… she was.",
+  "Blaming time pressure…",
+  "Consulting opening theory (1. e4 is still fine)…",
+  "Measuring centipawn loss with a tiny ruler…",
+  "Asking Stockfish to be gentle…",
+  "Cross-referencing every game Magnus ever played…",
+  "Looking for the brilliant move you missed… still looking…",
+  "Filing a bug report against your bishop…",
+  "Rewinding to the last moment things were fine…",
+  "Counting the pawns twice, just to be sure…",
+  "The rook says it was 'just following orders'…",
+  "Detecting hope chess…",
+  "Grepping the middlegame for blunders…",
+  "Escalating to the back rank…",
+  "Reviewing your king's safety posture…",
+  "Running the resignation post-mortem…",
+  "Comparing you to a 3500-rated engine (be brave)…",
+  "Deciding if that sacrifice was sound or just vibes…",
+  "Tracing the eval bar's cliff dive…",
+  "Assigning blame to individual pieces…",
+  "Reconstructing the crime scene on f7…",
+  "Polling the spectators — they saw it too…",
+  "Verifying the touch-move rule was honored…",
+  "Estimating how long that knight was hanging…",
+  "Applying the 'everyone blunders' consolation protocol…",
+  "Almost done… in engine time, which is different…",
+];
 
 const START_FEN = new Chess().fen();
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
@@ -277,6 +313,57 @@ export function ChessRoom() {
     }
     setSeer({ phase: "error", message: "The game has not reached Sentry yet. Try again in a minute." });
   }, [currentGameId]);
+
+  // Rolling ticker of quips while a review runs: a shuffled deck cycles so
+  // nothing repeats until the whole pool has been shown.
+  const [seerTicker, setSeerTicker] = useState<{ id: number; text: string }[]>([]);
+  useEffect(() => {
+    if (seer.phase !== "requesting" && seer.phase !== "running") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSeerTicker([]);
+      return;
+    }
+    const deck = [...SEER_QUOTES];
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    let count = 0;
+    const push = () => {
+      const entry = { id: count, text: deck[count % deck.length] };
+      count += 1;
+      setSeerTicker((prev) => [...prev, entry].slice(-4));
+    };
+    push();
+    const interval = window.setInterval(push, 4000);
+    return () => window.clearInterval(interval);
+  }, [seer.phase]);
+
+  // The full verdict opens in a slide-out panel; the widget stays as a preview.
+  const [seerExpanded, setSeerExpanded] = useState(false);
+  useEffect(() => {
+    // A finished review is worth the reader's full attention.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (seer.phase === "done") setSeerExpanded(true);
+  }, [seer.phase]);
+  useEffect(() => {
+    if (!seerExpanded) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSeerExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [seerExpanded]);
+
+  // The widget preview is clipped, not scrollable; the fade + "read more"
+  // affordance only appears when the verdict actually overflows the clip.
+  const seerPreviewRef = useRef<HTMLDivElement | null>(null);
+  const [seerOverflows, setSeerOverflows] = useState(false);
+  useEffect(() => {
+    if (seer.phase !== "done") return;
+    const el = seerPreviewRef.current;
+    if (el) setSeerOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [seer]);
 
   const [seerCopied, setSeerCopied] = useState(false);
   const copySeerReview = useCallback(() => {
@@ -811,6 +898,7 @@ export function ChessRoom() {
               <div className="seer-head">
                 <span className="seer-eye"><IconSeer size={16} /></span>
                 <span>Seer Autofix</span>
+                {seer.phase === "done" && seer.shortId ? <span className="seer-chip">{seer.shortId}</span> : null}
                 <span className="seer-head-spacer" />
                 <button
                   className="seer-icon-btn"
@@ -820,6 +908,15 @@ export function ChessRoom() {
                   disabled={seer.phase === "requesting" || seer.phase === "running"}
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" /></svg>
+                </button>
+                <button
+                  className="seer-icon-btn"
+                  aria-label="Expand review"
+                  title="Expand review"
+                  onClick={() => setSeerExpanded(true)}
+                  disabled={seer.phase !== "done"}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M9.5 2h4.5v4.5M14 2 9 7M6.5 14H2V9.5M2 14l5-5" /></svg>
                 </button>
                 <button
                   className="seer-icon-btn"
@@ -846,20 +943,21 @@ export function ChessRoom() {
                   <div className="seer-loading">
                     <div className="seer-scan-row"><span className="seer-eye"><IconSeer size={18} animation="loading" /></span> Seer is reviewing the game…</div>
                     <div className="seer-scan-log">
-                      <div>Reading the game event…</div>
-                      <div>Replaying the moves…</div>
-                      <div>Locating the eval swings…</div>
-                      <div>Formulating the verdict — this can take a few minutes…</div>
+                      {seerTicker.map((line) => <div key={line.id}>{line.text}</div>)}
                     </div>
                   </div>
                 )}
                 {seer.phase === "done" && (
-                  <div className="seer-card">
-                    <div className="seer-card-head">
-                      <span className="seer-eye"><IconSeer size={14} /></span> Root Cause
-                      {seer.shortId ? <span className="seer-chip">{seer.shortId}</span> : null}
+                  <div className="seer-preview">
+                    <div className="seer-clip">
+                      <div className="seer-md seer-md--preview" ref={seerPreviewRef}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{seer.text}</ReactMarkdown>
+                      </div>
+                      {seerOverflows && <div className="seer-fade" aria-hidden />}
                     </div>
-                    <div className="seer-card-body">{seer.text}</div>
+                    {seerOverflows && (
+                      <button className="seer-more" onClick={() => setSeerExpanded(true)}>Read the full review ↗</button>
+                    )}
                   </div>
                 )}
                 {seer.phase === "error" && (
@@ -889,6 +987,40 @@ export function ChessRoom() {
           {notice && <div className="notice" role="status">{notice}</div>}
         </aside>
       </section>
+
+      {seerExpanded && seer.phase === "done" && (
+        <>
+          <button
+            type="button"
+            className="seer-drawer-scrim"
+            aria-label="Close game review"
+            onClick={() => setSeerExpanded(false)}
+          />
+          <aside className="seer-drawer" role="dialog" aria-label="Seer game review">
+            <div className="seer-head">
+              <span className="seer-eye"><IconSeer size={16} /></span>
+              <span>Seer Autofix</span>
+              {seer.shortId ? <span className="seer-chip">{seer.shortId}</span> : null}
+              <span className="seer-head-spacer" />
+              <button className="seer-icon-btn" aria-label="Copy analysis" title="Copy analysis" onClick={copySeerReview}>
+                {seerCopied ? (
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M2.5 8.5l3.5 3.5 7-8" /></svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="5" y="5" width="9" height="9" rx="1.5" /><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" /></svg>
+                )}
+              </button>
+              <button className="seer-icon-btn" aria-label="Minimize review" title="Minimize review" onClick={() => setSeerExpanded(false)}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M2 2l12 12M14 2 2 14" /></svg>
+              </button>
+            </div>
+            <div className="seer-drawer-body">
+              <div className="seer-md">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{seer.text}</ReactMarkdown>
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
 
       <footer>
         <span>PAWN PATROL · EST. 2026</span>
