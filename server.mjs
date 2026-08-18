@@ -475,7 +475,7 @@ function handleTableMessage(table, client, raw) {
       "chess.position.fen_after": acceptedMove.after,
       "chess.move.grade": grade,
       "chess.analysis.engine": "stockfish-18-lite-single",
-      "chess.analysis.search_nodes": 12_000,
+      "chess.analysis.search_depth": 12,
     };
     if (loss !== null) attributes["chess.move.expected_points_loss"] = loss;
     logGameEvent(table, "chess.move.graded", attributes);

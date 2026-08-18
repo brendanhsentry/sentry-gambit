@@ -3,6 +3,8 @@
 import { Chess, type Color, type Move, type PieceSymbol, type Square } from "chess.js";
 import { useEffect, useState } from "react";
 
+import { isOpeningPosition } from "./opening-book";
+
 export type ReviewMove = Pick<Move, "from" | "to" | "san" | "color"> & {
   promotion?: PieceSymbol;
 };
@@ -54,22 +56,7 @@ type AnalysisState = {
 };
 
 const ENGINE_PATH = "/stockfish/stockfish-18-lite-single.js";
-const SEARCH_NODES = 12_000;
-
-const OPENING_LINES = [
-  "e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 b5a4 g8f6 e1g1 f8e7",
-  "e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 c2c3 g8f6 d2d4",
-  "e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 a7a6",
-  "e2e4 c7c5 g1f3 b8c6 d2d4 c5d4 f3d4 g8f6 b1c3",
-  "e2e4 e7e6 d2d4 d7d5 b1c3 g8f6 e4e5 f6d7",
-  "e2e4 c7c6 d2d4 d7d5 b1c3 d5e4 c3e4 c8f5",
-  "d2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 f8e7",
-  "d2d4 d7d5 c2c4 c7c6 g1f3 g8f6 b1c3 d5c4",
-  "d2d4 g8f6 c2c4 g7g6 b1c3 f8g7 e2e4 d7d6",
-  "d2d4 g8f6 c2c4 e7e6 b1c3 f8b4",
-  "c2c4 e7e5 b1c3 g8f6 g2g3 d7d5 c4d5 f6d5",
-  "g1f3 d7d5 g2g3 g8f6 f1g2 g7g6 e1g1 f8g7",
-].map((line) => line.split(" "));
+const SEARCH_DEPTH = 12;
 
 const GRADE_LABELS: Record<MoveGrade, string> = {
   brilliant: "Brilliant",
@@ -90,11 +77,6 @@ export function gradeLabel(grade: MoveGrade) {
 
 function uci(move: ReviewMove) {
   return `${move.from}${move.to}${move.promotion ?? ""}`;
-}
-
-function isBookMove(moves: ReviewMove[], index: number) {
-  const played = moves.slice(0, index + 1).map(uci);
-  return OPENING_LINES.some((line) => played.every((move, ply) => line[ply] === move));
 }
 
 function expectedPointsFromInfo(tokens: string[]) {
@@ -119,6 +101,7 @@ function expectedPointsFromInfo(tokens: string[]) {
 function parseEngineLine(line: string): { multipv: number; line: EngineLine } | null {
   if (!line.startsWith("info ") || !line.includes(" score ") || !line.includes(" pv ")) return null;
   const tokens = line.trim().split(/\s+/);
+  if (tokens.includes("lowerbound") || tokens.includes("upperbound")) return null;
   const pvIndex = tokens.indexOf("pv");
   const expectedPoints = expectedPointsFromInfo(tokens);
   if (pvIndex < 0 || expectedPoints === null) return null;
@@ -189,7 +172,7 @@ class StockfishClient {
         else reject(new Error("The local chess engine returned no evaluation."));
       };
       const restriction = searchMove ? ` searchmoves ${searchMove}` : "";
-      this.worker.postMessage(`go nodes ${SEARCH_NODES}${restriction}`);
+      this.worker.postMessage(`go depth ${SEARCH_DEPTH}${restriction}`);
     });
   }
 
@@ -235,19 +218,21 @@ function applyUci(chess: Chess, move: string) {
 function detectsSacrifice(fen: string, playedMove: string, pv: string[], mover: Color) {
   const line = new Chess(fen);
   const before = materialBalance(line, mover);
-  let worst = before;
   const continuation = pv[0] === playedMove ? pv : [playedMove, ...pv];
 
   try {
-    for (const move of continuation.slice(0, 5)) {
-      applyUci(line, move);
-      worst = Math.min(worst, materialBalance(line, mover));
-    }
+    const played = applyUci(line, continuation[0]);
+    if (!played || continuation.length < 2) return false;
+
+    applyUci(line, continuation[1]);
+    const afterReply = materialBalance(line, mover);
+    if (before - afterReply < 1.75) return false;
+
+    if (continuation.length >= 3) applyUci(line, continuation[2]);
+    return before - materialBalance(line, mover) >= 1.75;
   } catch {
     return false;
   }
-
-  return before - worst >= 1.75;
 }
 
 function classifyMove(
@@ -273,10 +258,11 @@ function classifyMove(
   let grade: MoveGrade;
 
   if (
+    isBest &&
     loss <= 0.02 &&
     sacrifice &&
     review.played.expectedPoints >= 0.45 &&
-    secondEp < 0.9
+    criticalGap >= 0.04
   ) {
     grade = "brilliant";
   } else {
@@ -333,7 +319,9 @@ export function useMoveAnalysis(gameId: string, history: ReviewMove[], enabled: 
         const move = moves[index];
         const beforeFen = board.fen();
 
-        if (isBookMove(moves, index)) {
+        board.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
+
+        if (isOpeningPosition(board.fen())) {
           results[index] = { grade: "book", expectedPointsLoss: null, evidence: null };
         } else {
           const review = await engine.reviewMove(beforeFen, uci(move));
@@ -341,7 +329,6 @@ export function useMoveAnalysis(gameId: string, history: ReviewMove[], enabled: 
           results[index] = classifyMove(review, beforeFen, move, rawReviews[index - 1] ?? null);
         }
 
-        board.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
         if (!cancelled) {
           setAnalysis({ moves: [...results], completed: index + 1, status: "analyzing" });
         }
