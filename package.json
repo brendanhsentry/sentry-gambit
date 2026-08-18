@@ -13,6 +13,7 @@
     "lint": "eslint . --ignore-pattern .next"
   },
   "dependencies": {
+    "@google-cloud/firestore": "^9.0.0",
     "@sentry/node": "^10.70.0",
     "@sentry/react": "^10.70.0",
     "chess.js": "^1.4.0",

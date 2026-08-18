@@ -6,6 +6,7 @@ import next from "next";
 import { WebSocketServer } from "ws";
 import { Chess } from "chess.js";
 import { openGameStore } from "./game-store.mjs";
+import { openFirestoreGameStore } from "./firestore-game-store.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
 if (dev) {
@@ -16,7 +17,10 @@ if (dev) {
   }
 }
 const port = Number(process.env.PORT) || 3000;
-const gameStore = openGameStore();
+const gameStore =
+  (process.env.GAME_STORE ?? (dev ? "sqlite" : "firestore")) === "firestore"
+    ? openFirestoreGameStore()
+    : openGameStore();
 
 Sentry.init({
   dsn: "https://69f4666f8a913ed118913d18660fe20d@o4511927634296832.ingest.us.sentry.io/4511927685939200",
@@ -1069,15 +1073,25 @@ function handleGamesRequest(req, res, url) {
     .replace(/[^a-zA-Z0-9-]/g, "")
     .slice(0, 64);
   if (url.pathname === "/api/games") {
-    sendJson(res, 200, {
-      games: gameStore.listGames(playerKey, url.searchParams.get("limit") ?? 20),
+    void (async () => {
+      sendJson(res, 200, {
+        games: await gameStore.listGames(playerKey, url.searchParams.get("limit") ?? 20),
+      });
+    })().catch((error) => {
+      console.error("Game list request failed:", error);
+      sendJson(res, 500, { error: "Failed to load games" });
     });
     return true;
   }
   const match = url.pathname.match(/^\/api\/games\/([^/]+)$/);
   if (!match) return false;
-  const game = gameStore.getGame(decodeURIComponent(match[1]), playerKey);
-  sendJson(res, game ? 200 : 404, game ?? { error: "Game not found" });
+  void (async () => {
+    const game = await gameStore.getGame(decodeURIComponent(match[1]), playerKey);
+    sendJson(res, game ? 200 : 404, game ?? { error: "Game not found" });
+  })().catch((error) => {
+    console.error("Game detail request failed:", error);
+    sendJson(res, 500, { error: "Failed to load game" });
+  });
   return true;
 }
 
