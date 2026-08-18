@@ -310,9 +310,30 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   transform-origin: 8px 8px;
   transform-box: view-box;
 }
+/* Expanded review: slide-out panel on the right (Sentry's drawer, club colors) */
+.seer-drawer-scrim { position: fixed; inset: 0; background: rgba(23, 34, 30, 0.28); z-index: 60; }
+.seer-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 61;
+  width: min(540px, 94vw);
+  background: var(--paper);
+  border-left: 1px solid var(--line);
+  box-shadow: -16px 0 48px rgba(9, 38, 32, 0.28);
+  display: flex; flex-direction: column;
+  font-family: var(--font-rubik), "Avenir Next", sans-serif;
+  color: var(--ink);
+  animation: seer-drawer-in 0.3s ease;
+}
+@keyframes seer-drawer-in { from { transform: translateX(36px); opacity: 0; } }
+.seer-drawer .seer-head { flex: none; }
+.seer-drawer-body { padding: 18px 18px 24px; overflow-y: auto; }
+.seer-drawer-body .seer-md { max-height: none; overflow-y: visible; font-size: 13px; }
+.seer-drawer-body .seer-md h1, .seer-drawer-body .seer-md h2 { font-size: 15px; }
+.seer-drawer-body .seer-md h3, .seer-drawer-body .seer-md h4 { font-size: 14px; }
+
 @media (prefers-reduced-motion: reduce) {
   .seer-pupil-loading { animation: none; }
   .seer-scan-log div { animation: none; opacity: 1; transform: none; }
+  .seer-drawer { animation: none; }
 }
 
 /* Saved-game replay controls extend the original theme. */

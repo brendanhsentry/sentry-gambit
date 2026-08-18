@@ -325,6 +325,22 @@ export function ChessRoom() {
     return () => window.clearInterval(interval);
   }, [seer.phase]);
 
+  // The full verdict opens in a slide-out panel; the widget stays as a preview.
+  const [seerExpanded, setSeerExpanded] = useState(false);
+  useEffect(() => {
+    // A finished review is worth the reader's full attention.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (seer.phase === "done") setSeerExpanded(true);
+  }, [seer.phase]);
+  useEffect(() => {
+    if (!seerExpanded) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSeerExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [seerExpanded]);
+
   const [seerCopied, setSeerCopied] = useState(false);
   const copySeerReview = useCallback(() => {
     if (seer.phase !== "done") return;
@@ -754,6 +770,15 @@ export function ChessRoom() {
                 </button>
                 <button
                   className="seer-icon-btn"
+                  aria-label="Expand review"
+                  title="Expand review"
+                  onClick={() => setSeerExpanded(true)}
+                  disabled={seer.phase !== "done"}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M9.5 2h4.5v4.5M14 2 9 7M6.5 14H2V9.5M2 14l5-5" /></svg>
+                </button>
+                <button
+                  className="seer-icon-btn"
                   aria-label="Copy analysis"
                   title="Copy analysis"
                   onClick={copySeerReview}
@@ -813,6 +838,35 @@ export function ChessRoom() {
           {notice && <div className="notice" role="status">{notice}</div>}
         </aside>
       </section>
+
+      {seerExpanded && seer.phase === "done" && (
+        <>
+          <div className="seer-drawer-scrim" onClick={() => setSeerExpanded(false)} />
+          <aside className="seer-drawer" role="dialog" aria-label="Seer game review">
+            <div className="seer-head">
+              <span className="seer-eye"><IconSeer size={16} /></span>
+              <span>Seer Autofix</span>
+              {seer.shortId ? <span className="seer-chip">{seer.shortId}</span> : null}
+              <span className="seer-head-spacer" />
+              <button className="seer-icon-btn" aria-label="Copy analysis" title="Copy analysis" onClick={copySeerReview}>
+                {seerCopied ? (
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M2.5 8.5l3.5 3.5 7-8" /></svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="5" y="5" width="9" height="9" rx="1.5" /><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" /></svg>
+                )}
+              </button>
+              <button className="seer-icon-btn" aria-label="Minimize review" title="Minimize review" onClick={() => setSeerExpanded(false)}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M2 2l12 12M14 2 2 14" /></svg>
+              </button>
+            </div>
+            <div className="seer-drawer-body">
+              <div className="seer-md">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{seer.text}</ReactMarkdown>
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
 
       <footer>
         <span>PAWN PATROL · EST. 2026</span>
