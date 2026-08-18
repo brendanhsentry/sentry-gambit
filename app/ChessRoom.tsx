@@ -353,7 +353,13 @@ export function ChessRoom() {
   type SeerReview =
     | { phase: "idle" }
     | { phase: "requesting" }
-    | { phase: "running"; issueId: string; shortId: string }
+    | {
+        phase: "running";
+        issueId: string;
+        shortId: string;
+        activity: string[];
+        draft: string | null;
+      }
     | { phase: "done"; text: string; shortId: string }
     | { phase: "error"; message: string };
   const [seer, setSeer] = useState<SeerReview>({ phase: "idle" });
@@ -384,6 +390,8 @@ export function ChessRoom() {
             phase: "running",
             issueId: String(data.issueId),
             shortId: String(data.shortId ?? ""),
+            activity: [],
+            draft: null,
           });
           return;
         }
@@ -488,11 +496,21 @@ export function ChessRoom() {
             phase: "error",
             message: "Seer hit an error while reviewing. Try again.",
           });
+        } else {
+          const activity = Array.isArray(data.activity) ? data.activity : [];
+          const draft = typeof data.draft === "string" ? data.draft : null;
+          setSeer((current) =>
+            current.phase === "running" &&
+            (current.draft !== draft ||
+              JSON.stringify(current.activity) !== JSON.stringify(activity))
+              ? { ...current, activity, draft }
+              : current,
+          );
         }
       } catch {
         // Keep polling.
       }
-    }, 10000);
+    }, 3000);
     return () => window.clearInterval(id);
   }, [seer]);
 
@@ -1854,13 +1872,45 @@ export function ChessRoom() {
                       <span className="seer-eye">
                         <IconSeer size={18} animation="loading" />
                       </span>{" "}
-                      Seer is reviewing the game…
+                      {seer.phase === "running" && seer.draft
+                        ? "Seer is writing the review…"
+                        : "Seer is reviewing the game…"}
                     </div>
-                    <div className="seer-scan-log">
-                      {seerTicker.map((line) => (
-                        <div key={line.id}>{line.text}</div>
-                      ))}
-                    </div>
+                    {seer.phase === "running" && seer.activity.length ? (
+                      <div className="seer-scan-log">
+                        {seer.activity.map((line, index) => (
+                          <div
+                            key={`${index}-${line}`}
+                            className={
+                              index === seer.activity.length - 1
+                                ? "seer-step--current"
+                                : undefined
+                            }
+                          >
+                            {line}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="seer-scan-log">
+                        {seerTicker.map((line) => (
+                          <div key={line.id}>{line.text}</div>
+                        ))}
+                      </div>
+                    )}
+                    {seer.phase === "running" && seer.draft && (
+                      <div className="seer-draft">
+                        <span className="seer-draft-label">LIVE DRAFT</span>
+                        <div className="seer-clip">
+                          <div className="seer-md seer-md--preview">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {seer.draft}
+                            </ReactMarkdown>
+                          </div>
+                          <div className="seer-fade" aria-hidden />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {seer.phase === "done" && (

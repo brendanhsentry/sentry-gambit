@@ -1393,6 +1393,35 @@ async function sentryApi(path, options = {}) {
   return response.json();
 }
 
+const SEER_STEP_LABELS = {
+  get_issue_details: "Opening the game report",
+  get_event_details: "Reading the game event",
+  telemetry_live_search: "Searching the match telemetry",
+  get_log_attributes: "Pulling the move-by-move logs",
+  get_trace_waterfall: "Tracing the game timeline",
+};
+
+// Turns the in-progress Seer run into a short human-readable activity feed
+// plus any long interim text, which is Seer drafting the review itself.
+function extractActivity(autofix) {
+  const blocks = Array.isArray(autofix?.blocks) ? autofix.blocks : [];
+  const activity = [];
+  let draft = null;
+  for (const block of blocks) {
+    const message = block?.message;
+    if (!message || message.role === "user" || block.loading) continue;
+    const content =
+      typeof message.content === "string" ? message.content.trim() : "";
+    if (content.length > 200) draft = content;
+    else if (content) activity.push(content);
+    for (const link of block.tool_links ?? []) {
+      const label = SEER_STEP_LABELS[link?.kind] ?? "Digging deeper";
+      if (label !== activity[activity.length - 1]) activity.push(label);
+    }
+  }
+  return { activity: activity.slice(-5), draft };
+}
+
 function extractReview(autofix) {
   const blocks = Array.isArray(autofix?.blocks) ? autofix.blocks : [];
   const answers = blocks
@@ -1465,7 +1494,13 @@ async function handleReviewRequest(req, res, url) {
         `/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/`,
       );
       const status = data?.autofix?.status ?? "none";
-      sendJson(res, 200, { status, text: extractReview(data?.autofix) });
+      const { activity, draft } = extractActivity(data?.autofix);
+      sendJson(res, 200, {
+        status,
+        text: extractReview(data?.autofix),
+        activity,
+        draft,
+      });
       return;
     }
     sendJson(res, 404, { error: "Not found" });

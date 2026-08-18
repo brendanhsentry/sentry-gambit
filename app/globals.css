@@ -335,6 +335,11 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   animation: seer-line-in 0.45s ease forwards;
 }
 @keyframes seer-line-in { to { opacity: 1; transform: none; } }
+.seer-step--current::after { content: "…"; }
+.seer-scan-log .seer-step--current { color: var(--green); font-weight: 650; }
+.seer-draft { display: grid; gap: 6px; }
+.seer-draft-label { font: 650 8px/1 var(--font-geist-mono), monospace; letter-spacing: .14em; color: #8f6a2d; }
+.seer-draft .seer-md--preview { max-height: 120px; }
 .seer-chip {
   font-size: 10px; font-weight: 500;
   padding: 2px 7px; border-radius: 20px;
