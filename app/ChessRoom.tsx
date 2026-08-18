@@ -47,6 +47,7 @@ type GameState = {
   result: string | null;
   clock: ClockState;
   bot: { key: BotKey; name: string; elo: number; color: Color } | null;
+  undoRequest?: { by: Color } | null;
 };
 
 type PastGameSummary = {
@@ -1696,6 +1697,33 @@ export function ChessRoom() {
               </div>
             )}
 
+          {state &&
+            !pastGame &&
+            !state.result &&
+            state.undoRequest &&
+            state.undoRequest.by !== role &&
+            role !== "spectator" && (
+              <div className="takeback-bar" role="alert">
+                <span>
+                  {state.players[state.undoRequest.by] || "Your opponent"} asks
+                  to take back a move
+                </span>
+                <div>
+                  <button
+                    onClick={() => send({ type: "undo_response", accept: true })}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() =>
+                      send({ type: "undo_response", accept: false })
+                    }
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
           {state && !pastGame && (
             <div className="match-actions">
               <button onClick={() => send({ type: "reset" })}>↻ Rematch</button>
@@ -1705,13 +1733,14 @@ export function ChessRoom() {
                   role === "spectator" ||
                   Boolean(state.result) ||
                   replayPly !== null ||
+                  Boolean(state.undoRequest) ||
                   state.history.length <
                     ((state.history.length % 2 === 0 ? "w" : "b") === role
                       ? 2
                       : 1)
                 }
               >
-                ↶ Undo
+                {state.undoRequest?.by === role ? "Asked…" : "↶ Undo"}
               </button>
               <button
                 onClick={() => send({ type: "resign" })}

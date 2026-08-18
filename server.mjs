@@ -236,6 +236,7 @@ function serializeTable(table) {
     result: table.result,
     clock: table.clock,
     bot: table.bot ?? null,
+    undoRequest: table.undoRequest ?? null,
   };
 }
 
@@ -309,6 +310,43 @@ function setBoardResult(table) {
   if (table.result) pauseClock(table);
 }
 
+function applyUndo(table, color) {
+  table.undoRequest = null;
+  const plies = table.chess.turn() === color ? 2 : 1;
+  if (table.chess.history().length < plies) {
+    broadcast(table);
+    return;
+  }
+  if (flagIfExpired(table)) {
+    captureFinishedGame(table);
+    broadcast(table);
+    return;
+  }
+  const now = Date.now();
+  pauseClock(table, now);
+  for (let i = 0; i < plies; i++) table.chess.undo();
+  const newLength = table.chess.history().length;
+  for (const ply of [...table.gradedPlies]) {
+    if (ply > newLength) table.gradedPlies.delete(ply);
+  }
+  gameStore.undoMoves(
+    table.gameId,
+    newLength + 1,
+    table.chess.fen(),
+    table.clock,
+  );
+  logGameEvent(table, "chess.move.undone", {
+    "chess.room.id": table.id,
+    "chess.game.id": table.gameId,
+    "chess.undo.by": color === "w" ? "white" : "black",
+    "chess.undo.plies": plies,
+    "chess.move.ply": newLength,
+    "chess.position.fen_after": table.chess.fen(),
+  });
+  resumeClock(table, now);
+  broadcast(table);
+}
+
 function handleTableMessage(table, client, raw) {
   let message;
   try {
@@ -349,6 +387,7 @@ function handleTableMessage(table, client, raw) {
       send(client, { type: "error", message: "That move is not legal." });
       return;
     }
+    table.undoRequest = null;
     setBoardResult(table);
     if (!table.result) resumeClock(table, now);
     const ply = table.chess.history().length;
@@ -429,45 +468,39 @@ function handleTableMessage(table, client, raw) {
   if (message.type === "resign") {
     if (table.result || (client.role !== "w" && client.role !== "b")) return;
     table.result = `${client.role === "w" ? "Black" : "White"} wins by resignation`;
+    table.undoRequest = null;
     pauseClock(table);
     captureFinishedGame(table);
     broadcast(table);
     return;
   }
 
-  // A player takes back their own last move; the opponent's reply goes too.
+  // A takeback removes the requester's last move and any reply on top of it.
+  // A seated human opponent must consent; a bot or empty seat accepts as-is.
   if (message.type === "undo") {
     if (table.result || (client.role !== "w" && client.role !== "b")) return;
     const plies = table.chess.turn() === client.role ? 2 : 1;
     if (table.chess.history().length < plies) return;
-    if (flagIfExpired(table)) {
-      captureFinishedGame(table);
+    const opponent = client.role === "w" ? "b" : "w";
+    const opponentIsHuman =
+      table.seats[opponent] && table.bot?.color !== opponent;
+    if (opponentIsHuman) {
+      if (table.undoRequest) return;
+      table.undoRequest = { by: client.role };
       broadcast(table);
       return;
     }
-    const now = Date.now();
-    pauseClock(table, now);
-    for (let i = 0; i < plies; i++) table.chess.undo();
-    const newLength = table.chess.history().length;
-    for (const ply of [...table.gradedPlies]) {
-      if (ply > newLength) table.gradedPlies.delete(ply);
-    }
-    gameStore.undoMoves(
-      table.gameId,
-      newLength + 1,
-      table.chess.fen(),
-      table.clock,
-    );
-    logGameEvent(table, "chess.move.undone", {
-      "chess.room.id": table.id,
-      "chess.game.id": table.gameId,
-      "chess.undo.by": client.role === "w" ? "white" : "black",
-      "chess.undo.plies": plies,
-      "chess.move.ply": newLength,
-      "chess.position.fen_after": table.chess.fen(),
-    });
-    resumeClock(table, now);
-    broadcast(table);
+    applyUndo(table, client.role);
+    return;
+  }
+
+  if (message.type === "undo_response") {
+    const request = table.undoRequest;
+    if (!request || table.result) return;
+    if (client.role !== (request.by === "w" ? "b" : "w")) return;
+    table.undoRequest = null;
+    if (message.accept) applyUndo(table, request.by);
+    else broadcast(table);
     return;
   }
 
@@ -490,6 +523,7 @@ function handleTableMessage(table, client, raw) {
     table.finishedIssueSent = false;
     table.chess.reset();
     table.result = null;
+    table.undoRequest = null;
     table.clock = {
       w: STARTING_TIME,
       b: STARTING_TIME,
@@ -584,6 +618,7 @@ async function joinTable(request, socket) {
     if (client.role === "w" || client.role === "b") {
       if (table.seats[client.role]?.id === client.id)
         table.seats[client.role] = null;
+      if (table.undoRequest?.by === client.role) table.undoRequest = null;
     }
     table.touchedAt = Date.now();
     broadcast(table);
