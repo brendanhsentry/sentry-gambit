@@ -15,7 +15,7 @@ test("ships the Pawn Patrol product instead of the starter preview", async () =>
   ]);
 
   assert.match(page, /Pawn Patrol/);
-  assert.match(layout, /og\.png/);
+  assert.match(layout, /og\.jpg/);
   assert.match(client, /new WebSocket/);
   assert.match(client, /chess\.moves/);
   assert.match(client, /href="\/games"/);
