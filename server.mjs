@@ -560,6 +560,18 @@ function handleTableMessage(table, client, raw) {
     return;
   }
 
+  if (message.type === "coach") {
+    if (!table.bot || (client.role !== "w" && client.role !== "b")) return;
+    table.coach = message.enabled === true;
+    gameStore.setBot(table.gameId, {
+      key: table.bot.key,
+      color: table.bot.color,
+      coach: table.coach,
+    });
+    broadcast(table);
+    return;
+  }
+
   if (message.type === "resign") {
     if (table.result || (client.role !== "w" && client.role !== "b")) return;
     table.result = `${client.role === "w" ? "Black" : "White"} wins by resignation`;
@@ -1431,6 +1443,110 @@ async function runMoveCoach(facts, requestId) {
   });
 }
 
+const HINT_SYSTEM_INSTRUCTIONS = [
+  "You are a chess coach nudging a player who has not moved yet.",
+  "Using only the supplied engine line, write ONE short sentence pointing the player toward the right idea without revealing it.",
+  "Never name the recommended move or its destination square, and never use chess notation.",
+  "You may name a piece under threat or out of play, a file, diagonal or side of the board, or the kind of idea (a capture, a check, a pawn break, a defensive move).",
+  "Plain English, at most twenty words.",
+].join(" ");
+
+const hintCache = new Map();
+
+async function handleMoveHintRequest(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+  if (!consumeExplanationRateLimit(req)) {
+    sendJson(res, 429, { error: "Too many hint requests. Try again shortly." });
+    return;
+  }
+
+  let fen;
+  let bestLine;
+  try {
+    const body = await readJsonBody(req);
+    fen = typeof body?.fen === "string" ? body.fen.trim() : "";
+    if (!fen || fen.length > 120)
+      throw new RequestError(400, "A position is required.");
+    bestLine = parseEngineLine(body?.bestLine);
+    replayEngineLine(fen, bestLine);
+  } catch (error) {
+    sendJson(res, error instanceof RequestError ? error.status : 400, {
+      error: error instanceof Error ? error.message : "Invalid request.",
+    });
+    return;
+  }
+  if (!OPENROUTER_API_KEY) {
+    sendJson(res, 503, { error: "Hints are not configured." });
+    return;
+  }
+
+  const facts = {
+    fenBefore: fen,
+    sideToMove: fen.split(" ")[1] === "b" ? "Black" : "White",
+    bestLine: describeEngineLine(fen, bestLine),
+  };
+  const cacheKey = createHash("sha256")
+    .update(JSON.stringify(facts))
+    .digest("hex");
+  const cached = hintCache.get(cacheKey);
+  if (cached) {
+    sendJson(res, 200, { hint: cached, cached: true });
+    return;
+  }
+
+  try {
+    const response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      signal: AbortSignal.timeout(OPENROUTER_TIMEOUT_MS),
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        ...(OPENROUTER_FALLBACK_MODELS.length
+          ? { models: OPENROUTER_FALLBACK_MODELS }
+          : {}),
+        messages: [
+          { role: "system", content: HINT_SYSTEM_INSTRUCTIONS },
+          { role: "user", content: JSON.stringify(facts) },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "move_hint",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: { hint: { type: "string" } },
+              required: ["hint"],
+              additionalProperties: false,
+            },
+          },
+        },
+        plugins: [{ id: "response-healing" }],
+        reasoning: { enabled: false },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    const content = data?.choices?.[0]?.message?.content;
+    const hint =
+      typeof content === "string"
+        ? String(JSON.parse(content)?.hint ?? "").trim()
+        : "";
+    if (!response.ok || !hint) throw new Error("No hint returned");
+    if (hintCache.size >= 500) hintCache.clear();
+    hintCache.set(cacheKey, hint);
+    sendJson(res, 200, { hint, cached: false });
+  } catch (error) {
+    console.error("Move hint failed:", String(error?.message || error));
+    sendJson(res, 502, { error: "The hint is unavailable right now." });
+  }
+}
+
 async function handleMoveExplanationRequest(req, res) {
   if (req.method !== "POST") {
     sendJson(res, 405, { error: "Method not allowed." });
@@ -1854,6 +1970,10 @@ const server = createServer((req, res) => {
   }
   if (url.pathname === "/api/move-explanation") {
     void handleMoveExplanationRequest(req, res);
+    return;
+  }
+  if (url.pathname === "/api/move-hint") {
+    void handleMoveHintRequest(req, res);
     return;
   }
   if (url.pathname.startsWith("/api/review")) {

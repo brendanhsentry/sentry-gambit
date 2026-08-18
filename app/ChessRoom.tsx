@@ -157,11 +157,14 @@ type CoachItem = {
   thinking: boolean;
 };
 
+const SUGGESTION_ELO = 2500;
+
 type CoachHint =
-  | { phase: "loading"; tier: "maia" | "best" }
+  | { phase: "loading"; tier: "nudge" | "move" }
+  | { phase: "shown"; tier: "nudge"; text: string; fen: string }
   | {
       phase: "shown";
-      tier: "maia" | "best";
+      tier: "move";
       from: Square;
       to: Square;
       san: string;
@@ -353,6 +356,7 @@ export function ChessRoom() {
   const coachSeenRef = useRef(new Set<string>());
   const coachBaselineRef = useRef<{ gameId: string; ply: number } | null>(null);
   const coachIdRef = useRef(1);
+  const suggestionRef = useRef<{ fen: string; san: string } | null>(null);
 
   const send = useCallback((payload: object) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -613,6 +617,14 @@ export function ChessRoom() {
       const seenKey = `${state.gameId}:${ply}:${move.san}`;
       if (coachSeenRef.current.has(seenKey)) return;
       coachSeenRef.current.add(seenKey);
+      // Never grade the coach's own suggestion against the player.
+      const suggested = suggestionRef.current;
+      if (
+        suggested &&
+        reviewed.evidence?.fenBefore === suggested.fen &&
+        move.san === suggested.san
+      )
+        return;
       const bestSan = reviewed.evidence
         ? sanFromUci(reviewed.evidence.fenBefore, reviewed.evidence.bestLine[0])
         : null;
@@ -681,24 +693,37 @@ export function ChessRoom() {
     });
   }, [analysis.moves, state, role]);
 
-  async function requestHint(tier: "maia" | "best") {
+  // First press nudges without revealing a move; the second suggests one.
+  async function requestHint(tier: "nudge" | "move") {
     const started = latestStateRef.current;
     if (!started?.bot || started.result) return;
     const fen = started.fen;
     setHint({ phase: "loading", tier });
     try {
-      let uci: string;
-      if (tier === "best") {
-        uci = (await engineBestMove(fen)).move;
-      } else {
-        const picked = await pickMove(fen, started.bot.elo);
-        uci = `${picked.from}${picked.to}${picked.promotion ?? ""}`;
+      if (tier === "nudge") {
+        const best = await engineBestMove(fen);
+        const response = await fetch("/api/move-hint", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fen, bestLine: best.pv.slice(0, 6) }),
+        });
+        const data = (await response.json()) as { hint?: string };
+        if (!response.ok || !data.hint) throw new Error("unavailable");
+        if (latestStateRef.current?.fen !== fen) {
+          setHint(null);
+          return;
+        }
+        setHint({ phase: "shown", tier, text: data.hint, fen });
+        return;
       }
+      const picked = await pickMove(fen, SUGGESTION_ELO);
+      const uci = `${picked.from}${picked.to}${picked.promotion ?? ""}`;
       const san = sanFromUci(fen, uci);
       if (!san || latestStateRef.current?.fen !== fen) {
         setHint(null);
         return;
       }
+      suggestionRef.current = { fen, san };
       setHint({
         phase: "shown",
         tier,
@@ -1020,14 +1045,11 @@ export function ChessRoom() {
     hint?.phase === "shown" && hint.fen === state?.fen;
   const hintShapes = useMemo(
     () =>
-      hint?.phase === "shown" && hint.fen === state?.fen && replayPly === null
-        ? [
-            {
-              orig: hint.from as Key,
-              dest: hint.to as Key,
-              brush: hint.tier === "best" ? "green" : "blue",
-            },
-          ]
+      hint?.phase === "shown" &&
+      hint.tier === "move" &&
+      hint.fen === state?.fen &&
+      replayPly === null
+        ? [{ orig: hint.from as Key, dest: hint.to as Key, brush: "green" }]
         : [],
     [hint, replayPly, state?.fen],
   );
@@ -1615,78 +1637,82 @@ export function ChessRoom() {
                 <span className="live-coach-dot" aria-hidden />
                 <span className="live-coach-title">COACH · LIVE</span>
                 <button
-                  className="live-coach-hint"
-                  onClick={() => void requestHint("maia")}
-                  disabled={!canInteract || hint?.phase === "loading"}
-                  title={
-                    canInteract
-                      ? "Show a move a player at this level would consider"
-                      : "Hints are available on your turn"
-                  }
+                  className="live-coach-off"
+                  onClick={() => send({ type: "coach", enabled: false })}
+                  title="Turn off the coach"
                 >
-                  {hint?.phase === "loading" ? "Thinking…" : "◈ Hint"}
+                  OFF
+                </button>
+                <button
+                  className="live-coach-hint"
+                  onClick={() =>
+                    void requestHint(
+                      hintVisible && hint?.phase === "shown" && hint.tier === "nudge"
+                        ? "move"
+                        : "nudge",
+                    )
+                  }
+                  disabled={!canInteract || hint?.phase === "loading"}
+                  title={canInteract ? undefined : "Hints are available on your turn"}
+                >
+                  {hint?.phase === "loading"
+                    ? "Thinking…"
+                    : hintVisible && hint?.phase === "shown" && hint.tier === "nudge"
+                      ? "◈ Suggest a move"
+                      : "◈ Hint"}
                 </button>
               </div>
               {hintVisible && hint.phase === "shown" && (
                 <div className="live-coach-hintbox">
-                  <strong>{hint.san}</strong>
-                  <span>
-                    {hint.tier === "best"
-                      ? "Stockfish's top move."
-                      : "a natural idea at this level."}
-                  </span>
-                  {hint.tier === "maia" && (
-                    <button onClick={() => void requestHint("best")}>
-                      Show best move
-                    </button>
+                  {hint.tier === "nudge" ? (
+                    <span>{hint.text}</span>
+                  ) : (
+                    <strong>{hint.san}</strong>
                   )}
                 </div>
               )}
               {coachFeed.length > 0 && (
                 <div className="live-coach-feed">
-                  {coachFeed.map((item) => {
-                    const takebackable =
-                      item.kind === "mistake" &&
-                      !state.result &&
-                      state.history.length >= item.ply &&
-                      state.history.length - item.ply <= 1 &&
-                      state.history[item.ply - 1]?.san === item.san;
-                    return (
-                      <div
-                        key={item.id}
-                        className={`coach-bubble coach-bubble--${item.kind}`}
-                      >
-                        <div className="coach-bubble-top">
-                          <strong>
-                            {Math.floor((item.ply - 1) / 2) + 1}
-                            {(item.ply - 1) % 2 ? "…" : "."} {item.san}
-                          </strong>
-                          <span className={`move-grade move-grade--${item.grade}`}>
-                            {gradeLabel(item.grade)}
+                  {coachFeed.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`coach-bubble coach-bubble--${item.kind}`}
+                    >
+                      <div className="coach-bubble-top">
+                        <strong>
+                          {Math.floor((item.ply - 1) / 2) + 1}
+                          {(item.ply - 1) % 2 ? "…" : "."} {item.san}
+                        </strong>
+                        <span className={`move-grade move-grade--${item.grade}`}>
+                          {gradeLabel(item.grade)}
+                        </span>
+                        {item.motif && (
+                          <span className="coach-motif">
+                            {item.motif.replace(/_/g, " ")}
                           </span>
-                          {item.motif && (
-                            <span className="coach-motif">{item.motif}</span>
-                          )}
-                        </div>
-                        <p className={item.thinking ? "coach-thinking" : ""}>
-                          {item.text}
-                          {item.thinking && " Let me take a closer look…"}
-                        </p>
-                        {takebackable && (
-                          <button
-                            className="coach-takeback"
-                            onClick={() => send({ type: "undo" })}
-                          >
-                            ↩ Take it back and retry
-                          </button>
                         )}
                       </div>
-                    );
-                  })}
+                      <p className={item.thinking ? "coach-thinking" : ""}>
+                        {item.text}
+                        {item.thinking && " Let me take a closer look…"}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               )}
             </section>
           )}
+          {state?.bot &&
+            !state.coach &&
+            !state.result &&
+            role !== "spectator" && (
+              <button
+                className="live-coach-restore"
+                onClick={() => send({ type: "coach", enabled: true })}
+              >
+                ◈ Turn on coach
+              </button>
+            )}
 
           <div className="moves-panel">
             <div className="moves-header">

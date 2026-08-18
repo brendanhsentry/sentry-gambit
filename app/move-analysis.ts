@@ -197,18 +197,25 @@ class StockfishClient {
 }
 
 let hintEngine: StockfishClient | null = null;
+let hintQueue: Promise<unknown> = Promise.resolve();
 
-// One shared engine for live hints, rebooted if a search dies.
-export async function engineBestMove(fen: string): Promise<EngineLine> {
-  hintEngine ??= new StockfishClient();
-  try {
-    const [best] = await hintEngine.search(fen, 1);
-    return best;
-  } catch (error) {
-    hintEngine.terminate();
-    hintEngine = null;
-    throw error;
-  }
+// One shared engine for live hints, rebooted if a search dies. Calls are
+// serialized: overlapping searches would cross-wire the worker's listener
+// and answer one position with another position's best move.
+export function engineBestMove(fen: string): Promise<EngineLine> {
+  const run = hintQueue.then(async () => {
+    hintEngine ??= new StockfishClient();
+    try {
+      const [best] = await hintEngine.search(fen, 1);
+      return best;
+    } catch (error) {
+      hintEngine.terminate();
+      hintEngine = null;
+      throw error;
+    }
+  });
+  hintQueue = run.catch(() => {});
+  return run;
 }
 
 const PIECE_VALUE: Record<PieceSymbol, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };

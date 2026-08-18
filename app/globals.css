@@ -194,8 +194,11 @@ button { color: inherit; }
 .coach-bubble-top strong { font: 700 11px/1 var(--font-geist-mono), monospace; color: var(--green); }
 .coach-motif { padding: 3px 5px; border-radius: 2px; background: rgba(23, 63, 53, 0.08); color: var(--green); font: 650 7.5px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; }
 .coach-thinking { font-style: italic; color: #71807a; }
-.coach-takeback { margin-top: 8px; padding: 6px 11px; border: 1px solid var(--green); border-radius: 2px; background: var(--green); color: var(--ivory); font: 700 10px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; cursor: pointer; }
-.coach-takeback:hover { background: var(--green-deep); }
+.live-coach-off { margin-left: auto; padding: 6px 8px; border: none; background: none; color: #8a958f; font: 650 9px/1 var(--font-geist-mono), monospace; letter-spacing: .08em; cursor: pointer; }
+.live-coach-off:hover { color: #b8433c; }
+.live-coach-off + .live-coach-hint { margin-left: 0; }
+.live-coach-restore { align-self: flex-start; margin-bottom: 16px; padding: 7px 12px; border: 1px solid var(--line); background: var(--paper); color: #7d8983; font: 650 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; cursor: pointer; }
+.live-coach-restore:hover { border-color: var(--amber); color: var(--green); }
 .bot-card { display: flex; flex-direction: column; gap: 4px; padding: 10px 9px 11px; border: 1px solid var(--line); background: #fffdf8; cursor: pointer; text-align: left; border-top: 3px solid var(--line); }
 .bot-card:hover { background: #f2ecdd; }
 .bot-card:disabled { opacity: .55; cursor: default; }
