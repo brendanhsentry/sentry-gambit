@@ -30,7 +30,13 @@ import {
 } from "./board-sounds";
 import { PIECE_GLYPHS } from "./chess-pieces";
 import { startGameReplay, stopGameReplay } from "./sentry-replay";
-import { gradeLabel, useMoveAnalysis, type ReviewMove } from "./move-analysis";
+import {
+  engineBestMove,
+  gradeLabel,
+  useMoveAnalysis,
+  type MoveGrade,
+  type ReviewMove,
+} from "./move-analysis";
 import { BOTS, useMaiaEngine, type BotKey } from "./maia-bot";
 
 type Role = "w" | "b" | "spectator";
@@ -52,6 +58,7 @@ type GameState = {
   initialTimeMs: number;
   clock: ClockState;
   bot: { key: BotKey; name: string; elo: number; color: Color } | null;
+  coach?: boolean;
   undoRequest?: { by: Color } | null;
   drawOffer?: { by: Color } | null;
 };
@@ -133,6 +140,43 @@ const EXPLAINABLE_GRADES = new Set([
   "miss",
   "blunder",
 ]);
+const COACH_ALERT_GRADES = new Set(["mistake", "miss", "blunder"]);
+const COACH_PRAISE_GRADES = new Set(["brilliant", "great"]);
+
+type CoachItem = {
+  id: number;
+  ply: number;
+  kind: "mistake" | "praise";
+  grade: MoveGrade;
+  san: string;
+  bestSan: string | null;
+  text: string;
+  motif: string | null;
+  thinking: boolean;
+};
+
+type CoachHint =
+  | { phase: "loading"; tier: "maia" | "best" }
+  | {
+      phase: "shown";
+      tier: "maia" | "best";
+      from: Square;
+      to: Square;
+      san: string;
+      fen: string;
+    };
+
+function sanFromUci(fen: string, uci: string) {
+  try {
+    return new Chess(fen).move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      promotion: (uci[4] as PieceSymbol | undefined) ?? undefined,
+    }).san;
+  } catch {
+    return null;
+  }
+}
 function makeRoomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from(
@@ -299,6 +343,12 @@ export function ChessRoom() {
   const [pendingBot, setPendingBot] = useState<BotKey | null>(null);
   const botMoveKeyRef = useRef("");
   const latestStateRef = useRef<GameState | null>(null);
+  const [coachEnabled, setCoachEnabled] = useState(true);
+  const [coachFeed, setCoachFeed] = useState<CoachItem[]>([]);
+  const [hint, setHint] = useState<CoachHint | null>(null);
+  const coachSeenRef = useRef(new Set<string>());
+  const coachBaselineRef = useRef<{ gameId: string; ply: number } | null>(null);
+  const coachIdRef = useRef(1);
 
   const send = useCallback((payload: object) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -538,13 +588,134 @@ export function ChessRoom() {
       });
   }, [state, role, connection, pickMove, send]);
 
+  // Coach Ming watches the live grades and speaks up on notable moves.
+  useEffect(() => {
+    if (!state?.coach || !state.bot || role === "spectator") return;
+    if (coachBaselineRef.current?.gameId !== state.gameId) {
+      // Joining mid-game (e.g. after a refresh) must not replay the backlog.
+      coachBaselineRef.current = { gameId: state.gameId, ply: state.history.length };
+      coachSeenRef.current.clear();
+      setCoachFeed([]);
+      return;
+    }
+    if (state.result) return;
+    const baseline = coachBaselineRef.current.ply;
+    analysis.moves.forEach((reviewed, index) => {
+      const ply = index + 1;
+      const move = state.history[index];
+      if (!reviewed || !move || ply <= baseline || move.color !== role) return;
+      const isAlert = COACH_ALERT_GRADES.has(reviewed.grade);
+      if (!isAlert && !COACH_PRAISE_GRADES.has(reviewed.grade)) return;
+      const seenKey = `${state.gameId}:${ply}:${move.san}`;
+      if (coachSeenRef.current.has(seenKey)) return;
+      coachSeenRef.current.add(seenKey);
+      const bestSan = reviewed.evidence
+        ? sanFromUci(reviewed.evidence.fenBefore, reviewed.evidence.bestLine[0])
+        : null;
+      const id = coachIdRef.current++;
+      const item: CoachItem = isAlert
+        ? {
+            id,
+            ply,
+            kind: "mistake",
+            grade: reviewed.grade,
+            san: move.san,
+            bestSan,
+            text: bestSan
+              ? `Stockfish prefers ${bestSan} here.`
+              : "There was a stronger idea in this position.",
+            motif: null,
+            thinking: true,
+          }
+        : {
+            id,
+            ply,
+            kind: "praise",
+            grade: reviewed.grade,
+            san: move.san,
+            bestSan: null,
+            text:
+              reviewed.grade === "brilliant"
+                ? "A sacrifice that works — Stockfish approves. Beautifully done."
+                : "You found the one move that keeps the advantage.",
+            motif: null,
+            thinking: false,
+          };
+      setCoachFeed((current) => [item, ...current].slice(0, 6));
+      if (!isAlert || !reviewed.evidence) return;
+      void fetch("/api/move-explanation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grade: reviewed.grade, ...reviewed.evidence }),
+      })
+        .then(async (response) => {
+          const data = (await response.json()) as {
+            motif?: string;
+            explanation?: string;
+          };
+          if (!response.ok || !data.explanation) throw new Error("unavailable");
+          setCoachFeed((current) =>
+            current.map((entry) =>
+              entry.id === id
+                ? {
+                    ...entry,
+                    text: data.explanation!,
+                    motif: data.motif ?? null,
+                    thinking: false,
+                  }
+                : entry,
+            ),
+          );
+        })
+        .catch(() => {
+          setCoachFeed((current) =>
+            current.map((entry) =>
+              entry.id === id ? { ...entry, thinking: false } : entry,
+            ),
+          );
+        });
+    });
+  }, [analysis.moves, state, role]);
+
+  async function requestHint(tier: "maia" | "best") {
+    const started = latestStateRef.current;
+    if (!started?.bot || started.result) return;
+    const fen = started.fen;
+    setHint({ phase: "loading", tier });
+    try {
+      let uci: string;
+      if (tier === "best") {
+        uci = (await engineBestMove(fen)).move;
+      } else {
+        const picked = await pickMove(fen, started.bot.elo);
+        uci = `${picked.from}${picked.to}${picked.promotion ?? ""}`;
+      }
+      const san = sanFromUci(fen, uci);
+      if (!san || latestStateRef.current?.fen !== fen) {
+        setHint(null);
+        return;
+      }
+      setHint({
+        phase: "shown",
+        tier,
+        from: uci.slice(0, 2) as Square,
+        to: uci.slice(2, 4) as Square,
+        san,
+        fen,
+      });
+    } catch {
+      setHint(null);
+      setNotice("The coach could not find a hint. Try again.");
+    }
+  }
+
   async function startBotGame(bot: BotKey) {
     setPendingBot(bot);
     try {
       await loadMaia();
       const nextRoom = makeRoomCode();
       setRoomInput(nextRoom);
-      connect(nextRoom, name, bot, timeControl * 60_000);
+      connect(nextRoom, name, bot, timeControl * 60_000, coachEnabled);
     } catch {
       setNotice("The bot engine could not be loaded. Try again.");
     } finally {
@@ -709,6 +880,7 @@ export function ChessRoom() {
     nextName: string,
     bot?: BotKey,
     initialTimeMs?: number,
+    coach?: boolean,
   ) => {
     const cleanRoom = nextRoom
       .toUpperCase()
@@ -725,7 +897,7 @@ export function ChessRoom() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const playerKey = browserPlayerKey();
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}&playerKey=${encodeURIComponent(playerKey)}${bot ? `&bot=${bot}` : ""}${initialTimeMs ? `&time=${initialTimeMs}` : ""}`,
+      `${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}&playerKey=${encodeURIComponent(playerKey)}${bot ? `&bot=${bot}` : ""}${initialTimeMs ? `&time=${initialTimeMs}` : ""}${bot && coach ? "&coach=1" : ""}`,
     );
     socketRef.current = socket;
 
@@ -768,14 +940,15 @@ export function ChessRoom() {
   }, []);
 
   const currentBotKey = state?.bot?.key;
+  const currentCoach = state?.coach;
   useEffect(() => {
     if (connection !== "offline" || !room) return;
     const id = window.setTimeout(
-      () => connect(room, name, currentBotKey, state?.initialTimeMs),
+      () => connect(room, name, currentBotKey, state?.initialTimeMs, currentCoach),
       1600,
     );
     return () => window.clearTimeout(id);
-  }, [connection, room, name, currentBotKey, state?.initialTimeMs, connect]);
+  }, [connection, room, name, currentBotKey, currentCoach, state?.initialTimeMs, connect]);
 
   const orientation: Color = role === "b" ? "b" : "w";
   const lastMove = viewHistory[viewedPly - 1];
@@ -833,6 +1006,26 @@ export function ChessRoom() {
     !state.result &&
     role !== "spectator";
   const canInteract = canControlBoard && chess.turn() === role;
+  const coachActive = Boolean(
+    state?.coach && state.bot && !state.result && role !== "spectator",
+  );
+
+  // A hint is tied to the position it was computed for; it vanishes on the next move.
+  const hintVisible =
+    hint?.phase === "shown" && hint.fen === state?.fen;
+  const hintShapes = useMemo(
+    () =>
+      hint?.phase === "shown" && hint.fen === state?.fen && replayPly === null
+        ? [
+            {
+              orig: hint.from as Key,
+              dest: hint.to as Key,
+              brush: hint.tier === "best" ? "green" : "blue",
+            },
+          ]
+        : [],
+    [hint, replayPly, state?.fen],
+  );
 
   const finishBadgeSquares = useMemo(() => {
     const classes: SquareClasses = new Map();
@@ -1100,6 +1293,7 @@ export function ChessRoom() {
               dests={legalDests}
               premoveEnabled={canControlBoard}
               customSquareClasses={finishBadgeSquares}
+              autoShapes={hintShapes}
               onMove={(from, to) => tryMove(from as Square, to as Square)}
               resetKey={promotion ? `${promotion.from}${promotion.to}` : ""}
               ariaLabel={`Chess board, ${orientation === "w" ? "white" : "black"} orientation`}
@@ -1197,6 +1391,22 @@ export function ChessRoom() {
                     </div>
                     <div className="bot-row">
                       <span>OR CHALLENGE THE PATROL</span>
+                      <button
+                        type="button"
+                        className={`coach-toggle ${coachEnabled ? "coach-toggle--on" : ""}`}
+                        onClick={() => setCoachEnabled((value) => !value)}
+                        aria-pressed={coachEnabled}
+                      >
+                        <span className="coach-toggle-box" aria-hidden>
+                          {coachEnabled ? "✓" : ""}
+                        </span>
+                        <span className="coach-toggle-copy">
+                          <strong>Coach Ming watches your game</strong>
+                          <small>
+                            Live tips after mistakes, hints, and takebacks
+                          </small>
+                        </span>
+                      </button>
                       <div className="bot-cards">
                         {(Object.keys(BOTS) as BotKey[]).map((key) => (
                           <button
@@ -1360,6 +1570,90 @@ export function ChessRoom() {
                 </li>
               </ol>
             </div>
+          )}
+
+          {coachActive && state && (
+            <section className="live-coach" aria-label="Coach Ming live coaching">
+              <div className="live-coach-head">
+                <span className="live-coach-dot" aria-hidden />
+                <span className="live-coach-title">COACH MING · LIVE</span>
+                <button
+                  className="live-coach-hint"
+                  onClick={() => void requestHint("maia")}
+                  disabled={!canInteract || hint?.phase === "loading"}
+                  title={
+                    canInteract
+                      ? "Show a move a player at this level would consider"
+                      : "Hints are available on your turn"
+                  }
+                >
+                  {hint?.phase === "loading" ? "Thinking…" : "◈ Hint"}
+                </button>
+              </div>
+              {hintVisible && hint.phase === "shown" && (
+                <div className="live-coach-hintbox">
+                  <strong>{hint.san}</strong>
+                  <span>
+                    {hint.tier === "best"
+                      ? "Stockfish's top move."
+                      : "a natural idea at this level."}
+                  </span>
+                  {hint.tier === "maia" && (
+                    <button onClick={() => void requestHint("best")}>
+                      Show best move
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="live-coach-feed">
+                {coachFeed.length === 0 ? (
+                  <p className="live-coach-idle">
+                    I&apos;m watching your game — I&apos;ll speak up when a move
+                    deserves it. Stuck? Ask for a hint.
+                  </p>
+                ) : (
+                  coachFeed.map((item) => {
+                    const takebackable =
+                      item.kind === "mistake" &&
+                      !state.result &&
+                      state.history.length >= item.ply &&
+                      state.history.length - item.ply <= 1 &&
+                      state.history[item.ply - 1]?.san === item.san;
+                    return (
+                      <div
+                        key={item.id}
+                        className={`coach-bubble coach-bubble--${item.kind}`}
+                      >
+                        <div className="coach-bubble-top">
+                          <strong>
+                            {Math.floor((item.ply - 1) / 2) + 1}
+                            {(item.ply - 1) % 2 ? "…" : "."} {item.san}
+                          </strong>
+                          <span className={`move-grade move-grade--${item.grade}`}>
+                            {gradeLabel(item.grade)}
+                          </span>
+                          {item.motif && (
+                            <span className="coach-motif">{item.motif}</span>
+                          )}
+                        </div>
+                        <p className={item.thinking ? "coach-thinking" : ""}>
+                          {item.text}
+                          {item.thinking && " Let me take a closer look…"}
+                        </p>
+                        {takebackable && (
+                          <button
+                            className="coach-takeback"
+                            onClick={() => send({ type: "undo" })}
+                          >
+                            ↩ Take it back and retry
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </section>
           )}
 
           <div className="moves-panel">

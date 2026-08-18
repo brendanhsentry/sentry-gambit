@@ -67,6 +67,9 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     database.exec("ALTER TABLE games ADD COLUMN bot_key TEXT");
     database.exec("ALTER TABLE games ADD COLUMN bot_color TEXT");
   }
+  if (!gameColumns.some((column) => column.name === "bot_coach")) {
+    database.exec("ALTER TABLE games ADD COLUMN bot_coach INTEGER NOT NULL DEFAULT 0");
+  }
   if (!gameColumns.some((column) => column.name === "initial_time_ms")) {
     database.exec(
       "ALTER TABLE games ADD COLUMN initial_time_ms INTEGER NOT NULL DEFAULT 600000",
@@ -87,7 +90,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       INSERT OR IGNORE INTO game_players (game_id, player_key, color) VALUES (?, ?, ?)
     `),
     setBot: database.prepare(`
-      UPDATE games SET bot_key = ?, bot_color = ?, updated_at = ? WHERE id = ?
+      UPDATE games SET bot_key = ?, bot_color = ?, bot_coach = ?, updated_at = ? WHERE id = ?
     `),
     insertMove: database.prepare(`
       INSERT OR REPLACE INTO moves (
@@ -138,7 +141,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     `),
     selectLiveGame: database.prepare(`
       SELECT id, room, white_time_ms, black_time_ms, initial_time_ms,
-        bot_key, bot_color
+        bot_key, bot_color, bot_coach
       FROM games WHERE room = ? AND status = 'in_progress' AND updated_at >= ?
       ORDER BY updated_at DESC LIMIT 1
     `),
@@ -195,7 +198,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       statements.addPlayer.run(gameId, playerKey, color);
     },
     setBot(gameId, bot) {
-      statements.setBot.run(bot.key, bot.color, Date.now(), gameId);
+      statements.setBot.run(bot.key, bot.color, bot.coach ? 1 : 0, Date.now(), gameId);
     },
     recordMove(gameId, ply, move, fen, clock) {
       const now = Date.now();
@@ -263,7 +266,9 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
         initialTimeMs: row.initial_time_ms,
         clock: { w: row.white_time_ms, b: row.black_time_ms },
         playerColors,
-        bot: row.bot_key ? { key: row.bot_key, color: row.bot_color } : null,
+        bot: row.bot_key
+          ? { key: row.bot_key, color: row.bot_color, coach: Boolean(row.bot_coach) }
+          : null,
         history: statements.selectMoves.all(row.id).map(mapMove),
       };
     },

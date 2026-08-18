@@ -188,6 +188,7 @@ function restoreTable(id, saved) {
   };
   if (saved.bot && BOTS[saved.bot.key]) {
     const { key, color } = saved.bot;
+    table.coach = Boolean(saved.bot.coach);
     table.bot = { key, name: BOTS[key].name, elo: BOTS[key].elo, color };
     table.seats[color] = { id: randomUUID(), name: `${BOTS[key].name} (Bot)` };
   }
@@ -251,6 +252,7 @@ function serializeTable(table) {
     initialTimeMs: table.initialTimeMs,
     clock: table.clock,
     bot: table.bot ?? null,
+    coach: table.coach ?? false,
     undoRequest: table.undoRequest ?? null,
     drawOffer: table.drawOffer ?? null,
   };
@@ -604,6 +606,13 @@ function handleTableMessage(table, client, raw) {
       w: table.seats.w?.name ?? null,
       b: table.seats.b?.name ?? null,
     });
+    if (table.bot) {
+      gameStore.setBot(table.gameId, {
+        key: table.bot.key,
+        color: table.bot.color,
+        coach: table.coach === true,
+      });
+    }
     table.playerColors.clear();
     for (const color of ["w", "b"]) {
       const seated = table.seats[color];
@@ -680,7 +689,12 @@ async function joinTable(request, socket) {
         id: randomUUID(),
         name: `${BOTS[botKey].name} (Bot)`,
       };
-      gameStore.setBot(table.gameId, { key: botKey, color: botColor });
+      table.coach = url.searchParams.get("coach") === "1";
+      gameStore.setBot(table.gameId, {
+        key: botKey,
+        color: botColor,
+        coach: table.coach,
+      });
     }
   }
   gameStore.updatePlayers(table.gameId, {

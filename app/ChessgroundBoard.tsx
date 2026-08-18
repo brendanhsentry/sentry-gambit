@@ -8,6 +8,7 @@ import type {
   Key,
   SquareClasses,
 } from "@lichess-org/chessground/types";
+import type { DrawShape } from "@lichess-org/chessground/draw";
 import { useLayoutEffect, useRef } from "react";
 
 type ChessgroundBoardProps = {
@@ -20,6 +21,7 @@ type ChessgroundBoardProps = {
   dests?: Dests;
   premoveEnabled?: boolean;
   customSquareClasses?: SquareClasses;
+  autoShapes?: DrawShape[];
   onMove?: (from: Key, to: Key) => void;
   resetKey?: string;
   viewOnly?: boolean;
@@ -36,6 +38,7 @@ export function ChessgroundBoard({
   dests,
   premoveEnabled = false,
   customSquareClasses,
+  autoShapes,
   onMove,
   resetKey,
   viewOnly = false,
@@ -55,7 +58,7 @@ export function ChessgroundBoard({
       coordinates: true,
       coordinatesOnSquares: true,
       disableContextMenu: true,
-      drawable: { enabled: false, visible: false },
+      drawable: { enabled: false, visible: true },
       draggable: { showGhost: true },
       premovable: { enabled: false, showDests: true },
       animation: { enabled: true, duration: 180 },
@@ -88,9 +91,11 @@ export function ChessgroundBoard({
       draggable: { enabled: !viewOnly },
       selectable: { enabled: !viewOnly },
     });
+    api.setAutoShapes(autoShapes ?? []);
     if (!premoveEnabled) api.cancelPremove();
     else if (movableColor === turnColor) api.playPremove();
   }, [
+    autoShapes,
     check,
     customSquareClasses,
     dests,

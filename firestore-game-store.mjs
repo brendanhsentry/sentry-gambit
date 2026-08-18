@@ -82,6 +82,7 @@ export function openFirestoreGameStore() {
         games.doc(gameId).update({
           botKey: bot.key,
           botColor: bot.color,
+          botCoach: bot.coach === true,
           updatedAt: Date.now(),
         }),
       );
@@ -217,7 +218,9 @@ export function openFirestoreGameStore() {
         initialTimeMs: data.initialTimeMs ?? 600_000,
         clock: { w: data.whiteTimeMs, b: data.blackTimeMs },
         playerColors: data.playerColors ?? {},
-        bot: data.botKey ? { key: data.botKey, color: data.botColor } : null,
+        bot: data.botKey
+          ? { key: data.botKey, color: data.botColor, coach: data.botCoach === true }
+          : null,
         history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),
       };
     },

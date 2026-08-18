@@ -150,7 +150,7 @@ class StockfishClient {
     await this.waitFor("isready", (line) => line === "readyok");
   }
 
-  private async search(fen: string, multipv: number, searchMove?: string) {
+  async search(fen: string, multipv: number, searchMove?: string) {
     await this.ready;
     this.worker.postMessage(`setoption name MultiPV value ${multipv}`);
     await this.waitFor("isready", (line) => line === "readyok");
@@ -193,6 +193,21 @@ class StockfishClient {
   terminate() {
     this.worker.terminate();
     this.listener = null;
+  }
+}
+
+let hintEngine: StockfishClient | null = null;
+
+// One shared engine for live hints, rebooted if a search dies.
+export async function engineBestMove(fen: string): Promise<EngineLine> {
+  hintEngine ??= new StockfishClient();
+  try {
+    const [best] = await hintEngine.search(fen, 1);
+    return best;
+  } catch (error) {
+    hintEngine.terminate();
+    hintEngine = null;
+    throw error;
   }
 }
 
