@@ -1,6 +1,6 @@
 /** Node server: Next.js frontend plus an in-memory WebSocket chess table service. */
 import { createServer } from "node:http";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 import * as Sentry from "@sentry/node";
 import next from "next";
 import { WebSocketServer } from "ws";
@@ -121,6 +121,7 @@ function createTable(id) {
     chess: new Chess(),
     clients: new Set(),
     seats: { w: null, b: null },
+    seatOrder: randomInt(2) === 0 ? ["w", "b"] : ["b", "w"],
     result: null,
     clock: { w: STARTING_TIME, b: STARTING_TIME, running: null, since: null },
     gradedPlies: new Set(),
@@ -155,6 +156,7 @@ function restoreTable(id, saved) {
     chess,
     clients: new Set(),
     seats: { w: null, b: null },
+    seatOrder: randomInt(2) === 0 ? ["w", "b"] : ["b", "w"],
     result: null,
     clock: { w: saved.clock.w, b: saved.clock.b, running: null, since: null },
     gradedPlies: new Set(),
@@ -193,10 +195,11 @@ function chooseSeat(table, playerKey) {
   const reserved = playerKey ? table.playerColors.get(playerKey) : undefined;
   if (reserved) return table.seats[reserved] ? "spectator" : reserved;
   const reservedColors = new Set(table.playerColors.values());
-  for (const color of ["w", "b"]) {
-    if (!table.seats[color] && !reservedColors.has(color)) return color;
-  }
-  return "spectator";
+  return (
+    table.seatOrder.find(
+      (color) => !table.seats[color] && !reservedColors.has(color),
+    ) ?? "spectator"
+  );
 }
 
 function serializeTable(table) {
