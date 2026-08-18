@@ -44,3 +44,7 @@ data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
 tsconfig.tsbuildinfo
+
+# maia bot assets (downloaded by scripts/fetch-maia-assets.mjs)
+/public/maia3/
+/public/ort/

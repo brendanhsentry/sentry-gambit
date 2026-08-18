@@ -35,6 +35,11 @@ Sentry.init({
 
 const STARTING_TIME = 10 * 60 * 1000;
 const IDLE_ROOM_TTL = 60 * 60 * 1000;
+const BOTS = {
+  debug: { name: "Debug", elo: 1100 },
+  warning: { name: "Warning", elo: 1500 },
+  fatal: { name: "Fatal", elo: 1900 },
+};
 const MOVE_GRADES = new Set([
   "brilliant",
   "great",
@@ -230,6 +235,7 @@ function serializeTable(table) {
     },
     result: table.result,
     clock: table.clock,
+    bot: table.bot ?? null,
   };
 }
 
@@ -315,7 +321,10 @@ function handleTableMessage(table, client, raw) {
   table.touchedAt = Date.now();
   if (message.type === "move") {
     if (table.result || (client.role !== "w" && client.role !== "b")) return;
-    if (client.role !== table.chess.turn()) {
+    // A seated human relays the bot's moves, since the bot runs in their browser.
+    const movedByBot =
+      table.bot?.color === table.chess.turn() && client.role !== table.bot.color;
+    if (client.role !== table.chess.turn() && !movedByBot) {
       send(client, { type: "error", message: "Wait for your turn." });
       return;
     }
@@ -362,6 +371,7 @@ function handleTableMessage(table, client, raw) {
       "chess.move.uci": `${acceptedMove.from}${acceptedMove.to}${acceptedMove.promotion ?? ""}`,
       "chess.position.fen_after": table.chess.fen(),
       "chess.clock.remaining_ms": table.clock[acceptedMove.color],
+      "chess.move.by_bot": movedByBot,
       "chess.game.finished": Boolean(table.result),
       "chess.game.result": table.result ?? "in_progress",
     });
@@ -508,6 +518,18 @@ async function joinTable(request, socket) {
     if (playerKey) {
       table.playerColors.set(playerKey, role);
       gameStore.addPlayer(table.gameId, playerKey, role);
+    }
+  }
+
+  // A seated human bringing a bot key gives the opposite seat to the bot,
+  // both on game creation and when rejoining a restored bot game.
+  const botKey = url.searchParams.get("bot") || "";
+  if (BOTS[botKey] && !table.bot && !table.result && (role === "w" || role === "b")) {
+    const botColor = role === "w" ? "b" : "w";
+    const reserved = [...table.playerColors.values()].includes(botColor);
+    if (!table.seats[botColor] && !reserved) {
+      table.bot = { key: botKey, name: BOTS[botKey].name, elo: BOTS[botKey].elo, color: botColor };
+      table.seats[botColor] = { id: randomUUID(), name: `${BOTS[botKey].name} (Bot)` };
     }
   }
   gameStore.updatePlayers(table.gameId, {

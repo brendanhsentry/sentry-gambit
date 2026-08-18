@@ -135,6 +135,19 @@ button { color: inherit; }
 .join-row input { font: 650 12px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; text-transform: uppercase; }
 .join-row button { border: 1px solid var(--line); border-left: 0; background: #efe8d9; cursor: pointer; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 .join-row button:disabled { opacity: .5; cursor: default; }
+.bot-row { margin-top: 18px; }
+.bot-row > span { display: block; margin-bottom: 8px; font: 650 9px/1 var(--font-geist-mono), monospace; letter-spacing: .16em; color: #8f6a2d; }
+.bot-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.bot-card { display: flex; flex-direction: column; gap: 4px; padding: 10px 9px 11px; border: 1px solid var(--line); background: #fffdf8; cursor: pointer; text-align: left; border-top: 3px solid var(--line); }
+.bot-card:hover { background: #f2ecdd; }
+.bot-card:disabled { opacity: .55; cursor: default; }
+.bot-card strong { font: 700 12px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--green); }
+.bot-card small { font: 600 8px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; color: #7d8983; }
+.bot-card em { font-style: normal; font-size: 9px; line-height: 1.35; color: #5d6a64; }
+.bot-card--debug { border-top-color: #7d8983; }
+.bot-card--warning { border-top-color: var(--amber); }
+.bot-card--fatal { border-top-color: #ae372b; }
+.bot-status { margin-bottom: 10px; padding: 7px 10px; border: 1px solid var(--line); background: rgba(255,255,255,.4); font: 600 9px/1.4 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; color: #57655f; }
 
 .promotion-picker { position: absolute; z-index: 12; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--paper); border-top: 4px solid var(--amber); padding: 24px; box-shadow: 0 25px 65px rgba(9,38,32,.38); text-align: center; }
 .promotion-picker > span { font: 650 10px/1 var(--font-geist-mono), monospace; letter-spacing: .11em; text-transform: uppercase; }

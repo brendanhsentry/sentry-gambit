@@ -10,6 +10,7 @@ import { IconSeer } from "./IconSeer";
 import { PIECE_GLYPHS } from "./chess-pieces";
 import { startGameReplay, stopGameReplay } from "./sentry-replay";
 import { gradeLabel, useMoveAnalysis, type ReviewMove } from "./move-analysis";
+import { BOTS, useMaiaEngine, type BotKey } from "./maia-bot";
 
 type Role = "w" | "b" | "spectator";
 
@@ -28,6 +29,7 @@ type GameState = {
   players: { w: string | null; b: string | null };
   result: string | null;
   clock: ClockState;
+  bot: { key: BotKey; name: string; elo: number; color: Color } | null;
 };
 
 type PastGameSummary = {
@@ -239,6 +241,15 @@ export function ChessRoom() {
   >({});
   const reportedGradesRef = useRef(new Set<string>());
   const explanationRequestsRef = useRef(new Set<number>());
+  const {
+    status: maiaStatus,
+    progress: maiaProgress,
+    load: loadMaia,
+    pickMove,
+  } = useMaiaEngine();
+  const [pendingBot, setPendingBot] = useState<BotKey | null>(null);
+  const botMoveKeyRef = useRef("");
+  const latestStateRef = useRef<GameState | null>(null);
 
   const send = useCallback((payload: object) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -486,6 +497,62 @@ export function ChessRoom() {
   const flagClock = useCallback(() => send({ type: "flag" }), [send]);
   const now = useClock(state?.clock ?? null, flagClock);
 
+  useEffect(() => {
+    latestStateRef.current = state;
+  }, [state]);
+
+  // Rejoining a bot room (e.g. after a refresh) needs the engine warmed up.
+  useEffect(() => {
+    if (state?.bot && !state.result && role !== "spectator" && maiaStatus === "idle") {
+      loadMaia().catch(() => {});
+    }
+  }, [state, role, maiaStatus, loadMaia]);
+
+  // The seated human's browser runs the bot: whenever it is the bot's turn,
+  // ask Maia for a move and relay it to the server.
+  useEffect(() => {
+    const bot = state?.bot;
+    if (!state || !bot || state.result || role === "spectator" || connection !== "online")
+      return;
+    if (new Chess(state.fen).turn() !== bot.color) return;
+    const moveKey = `${state.gameId}:${state.history.length}`;
+    if (botMoveKeyRef.current === moveKey) return;
+    botMoveKeyRef.current = moveKey;
+    const thinkingTime = 600 + Math.random() * 1400;
+    void Promise.all([
+      pickMove(state.fen, bot.elo),
+      new Promise((resolve) => setTimeout(resolve, thinkingTime)),
+    ])
+      .then(([move]) => {
+        const current = latestStateRef.current;
+        if (
+          current &&
+          !current.result &&
+          `${current.gameId}:${current.history.length}` === moveKey
+        ) {
+          send({ type: "move", ...move });
+        }
+      })
+      .catch(() => {
+        botMoveKeyRef.current = "";
+        setNotice(`${bot.name} crashed while thinking. It will retry on the next update.`);
+      });
+  }, [state, role, connection, pickMove, send]);
+
+  async function startBotGame(bot: BotKey) {
+    setPendingBot(bot);
+    try {
+      await loadMaia();
+      const nextRoom = makeRoomCode();
+      setRoomInput(nextRoom);
+      connect(nextRoom, name, bot);
+    } catch {
+      setNotice("The bot engine could not be loaded. Try again.");
+    } finally {
+      setPendingBot(null);
+    }
+  }
+
   const viewHistory = useMemo(
     () => pastGame?.history ?? state?.history ?? [],
     [pastGame?.history, state?.history],
@@ -604,7 +671,7 @@ export function ChessRoom() {
     );
   }, [chess, selected]);
 
-  const connect = useCallback((nextRoom: string, nextName: string) => {
+  const connect = useCallback((nextRoom: string, nextName: string, bot?: BotKey) => {
     const cleanRoom = nextRoom
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "")
@@ -622,7 +689,7 @@ export function ChessRoom() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const playerKey = browserPlayerKey();
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}&playerKey=${encodeURIComponent(playerKey)}`,
+      `${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}&playerKey=${encodeURIComponent(playerKey)}${bot ? `&bot=${bot}` : ""}`,
     );
     socketRef.current = socket;
 
@@ -643,7 +710,10 @@ export function ChessRoom() {
         setNotice(message.message);
       }
     });
-    socket.addEventListener("close", () => setConnection("offline"));
+    socket.addEventListener("close", () => {
+      // A socket we replaced or abandoned must not clobber the connection state.
+      if (socketRef.current === socket) setConnection("offline");
+    });
   }, []);
 
   useEffect(() => {
@@ -662,11 +732,12 @@ export function ChessRoom() {
     return () => socketRef.current?.close();
   }, []);
 
+  const currentBotKey = state?.bot?.key;
   useEffect(() => {
     if (connection !== "offline" || !room) return;
-    const id = window.setTimeout(() => connect(room, name), 1600);
+    const id = window.setTimeout(() => connect(room, name, currentBotKey), 1600);
     return () => window.clearTimeout(id);
-  }, [connection, room, name, connect]);
+  }, [connection, room, name, currentBotKey, connect]);
 
   const orientation: Color = pastGame ? "w" : role === "b" ? "b" : "w";
   const ranks =
@@ -829,6 +900,7 @@ export function ChessRoom() {
             className="text-button"
             onClick={() => {
               socketRef.current?.close();
+              socketRef.current = null;
               setConnection("idle");
               setRoom("");
               setState(null);
@@ -866,6 +938,17 @@ export function ChessRoom() {
                       : "READY"}
             </span>
           </div>
+
+          {state?.bot &&
+            !state.result &&
+            role !== "spectator" &&
+            maiaStatus !== "ready" && (
+              <div className="bot-status" role="status">
+                {maiaStatus === "error"
+                  ? `${state.bot.name} failed to boot. Refresh to retry.`
+                  : `Booting ${state.bot.name}… ${maiaProgress}%`}
+              </div>
+            )}
 
           <PlayerCard
             name={displayedPlayers[topColor]}
@@ -994,6 +1077,29 @@ export function ChessRoom() {
                         Join
                       </button>
                     </div>
+                    <div className="bot-row">
+                      <span>OR CHALLENGE THE PATROL</span>
+                      <div className="bot-cards">
+                        {(Object.keys(BOTS) as BotKey[]).map((key) => (
+                          <button
+                            key={key}
+                            className={`bot-card bot-card--${key}`}
+                            onClick={() => void startBotGame(key)}
+                            disabled={pendingBot !== null}
+                          >
+                            <strong>{BOTS[key].name}</strong>
+                            <small>ELO {BOTS[key].elo}</small>
+                            <em>
+                              {pendingBot === key
+                                ? maiaStatus === "loading"
+                                  ? `LOADING ${maiaProgress}%`
+                                  : "STARTING…"
+                                : BOTS[key].tagline}
+                            </em>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </>
                 )}
               </div>
@@ -1098,9 +1204,11 @@ export function ChessRoom() {
                 </button>
               </div>
               <p>
-                {state?.players.w && state?.players.b
-                  ? "Both players are seated."
-                  : "Share this with your opponent."}
+                {state?.bot
+                  ? `You are playing ${state.bot.name}. Anyone who joins with this code spectates.`
+                  : state?.players.w && state?.players.b
+                    ? "Both players are seated."
+                    : "Share this with your opponent."}
               </p>
             </div>
           ) : (

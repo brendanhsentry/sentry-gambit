@@ -18,6 +18,14 @@ npm run build    # production build
 npm run start    # production server
 ```
 
+`npm run dev` first downloads the Maia 3 model and ONNX runtime into
+`public/maia3` and `public/ort` (once, ~58 MB, via
+`scripts/fetch-maia-assets.mjs`). These power the three bot opponents —
+Debug (1100), Warning (1500), and Fatal (1900) — which run the
+[Maia](https://www.maiachess.com/) human-like chess model in a browser worker
+on the seated player's machine; the server stays authoritative for legality,
+clocks, and archiving.
+
 To enable on-demand explanations for Stockfish mistakes and blunders, create an
 OpenRouter API key and put it in the ignored `.env.local` file:
 

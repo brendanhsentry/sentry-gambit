@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "public/stockfish/**",
+    "public/ort/**",
     "cloudflare-env.d.ts",
     "next-env.d.ts",
   ]),
