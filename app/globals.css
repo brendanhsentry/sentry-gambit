@@ -169,6 +169,18 @@ button { color: inherit; }
 .bot-card--opus { border-top-color: #ae372b; }
 .bot-status { margin-bottom: 10px; padding: 7px 10px; border: 1px solid var(--line); background: rgba(255,255,255,.4); font: 600 9px/1.4 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; color: #57655f; }
 
+.game-over { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; background: rgba(13, 47, 40, 0.5); animation: game-over-fade 220ms ease-out both; }
+@keyframes game-over-fade { from { opacity: 0; } }
+.game-over-card { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 86%; padding: 26px 34px; background: var(--paper); border-top: 4px solid var(--amber); box-shadow: 0 25px 65px rgba(9,38,32,.38); text-align: center; animation: game-over-pop 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+@keyframes game-over-pop { from { transform: translateY(12px) scale(.95); opacity: 0; } }
+.game-over-card > span { font: 650 10px/1 var(--font-geist-mono), monospace; letter-spacing: .14em; color: #a66f25; }
+.game-over-card strong { color: var(--green); font-family: Georgia, serif; font-size: clamp(20px, 3vw, 28px); line-height: 1.15; font-weight: 500; letter-spacing: -.02em; }
+.game-over-actions { display: flex; gap: 8px; margin-top: 4px; }
+.game-over-actions button { height: 36px; padding: 0 16px; border: 1px solid var(--line); background: transparent; cursor: pointer; text-transform: uppercase; font-size: 9px; letter-spacing: .08em; font-weight: 700; }
+.game-over-actions button:hover { background: var(--green); color: white; }
+.game-over-actions .game-over-rematch { border-color: var(--green); background: var(--green); color: white; }
+.game-over-actions .game-over-rematch:hover { background: var(--green-deep); }
+
 .promotion-picker { position: absolute; z-index: 12; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--paper); border-top: 4px solid var(--amber); padding: 24px; box-shadow: 0 25px 65px rgba(9,38,32,.38); text-align: center; }
 .promotion-picker > span { font: 650 10px/1 var(--font-geist-mono), monospace; letter-spacing: .11em; text-transform: uppercase; }
 .promotion-picker > div { display: flex; margin: 16px 0 10px; }

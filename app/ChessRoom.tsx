@@ -304,6 +304,9 @@ export function ChessRoom() {
     color: Color;
   } | null>(null);
   const [notice, setNotice] = useState("");
+  const [resultDismissedFor, setResultDismissedFor] = useState<string | null>(
+    null,
+  );
   const [copied, setCopied] = useState(false);
   const [pastGames, setPastGames] = useState<PastGameSummary[]>([]);
   const [pastGamesLoading, setPastGamesLoading] = useState(true);
@@ -1440,6 +1443,32 @@ export function ChessRoom() {
               </div>
             )}
 
+            {state?.result &&
+              !pastGame &&
+              replayPly === null &&
+              resultDismissedFor !== state.gameId && (
+                <div className="game-over" role="alertdialog" aria-label="Game over">
+                  <div className="game-over-card">
+                    <span>GAME OVER</span>
+                    <strong>{state.result}</strong>
+                    <div className="game-over-actions">
+                      {role !== "spectator" && (
+                        <button
+                          className="game-over-rematch"
+                          onClick={() => send({ type: "reset" })}
+                        >
+                          ↻ Rematch
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setResultDismissedFor(state.gameId)}
+                      >
+                        View board
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             {promotion && (
               <div
                 className="promotion-picker"
