@@ -23,7 +23,9 @@ OpenRouter API key and put it in the ignored `.env.local` file:
 
 ```bash
 OPENROUTER_API_KEY=your_key_here
-OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731
+OPENROUTER_MODEL=deepseek/deepseek-v3.2
+OPENROUTER_FALLBACK_MODELS=deepseek/deepseek-chat-v3.1
+OPENROUTER_TIMEOUT_MS=30000
 APP_URL=http://localhost:3000
 ```
 
@@ -32,6 +34,14 @@ lines to `/api/move-explanation`; it never receives the credential. Click a
 graded inaccuracy, mistake, miss, or blunder after the game to request an
 explanation. The verified Stockfish lines remain visible if the model is
 unavailable.
+
+The server disables reasoning for these short structured answers, retries one
+transient provider failure, and keeps a small in-memory run history at
+`/api/agent-status`. Expand **Agent Monitor** in the AI Move Coach to see the
+provider, attempts, latency, HTTP status, and typed failure reason. Fallback
+models are optional and comma-separated; `OPENROUTER_ZDR=true` can be used to
+require a smaller zero-data-retention provider pool in addition to the default
+no-training data policy.
 
 ## Saved games and replay
 

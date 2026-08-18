@@ -56,8 +56,31 @@ type MoveExplanation =
       explanation: string | null;
       playedLine: string[];
       bestLine: string[];
+      requestId?: string;
       message?: string;
     };
+
+type AgentRun = {
+  id: string;
+  state: "queued" | "requesting" | "retrying" | "succeeded" | "failed" | "cached";
+  model: string;
+  provider: string | null;
+  attempts: number;
+  statusCode: number | null;
+  errorType: string | null;
+  message: string | null;
+  durationMs: number | null;
+};
+
+type AgentStatus = {
+  configured: boolean;
+  model: string;
+  fallbackModels: string[];
+  timeoutMs: number;
+  active: number;
+  totals: { requests: number; succeeded: number; failed: number; cacheHits: number };
+  runs: AgentRun[];
+};
 
 // Shown one at a time while a real Seer review runs (they take minutes).
 const SEER_QUOTES = [
@@ -129,6 +152,17 @@ function playerLabel(role: Role) {
   if (role === "w") return "Playing white";
   if (role === "b") return "Playing black";
   return "Watching table";
+}
+
+function agentRunLabel(run: AgentRun | undefined, configured: boolean) {
+  if (!configured) return "NOT CONFIGURED";
+  if (!run) return "STANDING BY";
+  if (run.state === "requesting") return `CALLING · TRY ${run.attempts}`;
+  if (run.state === "retrying") return `RETRYING · TRY ${run.attempts + 1}`;
+  if (run.state === "succeeded") return "LAST RUN OK";
+  if (run.state === "cached") return "CACHE HIT";
+  if (run.state === "failed") return "LAST RUN FAILED";
+  return "QUEUED";
 }
 
 function relativeStatus(state: GameState, role: Role) {
@@ -205,6 +239,7 @@ export function ChessRoom() {
   const [replayPly, setReplayPly] = useState<number | null>(null);
   const [analysisPly, setAnalysisPly] = useState<number | null>(null);
   const [moveExplanations, setMoveExplanations] = useState<Record<number, MoveExplanation>>({});
+  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const reportedGradesRef = useRef(new Set<string>());
   const explanationRequestsRef = useRef(new Set<number>());
 
@@ -215,6 +250,24 @@ export function ChessRoom() {
     }
     return false;
   }, []);
+
+  const refreshAgentStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/agent-status");
+      if (!response.ok) return;
+      setAgentStatus(await response.json() as AgentStatus);
+    } catch {
+      // Diagnostics should never interfere with the game or explanation flow.
+    }
+  }, []);
+
+  useEffect(() => {
+    // This is a mount-time synchronization with server-owned diagnostics.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refreshAgentStatus();
+    const interval = window.setInterval(() => void refreshAgentStatus(), 4_000);
+    return () => window.clearInterval(interval);
+  }, [refreshAgentStatus]);
 
   const loadPastGames = useCallback(async () => {
     setPastGamesLoading(true);
@@ -437,6 +490,7 @@ export function ChessRoom() {
       pastGame ||
       !state?.result ||
       !reviewed?.evidence ||
+      (role !== "spectator" && state.history[index]?.color !== role) ||
       !EXPLAINABLE_GRADES.has(reviewed.grade)
     ) return;
 
@@ -445,6 +499,7 @@ export function ChessRoom() {
     if (explanationRequestsRef.current.has(ply)) return;
     explanationRequestsRef.current.add(ply);
     setMoveExplanations((current) => ({ ...current, [ply]: { phase: "loading" } }));
+    void refreshAgentStatus();
 
     try {
       const response = await fetch("/api/move-explanation", {
@@ -457,6 +512,7 @@ export function ChessRoom() {
         explanation?: string;
         playedLine?: string[];
         bestLine?: string[];
+        requestId?: string;
         error?: string;
       };
       const playedLine = Array.isArray(data.playedLine) ? data.playedLine : [];
@@ -470,6 +526,7 @@ export function ChessRoom() {
             explanation: null,
             playedLine,
             bestLine,
+            requestId: data.requestId,
             message: data.error ?? "The AI explanation is unavailable.",
           },
         }));
@@ -483,6 +540,7 @@ export function ChessRoom() {
           explanation: data.explanation ?? null,
           playedLine,
           bestLine,
+          requestId: data.requestId,
         },
       }));
     } catch {
@@ -499,6 +557,7 @@ export function ChessRoom() {
       }));
     } finally {
       explanationRequestsRef.current.delete(ply);
+      void refreshAgentStatus();
     }
   }
 
@@ -651,10 +710,13 @@ export function ChessRoom() {
   const selectedReview = analysisPly ? analysis.moves[analysisPly - 1] : null;
   const selectedExplanation = analysisPly ? moveExplanations[analysisPly] : null;
   const explainableMoves = analysis.moves.flatMap((reviewed, index) =>
-    reviewed?.evidence && EXPLAINABLE_GRADES.has(reviewed.grade)
+    reviewed?.evidence
+      && EXPLAINABLE_GRADES.has(reviewed.grade)
+      && (role === "spectator" || viewHistory[index]?.color === role)
       ? [{ index, reviewed, move: viewHistory[index] }]
       : [],
   );
+  const latestAgentRun = agentStatus?.runs[0];
 
   function moveCell(move?: { san: string; index: number }) {
     if (!move) return <span className="move-cell"><span>—</span></span>;
@@ -856,7 +918,7 @@ export function ChessRoom() {
           <section className="ai-coach" aria-labelledby="ai-coach-title">
             <div className="ai-coach-head">
               <span id="ai-coach-title">AI MOVE COACH</span>
-              <span title="deepseek/deepseek-v4-flash-0731">DEEPSEEK · OPENROUTER</span>
+              <span title={agentStatus?.model ?? "deepseek/deepseek-v3.2"}>DEEPSEEK · OPENROUTER</span>
             </div>
             {pastGame ? (
               <p>AI explanations are available immediately after a live game. Past-game support is coming next.</p>
@@ -868,7 +930,7 @@ export function ChessRoom() {
               <p>Stockfish could not finish the local review, so the AI coach does not have reliable evidence yet.</p>
             ) : explainableMoves.length ? (
               <>
-                <p>Choose a flagged move to ask the AI coach exactly what went wrong.</p>
+                <p>Choose one of your flagged moves to ask the AI coach exactly what went wrong.</p>
                 <div className="ai-coach-moves">
                   {explainableMoves.map(({ index, reviewed, move }) => (
                     <button key={index} onClick={() => void requestMoveExplanation(index)}>
@@ -879,8 +941,47 @@ export function ChessRoom() {
                 </div>
               </>
             ) : (
-              <p>Stockfish did not flag any moves that need an AI explanation in this game.</p>
+              <p>Stockfish did not flag any of your moves for an AI explanation in this game.</p>
             )}
+            <details className="agent-monitor">
+              <summary>
+                <span className={`agent-monitor-dot agent-monitor-dot--${latestAgentRun?.state ?? (agentStatus?.configured ? "idle" : "failed")}`} />
+                <span>AGENT MONITOR</span>
+                <strong>{agentRunLabel(latestAgentRun, agentStatus?.configured ?? true)}</strong>
+              </summary>
+              <div className="agent-monitor-body">
+                {!agentStatus ? (
+                  <p>Connecting to server diagnostics…</p>
+                ) : (
+                  <>
+                    <dl>
+                      <div><dt>Model</dt><dd>{agentStatus.model}</dd></div>
+                      <div><dt>Timeout</dt><dd>{Math.round(agentStatus.timeoutMs / 1000)}s × 2 tries</dd></div>
+                      <div><dt>Runs</dt><dd>{agentStatus.totals.requests}</dd></div>
+                      <div><dt>Success</dt><dd>{agentStatus.totals.succeeded} + {agentStatus.totals.cacheHits} cached</dd></div>
+                    </dl>
+                    {agentStatus.fallbackModels.length > 0 && (
+                      <p>Fallbacks: {agentStatus.fallbackModels.join(", ")}</p>
+                    )}
+                    <div className="agent-run-list">
+                      {agentStatus.runs.length ? agentStatus.runs.slice(0, 4).map((run) => (
+                        <div key={run.id} className={`agent-run agent-run--${run.state}`}>
+                          <code>#{run.id}</code>
+                          <strong>{run.state}</strong>
+                          <span>{run.provider || run.errorType || (run.state === "cached" ? "local cache" : "OpenRouter")}</span>
+                          <small>
+                            {run.attempts ? `${run.attempts} ${run.attempts === 1 ? "try" : "tries"}` : "no call"}
+                            {run.durationMs !== null ? ` · ${(run.durationMs / 1000).toFixed(1)}s` : ""}
+                            {run.statusCode ? ` · HTTP ${run.statusCode}` : ""}
+                          </small>
+                          {run.message && <p>{run.message}</p>}
+                        </div>
+                      )) : <p>No agent runs yet. Flagged moves will show up here.</p>}
+                    </div>
+                  </>
+                )}
+              </div>
+            </details>
           </section>
 
           {analysisPly && selectedReview?.evidence && EXPLAINABLE_GRADES.has(selectedReview.grade) && (
@@ -904,6 +1005,9 @@ export function ChessRoom() {
                       {selectedExplanation.message}
                       <button onClick={() => void requestMoveExplanation(analysisPly - 1)}>Retry</button>
                     </p>
+                  )}
+                  {selectedExplanation.requestId && (
+                    <p className="move-explanation-request">Agent run #{selectedExplanation.requestId}</p>
                   )}
                   {selectedExplanation.playedLine.length > 0 && (
                     <div className="engine-line">

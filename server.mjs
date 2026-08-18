@@ -475,7 +475,17 @@ const SENTRY_ORG = "sentry-gambit";
 const SENTRY_PROJECT_ID = "4511927685939200";
 const SEER_TOKEN = process.env.SEER_API_TOKEN || "";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4-flash-0731";
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "deepseek/deepseek-v3.2";
+const OPENROUTER_FALLBACK_MODELS = (process.env.OPENROUTER_FALLBACK_MODELS || "")
+  .split(",")
+  .map((model) => model.trim())
+  .filter(Boolean)
+  .slice(0, 3);
+const OPENROUTER_TIMEOUT_MS = Math.max(
+  5_000,
+  Math.min(Number(process.env.OPENROUTER_TIMEOUT_MS) || 30_000, 120_000),
+);
+const OPENROUTER_MAX_ATTEMPTS = 2;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const EXPLAINABLE_GRADES = new Set(["inaccuracy", "mistake", "miss", "blunder"]);
 const EXPLANATION_MOTIFS = new Set([
@@ -489,8 +499,19 @@ const EXPLANATION_MOTIFS = new Set([
   "positional",
   "unclear",
 ]);
+const PIECE_NAMES = {
+  p: "pawn",
+  n: "knight",
+  b: "bishop",
+  r: "rook",
+  q: "queen",
+  k: "king",
+};
 const explanationCache = new Map();
 const explanationRateLimits = new Map();
+const agentRuns = [];
+const agentTotals = { requests: 0, succeeded: 0, failed: 0, cacheHits: 0 };
+const AGENT_RUN_LIMIT = 12;
 
 const REVIEW_PROMPT = [
   "This issue represents one finished chess game. Review the game using the",
@@ -507,6 +528,54 @@ function sendJson(res, status, payload) {
     "Cache-Control": "no-store",
   });
   res.end(JSON.stringify(payload));
+}
+
+function updateAgentRun(run, patch) {
+  Object.assign(run, patch, { updatedAt: Date.now() });
+}
+
+function beginAgentRun(state = "queued") {
+  const now = Date.now();
+  const run = {
+    id: randomUUID().slice(0, 8),
+    state,
+    model: OPENROUTER_MODEL,
+    provider: null,
+    attempts: 0,
+    statusCode: null,
+    errorType: null,
+    message: null,
+    startedAt: now,
+    updatedAt: now,
+    durationMs: null,
+  };
+  agentRuns.unshift(run);
+  agentRuns.splice(AGENT_RUN_LIMIT);
+  agentTotals.requests += 1;
+  return run;
+}
+
+function finishAgentRun(run, state, patch = {}) {
+  updateAgentRun(run, {
+    ...patch,
+    state,
+    durationMs: Date.now() - run.startedAt,
+  });
+  if (state === "succeeded") agentTotals.succeeded += 1;
+  else if (state === "failed") agentTotals.failed += 1;
+  else if (state === "cached") agentTotals.cacheHits += 1;
+}
+
+function agentStatusPayload() {
+  return {
+    configured: Boolean(OPENROUTER_API_KEY),
+    model: OPENROUTER_MODEL,
+    fallbackModels: OPENROUTER_FALLBACK_MODELS,
+    timeoutMs: OPENROUTER_TIMEOUT_MS,
+    active: agentRuns.filter((run) => run.state === "requesting" || run.state === "retrying").length,
+    totals: agentTotals,
+    runs: agentRuns,
+  };
 }
 
 class RequestError extends Error {
@@ -581,6 +650,31 @@ function replayEngineLine(fen, moves) {
   return san;
 }
 
+function describeEngineLine(fen, moves) {
+  const board = new Chess(fen);
+  return moves.slice(0, 10).map((uci) => {
+    const from = uci.slice(0, 2);
+    const to = uci.slice(2, 4);
+    const movingPiece = board.get(from);
+    const move = board.move({ from, to, promotion: uci[4] || "q" });
+    const color = movingPiece?.color === "b" ? "Black" : "White";
+    let description;
+    if (move.san.startsWith("O-O-O")) {
+      description = `${color} castles queenside, moving the king from ${from} to ${to}`;
+    } else if (move.san.startsWith("O-O")) {
+      description = `${color} castles kingside, moving the king from ${from} to ${to}`;
+    } else if (move.captured) {
+      description = `${color}'s ${PIECE_NAMES[move.piece]} on ${from} captures the ${PIECE_NAMES[move.captured]} on ${to}`;
+    } else {
+      description = `${color}'s ${PIECE_NAMES[move.piece]} moves from ${from} to ${to}`;
+    }
+    if (move.promotion) description += ` and promotes to a ${PIECE_NAMES[move.promotion]}`;
+    if (move.san.endsWith("#")) description += ", delivering checkmate";
+    else if (move.san.endsWith("+")) description += ", giving check";
+    return description;
+  });
+}
+
 function validateMoveAnalysis(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new RequestError(400, "Move analysis is required.");
@@ -610,6 +704,8 @@ function validateMoveAnalysis(body) {
     bestLine,
     playedLineSan,
     bestLineSan,
+    playedLineDescription: describeEngineLine(fenBefore, playedLine),
+    bestLineDescription: describeEngineLine(fenBefore, bestLine),
     bestExpectedPoints: parseExpectedPoints(body.bestExpectedPoints),
     playedExpectedPoints: parseExpectedPoints(body.playedExpectedPoints),
   };
@@ -641,76 +737,198 @@ function cacheExplanation(key, value) {
   explanationCache.set(key, value);
 }
 
-async function callOpenRouter(facts) {
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    signal: AbortSignal.timeout(12_000),
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": process.env.APP_URL || "https://pawn-patrol.example",
-      "X-OpenRouter-Title": "Pawn Patrol",
-    },
-    body: JSON.stringify({
-      model: OPENROUTER_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: [
-            "Explain this chess error using only the supplied Stockfish evidence.",
-            "Do not invent moves, evaluations, threats, or tactical motifs.",
-            "The played line shows the punishment; the best line shows the alternative.",
-            "If the exact motif is not demonstrated, choose unclear.",
-            "Use at most two short sentences and write for a club chess player.",
-          ].join(" "),
-        },
-        { role: "user", content: JSON.stringify(facts) },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "move_explanation",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              motif: { type: "string", enum: [...EXPLANATION_MOTIFS] },
-              explanation: {
-                type: "string",
-                description: "At most two short sentences supported by the engine lines.",
-              },
-            },
-            required: ["motif", "explanation"],
-            additionalProperties: false,
-          },
-        },
-      },
-      provider: {
-        require_parameters: true,
-        data_collection: "deny",
-        zdr: true,
-      },
-      max_tokens: 180,
-    }),
-  });
+class OpenRouterError extends Error {
+  constructor(message, options = {}) {
+    super(message);
+    this.statusCode = options.statusCode ?? null;
+    this.errorType = options.errorType ?? null;
+    this.provider = options.provider ?? null;
+    this.retryAfterMs = options.retryAfterMs ?? 0;
+    this.retryable = options.retryable ?? false;
+  }
+}
 
-  if (!response.ok) throw new Error(`OpenRouter returned ${response.status}`);
-  const data = await response.json();
+function openRouterErrorFromResponse(response, data) {
+  const choiceError = data?.choices?.[0]?.error;
+  const error = data?.error ?? choiceError;
+  const statusCode = Number(error?.code) || response.status;
+  const errorType = error?.metadata?.error_type || null;
+  const message = typeof error?.message === "string"
+    ? error.message.slice(0, 240)
+    : `OpenRouter returned ${statusCode}`;
+  const retryAfterSeconds = Number(response.headers.get("retry-after"));
+  const retryable = [408, 429, 500, 502, 503, 504].includes(statusCode)
+    || ["rate_limit_exceeded", "provider_overloaded", "provider_unavailable", "timeout", "server"]
+      .includes(errorType);
+  return new OpenRouterError(message, {
+    statusCode,
+    errorType,
+    provider: data?.provider ?? null,
+    retryAfterMs: Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : 0,
+    retryable,
+  });
+}
+
+function parseOpenRouterExplanation(response, data) {
+  if (!response.ok || data?.error || data?.choices?.[0]?.error) {
+    throw openRouterErrorFromResponse(response, data);
+  }
   const content = data?.choices?.[0]?.message?.content;
-  if (typeof content !== "string") throw new Error("OpenRouter returned no explanation");
+  if (typeof content !== "string" || !content.trim()) {
+    const finishReason = data?.choices?.[0]?.finish_reason;
+    const reasoningTokens = data?.usage?.completion_tokens_details?.reasoning_tokens
+      ?? data?.usage?.reasoning_tokens;
+    const details = [
+      finishReason ? `finish=${finishReason}` : null,
+      Number.isFinite(reasoningTokens) ? `reasoning_tokens=${reasoningTokens}` : null,
+    ].filter(Boolean).join(", ");
+    throw new OpenRouterError(`OpenRouter returned no explanation${details ? ` (${details})` : ""}`, {
+      statusCode: response.status,
+      provider: data?.provider ?? null,
+      errorType: "empty_response",
+      retryable: true,
+    });
+  }
 
   let parsed;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new Error("OpenRouter returned invalid JSON");
+    throw new OpenRouterError("OpenRouter returned invalid JSON", {
+      statusCode: response.status,
+      provider: data?.provider ?? null,
+      errorType: "invalid_json",
+      retryable: true,
+    });
   }
   const motif = typeof parsed?.motif === "string" ? parsed.motif : "";
   const explanation = typeof parsed?.explanation === "string" ? parsed.explanation.trim() : "";
   if (!EXPLANATION_MOTIFS.has(motif) || !explanation || explanation.length > 400) {
-    throw new Error("OpenRouter returned an invalid explanation");
+    throw new OpenRouterError("OpenRouter returned an invalid explanation", {
+      statusCode: response.status,
+      provider: data?.provider ?? null,
+      errorType: "invalid_output",
+      retryable: true,
+    });
   }
-  return { motif, explanation };
+  return {
+    motif,
+    explanation,
+    provider: data?.provider ?? null,
+    model: data?.model ?? OPENROUTER_MODEL,
+    responseId: data?.id ?? null,
+  };
+}
+
+async function callOpenRouter(facts, run) {
+  const body = {
+    model: OPENROUTER_MODEL,
+    ...(OPENROUTER_FALLBACK_MODELS.length ? { models: OPENROUTER_FALLBACK_MODELS } : {}),
+    messages: [
+      {
+        role: "system",
+        content: [
+          "Explain this chess error using only the supplied Stockfish evidence.",
+          "Do not invent moves, evaluations, threats, or tactical motifs.",
+          "The played line shows the punishment; the best line shows the alternative.",
+          "If the exact motif is not demonstrated, choose unclear.",
+          "Write in plain English for a club chess player and use at most two short sentences.",
+          "Always name pieces, for example 'the white knight on f3' or 'the black queen moves to d5'.",
+          "Board coordinates are allowed, but never use algebraic chess notation such as Nf3, e4, Qxd5, O-O, or move-number notation.",
+          "Turn the supplied move descriptions into natural prose instead of copying their sentence structure verbatim.",
+        ].join(" "),
+      },
+      { role: "user", content: JSON.stringify(facts) },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "move_explanation",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            motif: { type: "string", enum: [...EXPLANATION_MOTIFS] },
+            explanation: {
+              type: "string",
+              description: "At most two short sentences supported by the engine lines.",
+            },
+          },
+          required: ["motif", "explanation"],
+          additionalProperties: false,
+        },
+      },
+    },
+    plugins: [{ id: "response-healing" }],
+    reasoning: { enabled: false },
+    provider: {
+      require_parameters: true,
+      data_collection: "deny",
+      ...(process.env.OPENROUTER_ZDR === "true" ? { zdr: true } : {}),
+    },
+    max_tokens: 180,
+  };
+
+  let lastError;
+  for (let attempt = 1; attempt <= OPENROUTER_MAX_ATTEMPTS; attempt++) {
+    updateAgentRun(run, { state: "requesting", attempts: attempt, message: null });
+    Sentry.logger.info("openrouter.request.started", {
+      request_id: run.id,
+      attempt,
+      model: OPENROUTER_MODEL,
+    });
+    try {
+      const response = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        signal: AbortSignal.timeout(OPENROUTER_TIMEOUT_MS),
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.APP_URL || "https://pawn-patrol.example",
+          "X-OpenRouter-Title": "Pawn Patrol",
+          "X-OpenRouter-Metadata": "enabled",
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => ({}));
+      const result = parseOpenRouterExplanation(response, data);
+      updateAgentRun(run, {
+        provider: result.provider,
+        model: result.model,
+        statusCode: response.status,
+        errorType: null,
+      });
+      return result;
+    } catch (error) {
+      const normalized = error instanceof OpenRouterError
+        ? error
+        : new OpenRouterError(
+            error?.name === "TimeoutError" ? `Timed out after ${OPENROUTER_TIMEOUT_MS}ms` : String(error?.message || error),
+            { errorType: error?.name === "TimeoutError" ? "timeout" : "network", retryable: true },
+          );
+      lastError = normalized;
+      updateAgentRun(run, {
+        provider: normalized.provider,
+        statusCode: normalized.statusCode,
+        errorType: normalized.errorType,
+        message: normalized.message,
+      });
+      Sentry.logger.warn("openrouter.request.attempt_failed", {
+        request_id: run.id,
+        attempt,
+        status_code: normalized.statusCode,
+        error_type: normalized.errorType,
+        provider: normalized.provider,
+      });
+      if (!normalized.retryable || attempt === OPENROUTER_MAX_ATTEMPTS) break;
+      updateAgentRun(run, { state: "retrying" });
+      const delayMs = normalized.retryAfterMs > 0
+        ? Math.min(normalized.retryAfterMs, 10_000)
+        : 600 * (2 ** (attempt - 1));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
 }
 
 async function handleMoveExplanationRequest(req, res) {
@@ -748,28 +966,59 @@ async function handleMoveExplanationRequest(req, res) {
   const facts = {
     grade: analysis.grade,
     fenBefore: analysis.fenBefore,
-    playedMove: analysis.playedLineSan[0],
-    playedLine: analysis.playedLineSan,
-    bestMove: analysis.bestLineSan[0],
-    bestLine: analysis.bestLineSan,
+    playedMove: analysis.playedLineDescription[0],
+    playedLine: analysis.playedLineDescription,
+    bestMove: analysis.bestLineDescription[0],
+    bestLine: analysis.bestLineDescription,
     expectedPointsBefore: analysis.bestExpectedPoints,
     expectedPointsAfter: analysis.playedExpectedPoints,
   };
   const cacheKey = createHash("sha256").update(JSON.stringify(facts)).digest("hex");
   const cached = explanationCache.get(cacheKey);
   if (cached) {
-    sendJson(res, 200, { ...lines, ...cached, cached: true });
+    const run = beginAgentRun("cached");
+    finishAgentRun(run, "cached", { message: "Served from the local explanation cache." });
+    sendJson(res, 200, { ...lines, ...cached, cached: true, requestId: run.id });
     return;
   }
 
+  const run = beginAgentRun();
   try {
-    const explanation = await callOpenRouter(facts);
+    const result = await callOpenRouter(facts, run);
+    const explanation = { motif: result.motif, explanation: result.explanation };
     cacheExplanation(cacheKey, explanation);
-    sendJson(res, 200, { ...lines, ...explanation, cached: false });
+    finishAgentRun(run, "succeeded", {
+      provider: result.provider,
+      model: result.model,
+      message: "Explanation generated.",
+    });
+    Sentry.logger.info("openrouter.request.succeeded", {
+      request_id: run.id,
+      attempts: run.attempts,
+      duration_ms: run.durationMs,
+      model: run.model,
+      provider: run.provider,
+      response_id: result.responseId,
+    });
+    sendJson(res, 200, { ...lines, ...explanation, cached: false, requestId: run.id });
   } catch (error) {
-    console.error("OpenRouter move explanation failed:", error.message);
+    finishAgentRun(run, "failed", {
+      statusCode: error?.statusCode ?? run.statusCode,
+      errorType: error?.errorType ?? run.errorType ?? "unknown",
+      provider: error?.provider ?? run.provider,
+      message: String(error?.message || "Unknown OpenRouter error").slice(0, 240),
+    });
+    console.error("OpenRouter move explanation failed:", {
+      requestId: run.id,
+      attempts: run.attempts,
+      statusCode: run.statusCode,
+      errorType: run.errorType,
+      provider: run.provider,
+      message: run.message,
+    });
     sendJson(res, 502, {
       ...lines,
+      requestId: run.id,
       error: "The AI explanation is unavailable; the verified engine lines are shown instead.",
     });
   }
@@ -865,6 +1114,10 @@ async function handleReviewRequest(req, res, url) {
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
+  if (req.method === "GET" && url.pathname === "/api/agent-status") {
+    sendJson(res, 200, agentStatusPayload());
+    return;
+  }
   if (handleGamesRequest(req, res, url)) return;
   if (url.pathname === "/api/move-explanation") {
     void handleMoveExplanationRequest(req, res);
