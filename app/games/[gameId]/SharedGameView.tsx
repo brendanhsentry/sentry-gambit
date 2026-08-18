@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChessgroundBoard } from "../../ChessgroundBoard";
+import { gradeLabel, useMoveAnalysis } from "../../move-analysis";
 import {
   formatClock,
   formatDate,
@@ -16,18 +17,55 @@ import {
   type SavedMove,
 } from "../game-replay";
 
+type MoveExplanation =
+  | { phase: "loading" }
+  | {
+      phase: "done" | "error";
+      explanation: string | null;
+      playedLine: string[];
+      bestLine: string[];
+      requestId?: string;
+      message?: string;
+    };
+
+const EXPLAINABLE_GRADES = new Set([
+  "inaccuracy",
+  "mistake",
+  "miss",
+  "blunder",
+]);
+
 export function SharedGameView({ gameId }: { gameId: string }) {
   const [game, setGame] = useState<SavedGame | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
   const [replayPly, setReplayPly] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [analysisPly, setAnalysisPly] = useState<number | null>(null);
+  const [moveExplanations, setMoveExplanations] = useState<
+    Record<number, MoveExplanation>
+  >({});
+  const explanationRequestsRef = useRef(new Set<number>());
   const movePairs = useMemo(() => pairMoves(game?.history ?? []), [game]);
   const replay = useMemo(
     () => replayPosition(game, replayPly),
     [game, replayPly],
   );
   const lastPly = game?.history.length ?? 0;
+  const analysis = useMoveAnalysis(
+    game?.id ?? gameId,
+    game?.history ?? [],
+    Boolean(game?.history.length),
+  );
+  const selectedReview = analysisPly ? analysis.moves[analysisPly - 1] : null;
+  const selectedExplanation = analysisPly
+    ? moveExplanations[analysisPly]
+    : null;
+  const explainableMoves = analysis.moves.flatMap((reviewed, index) =>
+    reviewed?.evidence && EXPLAINABLE_GRADES.has(reviewed.grade)
+      ? [{ index, reviewed, move: game?.history[index] }]
+      : [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -44,6 +82,8 @@ export function SharedGameView({ gameId }: { gameId: string }) {
             if (!active) return;
             setGame(loaded);
             setReplayPly(loaded.history.length);
+            setAnalysisPly(null);
+            setMoveExplanations({});
             setLoading(false);
             return;
           }
@@ -103,6 +143,82 @@ export function SharedGameView({ gameId }: { gameId: string }) {
     setIsPlaying(true);
   }
 
+  async function requestMoveExplanation(index: number) {
+    const ply = index + 1;
+    setAnalysisPly(ply);
+    goToPly(ply);
+
+    const reviewed = analysis.moves[index];
+    if (
+      !reviewed?.evidence ||
+      !EXPLAINABLE_GRADES.has(reviewed.grade)
+    )
+      return;
+
+    const existing = moveExplanations[ply];
+    if (existing?.phase === "loading" || existing?.phase === "done") return;
+    if (explanationRequestsRef.current.has(ply)) return;
+    explanationRequestsRef.current.add(ply);
+    setMoveExplanations((current) => ({
+      ...current,
+      [ply]: { phase: "loading" },
+    }));
+    try {
+      const response = await fetch("/api/move-explanation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grade: reviewed.grade, ...reviewed.evidence }),
+      });
+      const data = (await response.json()) as {
+        explanation?: string;
+        playedLine?: string[];
+        bestLine?: string[];
+        requestId?: string;
+        error?: string;
+      };
+      const playedLine = Array.isArray(data.playedLine) ? data.playedLine : [];
+      const bestLine = Array.isArray(data.bestLine) ? data.bestLine : [];
+      const explanation = data.explanation;
+      if (!response.ok || !explanation) {
+        setMoveExplanations((current) => ({
+          ...current,
+          [ply]: {
+            phase: "error",
+            explanation: null,
+            playedLine,
+            bestLine,
+            requestId: data.requestId,
+            message: data.error ?? "The AI explanation is unavailable.",
+          },
+        }));
+        return;
+      }
+      setMoveExplanations((current) => ({
+        ...current,
+        [ply]: {
+          phase: "done",
+          explanation,
+          playedLine,
+          bestLine,
+          requestId: data.requestId,
+        },
+      }));
+    } catch {
+      setMoveExplanations((current) => ({
+        ...current,
+        [ply]: {
+          phase: "error",
+          explanation: null,
+          playedLine: [],
+          bestLine: [],
+          message: "The AI explanation could not be reached.",
+        },
+      }));
+    } finally {
+      explanationRequestsRef.current.delete(ply);
+    }
+  }
+
   return (
     <main className="app-shell archive-shell">
       <header className="topbar">
@@ -132,7 +248,6 @@ export function SharedGameView({ gameId }: { gameId: string }) {
           <div>
             <span className="panel-kicker">PERMANENT RECORD</span>
             <h1>Game replay</h1>
-            <p>A read-only record of a completed Pawn Patrol game.</p>
           </div>
         </div>
 
@@ -207,6 +322,14 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                     {replayPly === 0
                       ? "STARTING POSITION"
                       : `POSITION ${replayPly} OF ${lastPly}`}
+                    {analysis.status === "loading" ||
+                    analysis.status === "analyzing"
+                      ? ` · GRADING ${analysis.completed}/${lastPly}`
+                      : analysis.status === "complete"
+                        ? " · GRADES READY"
+                        : analysis.status === "error"
+                          ? " · GRADES UNAVAILABLE"
+                          : ""}
                   </span>
                 </div>
                 <div className="record-replay-layout">
@@ -299,13 +422,17 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                             [pair.w, pair.b] as Array<SavedMove | undefined>
                           ).map((move, index) => {
                             const ply = (pair.number - 1) * 2 + index + 1;
+                            const reviewed = analysis.moves[ply - 1];
+                            const grade = reviewed
+                              ? gradeLabel(reviewed.grade)
+                              : null;
                             return move ? (
                               <button
                                 key={index}
                                 className={replayPly === ply ? "is-current" : ""}
-                                title={`Played ${formatDate(move.playedAt)}`}
+                                title={`${grade ? `${grade} · ` : ""}Played ${formatDate(move.playedAt)}${reviewed?.expectedPointsLoss === null || reviewed?.expectedPointsLoss === undefined ? "" : ` · ${(reviewed.expectedPointsLoss * 100).toFixed(1)} expected points lost`}`}
                                 onClick={() => goToPly(ply)}
-                                aria-label={`Show position after ${move.san}`}
+                                aria-label={`Show position after ${move.san}${grade ? `, graded ${grade}` : ""}`}
                               >
                                 <span className="record-move-notation">
                                   <strong>{move.san}</strong>
@@ -316,6 +443,13 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                                       : ""}
                                   </small>
                                 </span>
+                                {reviewed && (
+                                  <span
+                                    className={`move-grade move-grade--${reviewed.grade}`}
+                                  >
+                                    {grade}
+                                  </span>
+                                )}
                               </button>
                             ) : (
                               <div key={index} className="empty-cell">
@@ -328,6 +462,129 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                     </div>
                   </div>
                 </div>
+
+                <section className="ai-coach" aria-labelledby="replay-ai-coach-title">
+                  <div className="ai-coach-head">
+                    <span id="replay-ai-coach-title">COACH MING</span>
+                  </div>
+                  {analysis.status === "loading" ||
+                  analysis.status === "analyzing" ||
+                  analysis.status === "idle" ? (
+                    <p>
+                      Stockfish is grading every move. Coach tips will appear
+                      here when the review finishes.
+                    </p>
+                  ) : analysis.status === "error" ? (
+                    <p>
+                      Stockfish could not finish the local review, so the AI
+                      coach does not have reliable evidence yet.
+                    </p>
+                  ) : explainableMoves.length ? (
+                    <>
+                      <p>
+                        Choose a flagged move to ask the AI coach what went
+                        wrong and how to improve it.
+                      </p>
+                      <div className="ai-coach-moves">
+                        {explainableMoves.map(({ index, reviewed, move }) => (
+                          <button
+                            key={index}
+                            onClick={() => void requestMoveExplanation(index)}
+                          >
+                            <strong>
+                              {Math.floor(index / 2) + 1}
+                              {index % 2 ? "…" : "."} {move?.san}
+                            </strong>
+                            <span
+                              className={`move-grade move-grade--${reviewed.grade}`}
+                            >
+                              {gradeLabel(reviewed.grade)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p>
+                      Stockfish did not flag any moves that need an AI coach
+                      explanation in this game.
+                    </p>
+                  )}
+                </section>
+
+                {analysisPly &&
+                  selectedReview?.evidence &&
+                  EXPLAINABLE_GRADES.has(selectedReview.grade) && (
+                    <div className="move-explanation" aria-live="polite">
+                      <div className="move-explanation-head">
+                        <span
+                          className={`move-grade move-grade--${selectedReview.grade}`}
+                        >
+                          {gradeLabel(selectedReview.grade)}
+                        </span>
+                        <strong>
+                          {Math.ceil(analysisPly / 2)}
+                          {analysisPly % 2 ? "." : "…"}{" "}
+                          {game.history[analysisPly - 1]?.san}
+                        </strong>
+                        {selectedReview.expectedPointsLoss !== null && (
+                          <small>
+                            {(selectedReview.expectedPointsLoss * 100).toFixed(
+                              1,
+                            )}{" "}
+                            expected points lost
+                          </small>
+                        )}
+                      </div>
+                      {selectedExplanation?.phase === "loading" ||
+                      !selectedExplanation ? (
+                        <p className="move-explanation-loading">
+                          Asking the coach to explain Stockfish&apos;s line…
+                        </p>
+                      ) : (
+                        <>
+                          {selectedExplanation.phase === "done" && (
+                            <p className="move-explanation-copy">
+                              {selectedExplanation.explanation}
+                            </p>
+                          )}
+                          {selectedExplanation.phase === "error" && (
+                            <p className="move-explanation-error">
+                              {selectedExplanation.message}
+                              <button
+                                onClick={() =>
+                                  void requestMoveExplanation(analysisPly - 1)
+                                }
+                              >
+                                Retry
+                              </button>
+                            </p>
+                          )}
+                          {selectedExplanation.requestId && (
+                            <p className="move-explanation-request">
+                              Agent run #{selectedExplanation.requestId}
+                            </p>
+                          )}
+                          {selectedExplanation.playedLine.length > 0 && (
+                            <div className="engine-line">
+                              <span>ENGINE CONTINUATION</span>
+                              <code>
+                                {selectedExplanation.playedLine.join(" ")}
+                              </code>
+                            </div>
+                          )}
+                          {selectedExplanation.bestLine.length > 0 && (
+                            <div className="engine-line engine-line--best">
+                              <span>BETTER LINE</span>
+                              <code>
+                                {selectedExplanation.bestLine.join(" ")}
+                              </code>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
               </section>
             </>
           )}
@@ -336,7 +593,7 @@ export function SharedGameView({ gameId }: { gameId: string }) {
 
       <footer>
         <span>PAWN PATROL · EST. 2026</span>
-        <span>PERMANENT GAME RECORD · READ-ONLY REPLAY</span>
+        <span>PERMANENT GAME RECORD · MOVE-BY-MOVE REPLAY</span>
       </footer>
     </main>
   );

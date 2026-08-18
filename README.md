@@ -72,7 +72,7 @@ Click a saved game, a move in the move sheet, or the replay arrows to step
 through its positions. You can change the local database location with:
 
 Games started after the permanent-link feature was deployed can also be shared
-as read-only replays at `/games/<game-id>`. The UUID link is unlisted but can be
+as replays at `/games/<game-id>`. The UUID link is unlisted but can be
 opened by anyone who has it; older saved games remain private to their players.
 
 ```bash
