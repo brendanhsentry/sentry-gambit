@@ -1,12 +1,14 @@
 "use client";
 
-import { Chess, type Square } from "chess.js";
+import { Chess } from "chess.js";
+import type { Key } from "@lichess-org/chessground/types";
 import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PIECE_GLYPHS } from "../chess-pieces";
+import { ChessgroundBoard } from "../ChessgroundBoard";
 import { IconSeer } from "../IconSeer";
 import {
   gradeLabel,
@@ -50,8 +52,6 @@ type SeerReview =
   | { phase: "error"; message: string };
 
 const START_FEN = new Chess().fen();
-const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
-const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const;
 function browserPlayerKey() {
   const storageKey = "pawn-patrol-player-key";
   const existing = window.localStorage.getItem(storageKey);
@@ -202,7 +202,7 @@ export function PastGamesView() {
       : (selectedGame?.history[replayPly - 1]?.fenAfter ??
         selectedGame?.finalFen ??
         START_FEN);
-  const replayBoard = useMemo(() => {
+  const replayPosition = useMemo(() => {
     try {
       return new Chess(replayFen);
     } catch {
@@ -210,6 +210,13 @@ export function PastGamesView() {
     }
   }, [replayFen]);
   const replayMove = selectedGame?.history[replayPly - 1];
+  const replayMoveSquares = useMemo(
+    () =>
+      replayMove
+        ? ([replayMove.from as Key, replayMove.to as Key] as Key[])
+        : undefined,
+    [replayMove],
+  );
   const lastPly = selectedGame?.history.length ?? 0;
   const analysis = useMoveAnalysis(
     selectedGame?.id ?? "past-game",
@@ -640,44 +647,23 @@ export function PastGamesView() {
                   <div className="record-replay-layout">
                     <div className="record-board-column">
                       <div className="record-board">
-                        <div
-                          className="chessboard"
-                          role="grid"
-                          aria-label={`Chess position after ${replayPly} of ${lastPly} moves`}
-                        >
-                          {RANKS.flatMap((rank, rankIndex) =>
-                            FILES.map((file, fileIndex) => {
-                              const square = `${file}${rank}` as Square;
-                              const piece = replayBoard.get(square);
-                              const dark = (rank + fileIndex) % 2 === 1;
-                              const wasMoved =
-                                replayMove?.from === square ||
-                                replayMove?.to === square;
-                              return (
-                                <div
-                                  key={square}
-                                  className={`square ${dark ? "square--dark" : "square--light"} ${wasMoved ? "was-moved" : ""}`}
-                                  role="gridcell"
-                                  aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ""}`}
-                                >
-                                  {fileIndex === 0 && (
-                                    <span className="rank-label">{rank}</span>
-                                  )}
-                                  {rankIndex === 7 && (
-                                    <span className="file-label">{file}</span>
-                                  )}
-                                  {piece && (
-                                    <span
-                                      className={`piece piece--${piece.color}`}
-                                    >
-                                      {PIECE_GLYPHS[piece.type]}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            }),
-                          )}
-                        </div>
+                        <ChessgroundBoard
+                          fen={replayFen}
+                          orientation="white"
+                          turnColor={
+                            replayPosition.turn() === "w" ? "white" : "black"
+                          }
+                          check={
+                            replayPosition.isCheck()
+                              ? replayPosition.turn() === "w"
+                                ? "white"
+                                : "black"
+                              : false
+                          }
+                          lastMove={replayMoveSquares}
+                          viewOnly
+                          ariaLabel={`Chess position after ${replayPly} of ${lastPly} moves`}
+                        />
                       </div>
                       <div
                         className="record-replay-controls"

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Rubik } from "next/font/google";
 import { headers } from "next/headers";
+import "@lichess-org/chessground/assets/chessground.base.css";
+import "@lichess-org/chessground/assets/chessground.cburnett.css";
 import "./globals.css";
 
 const geistSans = Geist({

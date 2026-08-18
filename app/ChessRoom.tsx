@@ -6,15 +6,19 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
+import type {
+  Color as GroundColor,
+  Dests,
+  Key,
+  SquareClasses,
+} from "@lichess-org/chessground/types";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ChessgroundBoard } from "./ChessgroundBoard";
 import { IconSeer } from "./IconSeer";
 import {
   playCapture,
@@ -51,16 +55,6 @@ type GameState = {
   drawOffer?: { by: Color } | null;
 };
 
-type BoardGhost = {
-  from: Square;
-  to: Square;
-  glyph: string;
-  color: Color;
-  fade?: boolean;
-};
-
-type BoardAnim = { id: number; ghosts: BoardGhost[]; hide: Set<Square> };
-
 type ServerMessage =
   | { type: "welcome"; role: Role; playerId: string; state: GameState }
   | { type: "state"; state: GameState }
@@ -79,7 +73,6 @@ type MoveExplanation =
     };
 
 const START_FEN = new Chess().fen();
-const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 const TRAY_ORDER = ["q", "r", "b", "n", "p"] as const;
 const PIECE_VALUES: Record<PieceSymbol, number> = {
   p: 1,
@@ -91,13 +84,6 @@ const PIECE_VALUES: Record<PieceSymbol, number> = {
 };
 
 type BadgeKind = "win" | "draw" | "mate" | "time" | "resign";
-const BADGE_GLYPHS: Record<BadgeKind, string> = {
-  win: "✓",
-  draw: "½",
-  mate: "#",
-  time: "⌛︎",
-  resign: "⚑",
-};
 const STARTING_COUNTS = { p: 8, n: 2, b: 2, r: 2, q: 1 };
 
 // Pieces missing from the board versus what each side should still own,
@@ -272,7 +258,6 @@ export function ChessRoom() {
     "idle" | "connecting" | "online" | "offline"
   >("idle");
   const [state, setState] = useState<GameState | null>(null);
-  const [selected, setSelected] = useState<Square | null>(null);
   const [promotion, setPromotion] = useState<{
     from: Square;
     to: Square;
@@ -666,79 +651,23 @@ export function ChessRoom() {
     setMuted(next);
   }
 
-  const [anim, setAnim] = useState<BoardAnim | null>(null);
-  const [drag, setDrag] = useState<{
-    from: Square;
-    glyph: string;
-    color: Color;
-  } | null>(null);
-  const boardRef = useRef<HTMLDivElement | null>(null);
-  const dragElRef = useRef<HTMLSpanElement | null>(null);
-  const animIdRef = useRef(0);
   const prevBoardRef = useRef<{ key: string; ply: number; fen: string } | null>(
     null,
   );
   const boardKey = currentGameId ?? "";
 
-  // Slide pieces between squares whenever the position advances by one ply.
-  useLayoutEffect(() => {
+  useEffect(() => {
     const prev = prevBoardRef.current;
     prevBoardRef.current = { key: boardKey, ply: viewedPly, fen: viewFen };
     if (!prev || prev.key !== boardKey || prev.fen === viewFen) return;
     const forward = viewedPly - prev.ply === 1;
-    if (!forward && prev.ply - viewedPly !== 1) {
-      setAnim(null);
-      return;
-    }
+    if (!forward && prev.ply - viewedPly !== 1) return;
     const move = viewHistory[(forward ? viewedPly : prev.ply) - 1];
     if (!move) return;
-    const prevChess = new Chess(prev.fen);
-    const from = forward ? move.from : move.to;
-    const to = forward ? move.to : move.from;
-    const mover = prevChess.get(from);
-    if (!mover) return;
-    const ghosts: BoardGhost[] = [];
-    const hide = new Set<Square>([to]);
-    if (forward) {
-      const capturedAt = prevChess.get(move.to)
-        ? move.to
-        : move.san.includes("x")
-          ? (`${move.to[0]}${move.from[1]}` as Square)
-          : null;
-      const victim = capturedAt ? prevChess.get(capturedAt) : null;
-      if (victim && victim.color !== move.color)
-        ghosts.push({
-          from: capturedAt!,
-          to: capturedAt!,
-          glyph: PIECE_GLYPHS[victim.type],
-          color: victim.color,
-          fade: true,
-        });
-    }
-    ghosts.push({ from, to, glyph: PIECE_GLYPHS[mover.type], color: mover.color });
-    if (move.san.startsWith("O-O")) {
-      const rank = move.color === "w" ? "1" : "8";
-      const queenside = move.san.startsWith("O-O-O");
-      const rookHome = `${queenside ? "a" : "h"}${rank}` as Square;
-      const rookCastled = `${queenside ? "d" : "f"}${rank}` as Square;
-      const rookFrom = forward ? rookHome : rookCastled;
-      const rookTo = forward ? rookCastled : rookHome;
-      ghosts.push({
-        from: rookFrom,
-        to: rookTo,
-        glyph: PIECE_GLYPHS.r,
-        color: move.color,
-      });
-      hide.add(rookTo);
-    }
-    animIdRef.current += 1;
-    setAnim({ id: animIdRef.current, ghosts, hide });
     if (forward && (move.san.includes("+") || move.san.includes("#")))
       playCheck();
-    else if (forward && ghosts.some((ghost) => ghost.fade)) playCapture();
+    else if (forward && move.san.includes("x")) playCapture();
     else playMove();
-    const timer = window.setTimeout(() => setAnim(null), 180);
-    return () => window.clearTimeout(timer);
   }, [boardKey, viewedPly, viewFen, viewHistory]);
 
   // Chime when the game we were watching or playing reaches a result.
@@ -756,13 +685,6 @@ export function ChessRoom() {
       playGameEnd();
   }, [state]);
 
-  const legalTargets = useMemo(() => {
-    if (!selected) return new Set<string>();
-    return new Set(
-      chess.moves({ square: selected, verbose: true }).map((move) => move.to),
-    );
-  }, [chess, selected]);
-
   const connect = useCallback((nextRoom: string, nextName: string, bot?: BotKey) => {
     const cleanRoom = nextRoom
       .toUpperCase()
@@ -776,7 +698,6 @@ export function ChessRoom() {
     setConnection("connecting");
     setRoom(cleanRoom);
     setNotice("");
-    setSelected(null);
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const playerKey = browserPlayerKey();
     const socket = new WebSocket(
@@ -795,7 +716,6 @@ export function ChessRoom() {
         setState(message.state);
       } else if (message.type === "state") {
         setState(message.state);
-        setSelected(null);
         setPromotion(null);
       } else if (message.type === "error") {
         setNotice(message.message);
@@ -831,10 +751,14 @@ export function ChessRoom() {
   }, [connection, room, name, currentBotKey, connect]);
 
   const orientation: Color = role === "b" ? "b" : "w";
-  const ranks =
-    orientation === "w" ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
-  const files = orientation === "w" ? [...FILES] : [...FILES].reverse();
   const lastMove = viewHistory[viewedPly - 1];
+  const lastMoveSquares = useMemo(
+    () =>
+      lastMove
+        ? ([lastMove.from as Key, lastMove.to as Key] as Key[])
+        : undefined,
+    [lastMove],
+  );
   const topColor: Color = orientation === "w" ? "b" : "w";
   const bottomColor: Color = orientation;
   const displayedPlayers = state?.players ?? { w: null, b: null };
@@ -875,12 +799,39 @@ export function ChessRoom() {
       : { w: reason, b: "win" };
   }, [state?.result, viewedPly, lastPly]);
 
-  const canInteract =
+  const canControlBoard =
     replayPly === null &&
     !!state &&
     !state.result &&
-    role !== "spectator" &&
-    chess.turn() === role;
+    role !== "spectator";
+  const canInteract = canControlBoard && chess.turn() === role;
+
+  const finishBadgeSquares = useMemo(() => {
+    const classes: SquareClasses = new Map();
+    if (!finishBadges) return classes;
+    for (const color of ["w", "b"] as const) {
+      const king = chess.findPiece({ type: "k", color })[0];
+      if (king) {
+        classes.set(
+          king as Key,
+          `king-badge king-badge--${finishBadges[color]}`,
+        );
+      }
+    }
+    return classes;
+  }, [chess, finishBadges]);
+
+  const legalDests = useMemo(() => {
+    const dests: Dests = new Map();
+    if (!canInteract) return dests;
+    for (const move of chess.moves({ verbose: true })) {
+      const from = move.from as Key;
+      const current = dests.get(from);
+      if (current) current.push(move.to as Key);
+      else dests.set(from, [move.to as Key]);
+    }
+    return dests;
+  }, [canInteract, chess]);
 
   function tryMove(from: Square, to: Square) {
     if (role === "spectator") return false;
@@ -896,85 +847,9 @@ export function ChessRoom() {
     return true;
   }
 
-  function handleSquare(square: Square) {
-    if (!canInteract) return;
-    const piece = chess.get(square);
-    if (selected === square) {
-      setSelected(null);
-      return;
-    }
-    if (!selected || piece?.color === role) {
-      if (piece?.color === role) setSelected(square);
-      return;
-    }
-    // A failed target keeps the piece selected so a mis-click costs nothing.
-    tryMove(selected, square);
-  }
-
-  function handlePointerDown(event: ReactPointerEvent, square: Square) {
-    if (!canInteract || event.button !== 0) return;
-    const piece = chess.get(square);
-    if (piece?.color !== role) return;
-    const board = boardRef.current;
-    if (!board) return;
-    event.preventDefault();
-    setSelected(square);
-    const startX = event.clientX;
-    const startY = event.clientY;
-    let started = false;
-    const place = (ev: PointerEvent) => {
-      const rect = board.getBoundingClientRect();
-      const x = ev.clientX - rect.left - board.clientLeft;
-      const y = ev.clientY - rect.top - board.clientTop;
-      const el = dragElRef.current;
-      if (el) {
-        const half = board.clientWidth / 16;
-        el.style.transform = `translate(${x - half}px, ${y - half}px)`;
-        el.style.visibility = "visible";
-      }
-      return { x, y };
-    };
-    const onMove = (ev: PointerEvent) => {
-      if (!started) {
-        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
-        started = true;
-        setDrag({
-          from: square,
-          glyph: PIECE_GLYPHS[piece.type],
-          color: piece.color,
-        });
-      }
-      place(ev);
-    };
-    const finish = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", finish);
-      setDrag(null);
-    };
-    const onUp = (ev: PointerEvent) => {
-      const wasStarted = started;
-      const { x, y } = place(ev);
-      finish();
-      if (!wasStarted) return;
-      const size = board.clientWidth / 8;
-      const fx = Math.floor(x / size);
-      const fy = Math.floor(y / size);
-      if (fx < 0 || fx > 7 || fy < 0 || fy > 7) return;
-      const file = FILES[orientation === "w" ? fx : 7 - fx];
-      const rank = orientation === "w" ? 8 - fy : fy + 1;
-      const target = `${file}${rank}` as Square;
-      if (target !== square) tryMove(square, target);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", finish);
-  }
-
   function goToPly(ply: number) {
     const next = Math.max(0, Math.min(lastPly, ply));
     setReplayPly(next === lastPly ? null : next);
-    setSelected(null);
     setPromotion(null);
   }
 
@@ -1168,110 +1043,30 @@ export function ChessRoom() {
           />
 
           <div className="board-wrap">
-            <div
-              ref={boardRef}
-              className={`chessboard ${drag ? "chessboard--dragging" : ""}`}
-              role="grid"
-              aria-label={`Chess board, ${orientation === "w" ? "white" : "black"} orientation`}
-            >
-              {ranks.flatMap((rank, rankIndex) =>
-                files.map((file, fileIndex) => {
-                  const square = `${file}${rank}` as Square;
-                  const piece = chess.get(square);
-                  const dark = (rank + FILES.indexOf(file)) % 2 === 1;
-                  const isSelected = selected === square;
-                  const isTarget = legalTargets.has(square);
-                  const wasMoved =
-                    lastMove?.from === square || lastMove?.to === square;
-                  const isCheckedKing =
-                    piece?.type === "k" &&
-                    piece.color === chess.turn() &&
-                    chess.isCheck();
-                  const grabbable = canInteract && piece?.color === role;
-                  return (
-                    <button
-                      key={square}
-                      className={`square ${dark ? "square--dark" : "square--light"} ${isSelected ? "is-selected" : ""} ${wasMoved ? "was-moved" : ""} ${isCheckedKing ? "is-check" : ""} ${grabbable ? "square--grabbable" : ""}`}
-                      onClick={() => handleSquare(square)}
-                      onPointerDown={(event) => handlePointerDown(event, square)}
-                      role="gridcell"
-                      aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ""}`}
-                    >
-                      {fileIndex === 0 && (
-                        <span className="rank-label">{rank}</span>
-                      )}
-                      {rankIndex === 7 && (
-                        <span className="file-label">{file}</span>
-                      )}
-                      {piece && (
-                        <span
-                          className={`piece piece--${piece.color}`}
-                          style={
-                            anim?.hide.has(square) || drag?.from === square
-                              ? { visibility: "hidden" }
-                              : undefined
-                          }
-                        >
-                          {PIECE_GLYPHS[piece.type]}
-                        </span>
-                      )}
-                      {isTarget && (
-                        <span className={piece ? "capture-ring" : "move-dot"} />
-                      )}
-                      {piece?.type === "k" && finishBadges && (
-                        <span
-                          className={`king-badge king-badge--${finishBadges[piece.color]}`}
-                          aria-hidden
-                        >
-                          {BADGE_GLYPHS[finishBadges[piece.color]]}
-                        </span>
-                      )}
-                    </button>
-                  );
-                }),
-              )}
-              {anim && (
-                <div className="board-anim-layer" aria-hidden>
-                  {anim.ghosts.map((ghost, index) => {
-                    const fromX = files.indexOf(
-                      ghost.from[0] as (typeof FILES)[number],
-                    );
-                    const fromY = ranks.indexOf(Number(ghost.from[1]));
-                    const toX = files.indexOf(
-                      ghost.to[0] as (typeof FILES)[number],
-                    );
-                    const toY = ranks.indexOf(Number(ghost.to[1]));
-                    return (
-                      <span
-                        key={`${anim.id}-${index}`}
-                        className={`board-ghost ${ghost.fade ? "board-ghost--fade" : "board-ghost--slide"}`}
-                        style={
-                          {
-                            left: `${toX * 12.5}%`,
-                            top: `${toY * 12.5}%`,
-                            "--dx": `${(fromX - toX) * 100}%`,
-                            "--dy": `${(fromY - toY) * 100}%`,
-                          } as CSSProperties
-                        }
-                      >
-                        <span className={`piece piece--${ghost.color}`}>
-                          {ghost.glyph}
-                        </span>
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-              {drag && (
-                <div className="drag-layer" aria-hidden>
-                  <span className="drag-piece" ref={dragElRef}>
-                    <span className={`piece piece--${drag.color}`}>
-                      {drag.glyph}
-                    </span>
-                  </span>
-                </div>
-              )}
-            </div>
+            <ChessgroundBoard
+              fen={viewFen}
+              orientation={orientation === "w" ? "white" : "black"}
+              turnColor={chess.turn() === "w" ? "white" : "black"}
+              check={
+                chess.isCheck()
+                  ? chess.turn() === "w"
+                    ? "white"
+                    : "black"
+                  : false
+              }
+              lastMove={lastMoveSquares}
+              movableColor={
+                canControlBoard
+                  ? ((role === "w" ? "white" : "black") as GroundColor)
+                  : undefined
+              }
+              dests={legalDests}
+              premoveEnabled={canControlBoard}
+              customSquareClasses={finishBadgeSquares}
+              onMove={(from, to) => tryMove(from as Square, to as Square)}
+              resetKey={promotion ? `${promotion.from}${promotion.to}` : ""}
+              ariaLabel={`Chess board, ${orientation === "w" ? "white" : "black"} orientation`}
+            />
 
             {connection === "idle" && (
               <div className="lobby-card">
