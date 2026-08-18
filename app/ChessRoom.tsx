@@ -995,9 +995,6 @@ export function ChessRoom() {
             PAWN <em>PATROL</em>
           </span>
         </Link>
-        <div className="topbar-note">
-          <span className="live-dot" /> LIVE TABLES · RAPID 10
-        </div>
         <div className="topbar-actions">
           <Link className="text-button" href="/games">
             Past games

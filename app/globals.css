@@ -57,10 +57,9 @@ button { color: inherit; }
 .brand-mark { width: 42px; height: 38px; display: grid; place-items: center; border-right: 1px solid var(--line); padding-right: 12px; }
 .brand-mark img { width: 30px; height: 30px; object-fit: contain; }
 .topbar-note { font: 600 10px/1 var(--font-geist-mono), monospace; letter-spacing: 0.13em; color: #52665e; }
-.live-dot { width: 6px; height: 6px; display: inline-block; border-radius: 50%; background: var(--amber); margin-right: 8px; box-shadow: 0 0 0 4px rgba(217,154,66,.13); }
 .text-button { justify-self: end; border: 0; border-bottom: 1px solid var(--green); background: transparent; padding: 6px 0; cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; }
 .topbar > .text-button { justify-self: end; text-decoration: none; }
-.topbar-actions { justify-self: end; display: flex; align-items: center; gap: 20px; }
+.topbar-actions { grid-column: -2 / -1; justify-self: end; display: flex; align-items: center; gap: 20px; }
 .topbar-actions .text-button { text-decoration: none; }
 
 .game-layout {
@@ -314,11 +313,6 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .primary-button { height: 42px; }
   footer { padding: 13px 16px; gap: 16px; line-height: 1.4; }
   footer span:last-child { text-align: right; }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .live-dot { animation: pulse 2.2s ease-in-out infinite; }
-  @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(217,154,66,0); } }
 }
 
 /* Seer review widget — Sentry's Seer drawer structure, recolored to the club
