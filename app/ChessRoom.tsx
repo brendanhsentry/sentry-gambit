@@ -341,6 +341,17 @@ export function ChessRoom() {
     return () => window.removeEventListener("keydown", onKey);
   }, [seerExpanded]);
 
+  // The widget preview is clipped, not scrollable; the fade + "read more"
+  // affordance only appears when the verdict actually overflows the clip.
+  const seerPreviewRef = useRef<HTMLDivElement | null>(null);
+  const [seerOverflows, setSeerOverflows] = useState(false);
+  useEffect(() => {
+    if (seer.phase !== "done") return;
+    const el = seerPreviewRef.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (el) setSeerOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [seer]);
+
   const [seerCopied, setSeerCopied] = useState(false);
   const copySeerReview = useCallback(() => {
     if (seer.phase !== "done") return;
@@ -807,8 +818,16 @@ export function ChessRoom() {
                   </div>
                 )}
                 {seer.phase === "done" && (
-                  <div className="seer-md">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{seer.text}</ReactMarkdown>
+                  <div className="seer-preview">
+                    <div className="seer-clip">
+                      <div className="seer-md seer-md--preview" ref={seerPreviewRef}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{seer.text}</ReactMarkdown>
+                      </div>
+                      {seerOverflows && <div className="seer-fade" aria-hidden />}
+                    </div>
+                    {seerOverflows && (
+                      <button className="seer-more" onClick={() => setSeerExpanded(true)}>Read the full review ↗</button>
+                    )}
                   </div>
                 )}
                 {seer.phase === "error" && (
