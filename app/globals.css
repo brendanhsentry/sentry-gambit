@@ -91,7 +91,13 @@ button { color: inherit; }
 .clock--active { background: var(--green); color: var(--ivory); box-shadow: inset 4px 0 var(--amber); }
 
 .board-wrap { position: relative; box-shadow: 0 22px 50px rgba(23, 44, 36, 0.15), 0 2px 8px rgba(23, 44, 36, .16); }
-.chessboard { display: grid; grid-template-columns: repeat(8, 1fr); width: 100%; aspect-ratio: 1; border: 9px solid var(--green-deep); background: var(--green-deep); }
+.chessboard { position: relative; display: grid; grid-template-columns: repeat(8, 1fr); width: 100%; aspect-ratio: 1; border: 9px solid var(--green-deep); background: var(--green-deep); }
+.board-anim-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.board-ghost { position: absolute; width: 12.5%; height: 12.5%; display: grid; place-items: center; }
+.board-ghost--slide { z-index: 2; animation: piece-slide 160ms cubic-bezier(0.25, 0.8, 0.35, 1) both; }
+.board-ghost--fade { z-index: 1; animation: piece-fade 140ms ease-out both; }
+@keyframes piece-slide { from { transform: translate(var(--dx), var(--dy)); } }
+@keyframes piece-fade { to { opacity: 0; transform: scale(0.7); } }
 .square { position: relative; border: 0; min-width: 0; padding: 0; aspect-ratio: 1; display: grid; place-items: center; cursor: pointer; overflow: hidden; }
 .square--light { background: #e8dfc9; color: var(--green); }
 .square--dark { background: #638376; color: #f6f0df; }

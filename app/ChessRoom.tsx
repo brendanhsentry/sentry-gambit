@@ -3,7 +3,15 @@
 import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { IconSeer } from "./IconSeer";
@@ -44,6 +52,16 @@ type PastGameSummary = {
 };
 
 type PastGame = PastGameSummary & { history: ReviewMove[] };
+
+type BoardGhost = {
+  from: Square;
+  to: Square;
+  glyph: string;
+  color: Color;
+  fade?: boolean;
+};
+
+type BoardAnim = { id: number; ghosts: BoardGhost[]; hide: Set<Square> };
 
 type ServerMessage =
   | { type: "welcome"; role: Role; playerId: string; state: GameState }
@@ -664,6 +682,70 @@ export function ChessRoom() {
     }
   }, [viewFen]);
 
+  const [anim, setAnim] = useState<BoardAnim | null>(null);
+  const animIdRef = useRef(0);
+  const prevBoardRef = useRef<{ key: string; ply: number; fen: string } | null>(
+    null,
+  );
+  const boardKey = pastGame?.id ?? currentGameId ?? "";
+
+  // Slide pieces between squares whenever the position advances by one ply.
+  useLayoutEffect(() => {
+    const prev = prevBoardRef.current;
+    prevBoardRef.current = { key: boardKey, ply: viewedPly, fen: viewFen };
+    if (!prev || prev.key !== boardKey || prev.fen === viewFen) return;
+    const forward = viewedPly - prev.ply === 1;
+    if (!forward && prev.ply - viewedPly !== 1) {
+      setAnim(null);
+      return;
+    }
+    const move = viewHistory[(forward ? viewedPly : prev.ply) - 1];
+    if (!move) return;
+    const prevChess = new Chess(prev.fen);
+    const from = forward ? move.from : move.to;
+    const to = forward ? move.to : move.from;
+    const mover = prevChess.get(from);
+    if (!mover) return;
+    const ghosts: BoardGhost[] = [];
+    const hide = new Set<Square>([to]);
+    if (forward) {
+      const capturedAt = prevChess.get(move.to)
+        ? move.to
+        : move.san.includes("x")
+          ? (`${move.to[0]}${move.from[1]}` as Square)
+          : null;
+      const victim = capturedAt ? prevChess.get(capturedAt) : null;
+      if (victim && victim.color !== move.color)
+        ghosts.push({
+          from: capturedAt!,
+          to: capturedAt!,
+          glyph: PIECE_GLYPHS[victim.type],
+          color: victim.color,
+          fade: true,
+        });
+    }
+    ghosts.push({ from, to, glyph: PIECE_GLYPHS[mover.type], color: mover.color });
+    if (move.san.startsWith("O-O")) {
+      const rank = move.color === "w" ? "1" : "8";
+      const queenside = move.san.startsWith("O-O-O");
+      const rookHome = `${queenside ? "a" : "h"}${rank}` as Square;
+      const rookCastled = `${queenside ? "d" : "f"}${rank}` as Square;
+      const rookFrom = forward ? rookHome : rookCastled;
+      const rookTo = forward ? rookCastled : rookHome;
+      ghosts.push({
+        from: rookFrom,
+        to: rookTo,
+        glyph: PIECE_GLYPHS.r,
+        color: move.color,
+      });
+      hide.add(rookTo);
+    }
+    animIdRef.current += 1;
+    setAnim({ id: animIdRef.current, ghosts, hide });
+    const timer = window.setTimeout(() => setAnim(null), 180);
+    return () => window.clearTimeout(timer);
+  }, [boardKey, viewedPly, viewFen, viewHistory]);
+
   const legalTargets = useMemo(() => {
     if (!selected) return new Set<string>();
     return new Set(
@@ -993,7 +1075,14 @@ export function ChessRoom() {
                         <span className="file-label">{file}</span>
                       )}
                       {piece && (
-                        <span className={`piece piece--${piece.color}`}>
+                        <span
+                          className={`piece piece--${piece.color}`}
+                          style={
+                            anim?.hide.has(square)
+                              ? { visibility: "hidden" }
+                              : undefined
+                          }
+                        >
                           {PIECE_GLYPHS[piece.type]}
                         </span>
                       )}
@@ -1003,6 +1092,38 @@ export function ChessRoom() {
                     </button>
                   );
                 }),
+              )}
+              {anim && (
+                <div className="board-anim-layer" aria-hidden>
+                  {anim.ghosts.map((ghost, index) => {
+                    const fromX = files.indexOf(
+                      ghost.from[0] as (typeof FILES)[number],
+                    );
+                    const fromY = ranks.indexOf(Number(ghost.from[1]));
+                    const toX = files.indexOf(
+                      ghost.to[0] as (typeof FILES)[number],
+                    );
+                    const toY = ranks.indexOf(Number(ghost.to[1]));
+                    return (
+                      <span
+                        key={`${anim.id}-${index}`}
+                        className={`board-ghost ${ghost.fade ? "board-ghost--fade" : "board-ghost--slide"}`}
+                        style={
+                          {
+                            left: `${toX * 12.5}%`,
+                            top: `${toY * 12.5}%`,
+                            "--dx": `${(fromX - toX) * 100}%`,
+                            "--dy": `${(fromY - toY) * 100}%`,
+                          } as CSSProperties
+                        }
+                      >
+                        <span className={`piece piece--${ghost.color}`}>
+                          {ghost.glyph}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
               )}
             </div>
 
