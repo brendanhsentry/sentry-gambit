@@ -41,6 +41,7 @@ export function openFirestoreGameStore() {
       finalFen: data.finalFen,
       clock: { w: data.whiteTimeMs, b: data.blackTimeMs },
       plyCount: data.plyCount ?? 0,
+      shareable: data.shareable === true,
     };
   }
 
@@ -59,6 +60,7 @@ export function openFirestoreGameStore() {
             blackTimeMs: game.clock.b,
             playerKeys: [],
             plyCount: 0,
+            shareable: true,
           });
         } catch (error) {
           if (error?.code !== 6) throw error;
@@ -157,11 +159,32 @@ export function openFirestoreGameStore() {
     },
     async getGame(gameId, playerKey) {
       if (!playerKey) return null;
+      await writeQueues.get(gameId);
       const doc = await games.doc(gameId).get();
       const data = doc.data();
       if (!doc.exists || data.status !== "completed") return null;
       if (!(data.playerKeys ?? []).includes(playerKey)) return null;
       const moves = await games.doc(gameId).collection("moves").orderBy("ply").get();
+      return {
+        ...summary(doc),
+        history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),
+      };
+    },
+    async getSharedGame(gameId) {
+      await writeQueues.get(gameId);
+      const doc = await games.doc(gameId).get();
+      const data = doc.data();
+      if (
+        !doc.exists ||
+        data.status !== "completed" ||
+        data.shareable !== true
+      )
+        return null;
+      const moves = await games
+        .doc(gameId)
+        .collection("moves")
+        .orderBy("ply")
+        .get();
       return {
         ...summary(doc),
         history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),

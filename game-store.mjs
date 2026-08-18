@@ -26,7 +26,8 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       finished_at INTEGER,
       final_fen TEXT NOT NULL,
       white_time_ms INTEGER NOT NULL,
-      black_time_ms INTEGER NOT NULL
+      black_time_ms INTEGER NOT NULL,
+      shareable INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS moves (
@@ -55,11 +56,19 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       ON game_players(player_key, game_id);
   `);
 
+  const gameColumns = database.prepare("PRAGMA table_info(games)").all();
+  if (!gameColumns.some((column) => column.name === "shareable")) {
+    database.exec(
+      "ALTER TABLE games ADD COLUMN shareable INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+
   const statements = {
     insertGame: database.prepare(`
       INSERT OR IGNORE INTO games (
-        id, room, started_at, updated_at, final_fen, white_time_ms, black_time_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        id, room, started_at, updated_at, final_fen, white_time_ms, black_time_ms,
+        shareable
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
     `),
     updatePlayers: database.prepare(`
       UPDATE games SET white_name = ?, black_name = ?, updated_at = ? WHERE id = ?
@@ -87,7 +96,8 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     selectGames: database.prepare(`
       SELECT games.id, games.room, games.white_name, games.black_name, games.result,
         games.started_at, games.finished_at, games.final_fen,
-        games.white_time_ms, games.black_time_ms, COUNT(moves.ply) AS ply_count
+        games.white_time_ms, games.black_time_ms, games.shareable,
+        COUNT(moves.ply) AS ply_count
       FROM games LEFT JOIN moves ON moves.game_id = games.id
       WHERE games.status = 'completed' AND EXISTS (
         SELECT 1 FROM game_players
@@ -97,11 +107,17 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     `),
     selectGame: database.prepare(`
       SELECT id, room, white_name, black_name, result, started_at, finished_at,
-        final_fen, white_time_ms, black_time_ms
+        final_fen, white_time_ms, black_time_ms, shareable
       FROM games WHERE id = ? AND status = 'completed' AND EXISTS (
         SELECT 1 FROM game_players
         WHERE game_players.game_id = games.id AND game_players.player_key = ?
       )
+    `),
+    selectSharedGame: database.prepare(`
+      SELECT id, room, white_name, black_name, result, started_at, finished_at,
+        final_fen, white_time_ms, black_time_ms, shareable
+      FROM games
+      WHERE id = ? AND status = 'completed' AND shareable = 1
     `),
     selectMoves: database.prepare(`
       SELECT color, san, from_square, to_square, promotion, fen_after, played_at
@@ -140,6 +156,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       finalFen: row.final_fen,
       clock: { w: row.white_time_ms, b: row.black_time_ms },
       plyCount: Number(row.ply_count ?? 0),
+      shareable: Boolean(row.shareable),
     };
   }
 
@@ -193,6 +210,14 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     getGame(gameId, playerKey) {
       if (!playerKey) return null;
       const row = statements.selectGame.get(gameId, playerKey);
+      if (!row) return null;
+      return {
+        ...summary(row),
+        history: statements.selectMoves.all(gameId).map(mapMove),
+      };
+    },
+    getSharedGame(gameId) {
+      const row = statements.selectSharedGame.get(gameId);
       if (!row) return null;
       return {
         ...summary(row),

@@ -269,6 +269,7 @@ export function ChessRoom() {
   );
   const [confirmResign, setConfirmResign] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [replayCopied, setReplayCopied] = useState(false);
   const [replayPly, setReplayPly] = useState<number | null>(null);
   const [analysisPly, setAnalysisPly] = useState<number | null>(null);
   const [moveExplanations, setMoveExplanations] = useState<
@@ -332,6 +333,7 @@ export function ChessRoom() {
     setReplayPly(null);
     setAnalysisPly(null);
     setMoveExplanations({});
+    setReplayCopied(false);
     explanationRequestsRef.current.clear();
   }, [currentGameId]);
 
@@ -883,6 +885,18 @@ export function ChessRoom() {
     }
   }
 
+  async function copyReplay() {
+    if (!state?.result) return;
+    const url = `${window.location.origin}/games/${state.gameId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setReplayCopied(true);
+      window.setTimeout(() => setReplayCopied(false), 1600);
+    } catch {
+      setNotice(`Replay link: ${url}`);
+    }
+  }
+
   const movePairs = viewHistory.reduce<
     Array<{
       number: number;
@@ -1183,6 +1197,9 @@ export function ChessRoom() {
                           ↻ Rematch
                         </button>
                       )}
+                      <button onClick={copyReplay}>
+                        {replayCopied ? "Copied!" : "Share replay"}
+                      </button>
                       <button
                         onClick={() => setResultDismissedFor(state.gameId)}
                       >
@@ -1273,6 +1290,14 @@ export function ChessRoom() {
                     ? "Both players are seated."
                     : "Share this with your opponent."}
               </p>
+              {state?.result && (
+                <button
+                  className="replay-share-button"
+                  onClick={copyReplay}
+                >
+                  {replayCopied ? "Replay link copied!" : "Share replay"}
+                </button>
+              )}
             </div>
           ) : (
             <div className="rule-card">

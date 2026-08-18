@@ -172,7 +172,7 @@ button { color: inherit; }
 @keyframes game-over-pop { from { transform: translateY(12px) scale(.95); opacity: 0; } }
 .game-over-card > span { font: 650 10px/1 var(--font-geist-mono), monospace; letter-spacing: .14em; color: #a66f25; }
 .game-over-card strong { color: var(--green); font-family: Georgia, serif; font-size: clamp(20px, 3vw, 28px); line-height: 1.15; font-weight: 500; letter-spacing: -.02em; }
-.game-over-actions { display: flex; gap: 8px; margin-top: 4px; }
+.game-over-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
 .game-over-actions button { height: 36px; padding: 0 16px; border: 1px solid var(--line); background: transparent; cursor: pointer; text-transform: uppercase; font-size: 9px; letter-spacing: .08em; font-weight: 700; }
 .game-over-actions button:hover { background: var(--green); color: white; }
 .game-over-actions .game-over-rematch { border-color: var(--green); background: var(--green); color: white; }
@@ -194,6 +194,8 @@ button { color: inherit; }
 .invite-card strong { font: 700 25px/1 var(--font-geist-mono), monospace; letter-spacing: .14em; color: var(--green); }
 .invite-card button { border: 0; border-bottom: 1px solid var(--green); padding: 4px 0; background: transparent; cursor: pointer; text-transform: uppercase; font-size: 9px; font-weight: 700; letter-spacing: .08em; }
 .invite-card p { margin: 10px 0 0; color: #7a8680; font-size: 10px; }
+.invite-card .replay-share-button { width: 100%; margin-top: 13px; border: 1px solid var(--green); padding: 9px 12px; color: var(--green); }
+.invite-card .replay-share-button:hover { background: var(--green); color: white; }
 .rule-card ol { margin: 13px 0 0; padding: 0; list-style: none; }
 .rule-card li { border-top: 1px solid var(--line); padding: 11px 0; font-size: 11px; color: #4e5e57; }
 .rule-card b { display: inline-block; width: 30px; color: var(--amber); font: 600 9px/1 var(--font-geist-mono), monospace; }
@@ -563,6 +565,10 @@ button.move-cell > span {
 .archive-empty p, .record-placeholder p { font-size: 10px; line-height: 1.6; }
 
 .game-record-detail { min-width: 0; padding: 34px clamp(24px, 4vw, 54px) 42px; background: rgba(255,255,255,.18); }
+.shared-replay-page { width: min(980px, calc(100% - 44px)); }
+.shared-game-record { border-top: 4px solid var(--green); border-bottom: 1px solid var(--line); }
+.shared-game-record .record-placeholder h2 { margin: 16px 0 4px; color: var(--green); font: 500 30px/1 Georgia, serif; }
+.shared-game-record .record-placeholder .text-button { margin-top: 16px; }
 .record-placeholder { min-height: 500px; display: grid; place-content: center; justify-items: center; color: #89938e; text-align: center; }
 .record-heading { display: flex; justify-content: space-between; align-items: start; gap: 24px; padding-bottom: 27px; }
 .result-chip { display: inline-block; padding: 6px 8px; background: var(--green); color: white; font: 700 8px/1 var(--font-geist-mono), monospace; letter-spacing: .07em; text-transform: uppercase; }

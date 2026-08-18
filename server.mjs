@@ -1414,10 +1414,11 @@ function handleGamesRequest(req, res, url) {
   const match = url.pathname.match(/^\/api\/games\/([^/]+)$/);
   if (!match) return false;
   void (async () => {
-    const game = await gameStore.getGame(
-      decodeURIComponent(match[1]),
-      playerKey,
-    );
+    const gameId = decodeURIComponent(match[1]);
+    const ownedGame = playerKey
+      ? await gameStore.getGame(gameId, playerKey)
+      : null;
+    const game = ownedGame ?? (await gameStore.getSharedGame(gameId));
     sendJson(res, game ? 200 : 404, game ?? { error: "Game not found" });
   })().catch((error) => {
     console.error("Game detail request failed:", error);

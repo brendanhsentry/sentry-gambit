@@ -1,7 +1,5 @@
 "use client";
 
-import { Chess } from "chess.js";
-import type { Key } from "@lichess-org/chessground/types";
 import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -13,29 +11,19 @@ import { IconSeer } from "../IconSeer";
 import {
   gradeLabel,
   useMoveAnalysis,
-  type ReviewMove,
 } from "../move-analysis";
-
-type PlayerColor = "w" | "b";
-
-type PastGameSummary = {
-  id: string;
-  room: string;
-  players: Record<PlayerColor, string | null>;
-  result: string;
-  startedAt: number;
-  finishedAt: number;
-  finalFen: string;
-  clock: Record<PlayerColor, number>;
-  plyCount: number;
-};
-
-type SavedMove = ReviewMove & {
-  fenAfter: string;
-  playedAt: number;
-};
-
-type PastGame = PastGameSummary & { history: SavedMove[] };
+import {
+  formatClock,
+  formatDate,
+  formatDuration,
+  pairMoves,
+  playerName,
+  replayPosition,
+  resultTone,
+  type SavedGame,
+  type SavedGameSummary,
+  type SavedMove,
+} from "./game-replay";
 
 type SeerReview =
   | { phase: "idle" }
@@ -51,7 +39,6 @@ type SeerReview =
   | { phase: "done"; text: string; shortId: string }
   | { phase: "error"; message: string };
 
-const START_FEN = new Chess().fen();
 function browserPlayerKey() {
   const storageKey = "pawn-patrol-player-key";
   const existing = window.localStorage.getItem(storageKey);
@@ -61,42 +48,10 @@ function browserPlayerKey() {
   return created;
 }
 
-function formatDate(timestamp: number) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(timestamp);
-}
-
-function formatDuration(startedAt: number, finishedAt: number) {
-  const seconds = Math.max(0, Math.round((finishedAt - startedAt) / 1000));
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return minutes ? `${minutes}m ${remainder}s` : `${remainder}s`;
-}
-
-function formatClock(ms: number) {
-  const safe = Math.max(0, ms);
-  const minutes = Math.floor(safe / 60_000);
-  const seconds = Math.floor((safe % 60_000) / 1_000);
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function playerName(game: PastGameSummary, color: PlayerColor) {
-  return game.players[color] || (color === "w" ? "White" : "Black");
-}
-
-function resultTone(result: string) {
-  return result.toLowerCase().startsWith("draw") ? "draw" : "decisive";
-}
-
 export function PastGamesView() {
-  const [games, setGames] = useState<PastGameSummary[]>([]);
+  const [games, setGames] = useState<SavedGameSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedGame, setSelectedGame] = useState<PastGame | null>(null);
+  const [selectedGame, setSelectedGame] = useState<SavedGame | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -119,7 +74,7 @@ export function PastGamesView() {
         `/api/games/${encodeURIComponent(gameId)}?playerKey=${encodeURIComponent(key)}`,
       );
       if (!response.ok) throw new Error("Game not found");
-      const game = (await response.json()) as PastGame;
+      const game = (await response.json()) as SavedGame;
       if (selectedGameIdRef.current !== gameId) return;
       setSelectedGame(game);
       setReplayPly(game.history.length);
@@ -142,7 +97,7 @@ export function PastGamesView() {
         `/api/games?limit=100&playerKey=${encodeURIComponent(key)}`,
       );
       if (!response.ok) throw new Error("Archive unavailable");
-      const data = (await response.json()) as { games: PastGameSummary[] };
+      const data = (await response.json()) as { games: SavedGameSummary[] };
       setGames(data.games);
       const nextId =
         selectedId && data.games.some((game) => game.id === selectedId)
@@ -184,38 +139,13 @@ export function PastGamesView() {
     );
   }, [games, query]);
 
-  const movePairs = useMemo(() => {
-    if (!selectedGame) return [];
-    return selectedGame.history.reduce<
-      Array<{ number: number; w?: SavedMove; b?: SavedMove }>
-    >((pairs, move, index) => {
-      if (index % 2 === 0)
-        pairs.push({ number: Math.floor(index / 2) + 1, w: move });
-      else pairs[pairs.length - 1].b = move;
-      return pairs;
-    }, []);
-  }, [selectedGame]);
-
-  const replayFen =
-    replayPly === 0
-      ? START_FEN
-      : (selectedGame?.history[replayPly - 1]?.fenAfter ??
-        selectedGame?.finalFen ??
-        START_FEN);
-  const replayPosition = useMemo(() => {
-    try {
-      return new Chess(replayFen);
-    } catch {
-      return new Chess();
-    }
-  }, [replayFen]);
-  const replayMove = selectedGame?.history[replayPly - 1];
-  const replayMoveSquares = useMemo(
-    () =>
-      replayMove
-        ? ([replayMove.from as Key, replayMove.to as Key] as Key[])
-        : undefined,
-    [replayMove],
+  const movePairs = useMemo(
+    () => pairMoves(selectedGame?.history ?? []),
+    [selectedGame],
+  );
+  const replay = useMemo(
+    () => replayPosition(selectedGame, replayPly),
+    [selectedGame, replayPly],
   );
   const lastPly = selectedGame?.history.length ?? 0;
   const analysis = useMoveAnalysis(
@@ -351,14 +281,21 @@ export function PastGamesView() {
     setIsPlaying(true);
   }
 
-  async function copyGameId() {
+  async function copyGameReference() {
     if (!selectedGame) return;
+    const value = selectedGame.shareable
+      ? `${window.location.origin}/games/${selectedGame.id}`
+      : selectedGame.id;
     try {
-      await navigator.clipboard.writeText(selectedGame.id);
+      await navigator.clipboard.writeText(value);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
-      setError("The game ID could not be copied.");
+      setError(
+        selectedGame.shareable
+          ? "The replay link could not be copied."
+          : "The game ID could not be copied.",
+      );
     }
   }
 
@@ -487,8 +424,12 @@ export function PastGamesView() {
                     <dt>Game ID</dt>
                     <dd>
                       <code>{selectedGame.id}</code>
-                      <button onClick={copyGameId}>
-                        {copied ? "Copied" : "Copy"}
+                      <button onClick={copyGameReference}>
+                        {copied
+                          ? "Copied"
+                          : selectedGame.shareable
+                            ? "Copy replay link"
+                            : "Copy ID"}
                       </button>
                     </dd>
                   </div>
@@ -648,19 +589,19 @@ export function PastGamesView() {
                     <div className="record-board-column">
                       <div className="record-board">
                         <ChessgroundBoard
-                          fen={replayFen}
+                          fen={replay.fen}
                           orientation="white"
                           turnColor={
-                            replayPosition.turn() === "w" ? "white" : "black"
+                            replay.chess.turn() === "w" ? "white" : "black"
                           }
                           check={
-                            replayPosition.isCheck()
-                              ? replayPosition.turn() === "w"
+                            replay.chess.isCheck()
+                              ? replay.chess.turn() === "w"
                                 ? "white"
                                 : "black"
                               : false
                           }
-                          lastMove={replayMoveSquares}
+                          lastMove={replay.lastMove}
                           viewOnly
                           ariaLabel={`Chess position after ${replayPly} of ${lastPly} moves`}
                         />
