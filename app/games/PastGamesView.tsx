@@ -224,7 +224,7 @@ export function PastGamesView() {
       <header className="topbar">
         <Link className="brand" href="/" aria-label="Pawn Patrol home">
           <span className="brand-mark">
-            <Image src="/pawn-patrol-icon.svg" alt="" width={30} height={30} priority />
+            <Image src="/pawn-patrol-sentry-correct.png" alt="" width={30} height={30} priority unoptimized />
           </span>
           <span>PAWN <em>PATROL</em></span>
         </Link>

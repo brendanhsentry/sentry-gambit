@@ -650,6 +650,11 @@ export function ChessRoom() {
   }, []);
   const selectedReview = analysisPly ? analysis.moves[analysisPly - 1] : null;
   const selectedExplanation = analysisPly ? moveExplanations[analysisPly] : null;
+  const explainableMoves = analysis.moves.flatMap((reviewed, index) =>
+    reviewed?.evidence && EXPLAINABLE_GRADES.has(reviewed.grade)
+      ? [{ index, reviewed, move: viewHistory[index] }]
+      : [],
+  );
 
   function moveCell(move?: { san: string; index: number }) {
     if (!move) return <span className="move-cell"><span>—</span></span>;
@@ -675,7 +680,7 @@ export function ChessRoom() {
       <header className="topbar">
         <Link className="brand" href="/" aria-label="Pawn Patrol home">
           <span className="brand-mark">
-            <Image src="/pawn-patrol-icon.svg" alt="" width={30} height={30} priority />
+            <Image src="/pawn-patrol-sentry-correct.png" alt="" width={30} height={30} priority unoptimized />
           </span>
           <span>PAWN <em>PATROL</em></span>
         </Link>
@@ -847,6 +852,36 @@ export function ChessRoom() {
               )) : <div className="empty-moves"><span>{PIECE_GLYPHS.p}</span><p>The move sheet is empty.<br />White begins.</p></div>}
             </div>
           </div>
+
+          <section className="ai-coach" aria-labelledby="ai-coach-title">
+            <div className="ai-coach-head">
+              <span id="ai-coach-title">AI MOVE COACH</span>
+              <span title="deepseek/deepseek-v4-flash-0731">DEEPSEEK · OPENROUTER</span>
+            </div>
+            {pastGame ? (
+              <p>AI explanations are available immediately after a live game. Past-game support is coming next.</p>
+            ) : !state?.result ? (
+              <p>Finish this game, then the coach will explain any inaccuracies, mistakes, misses, or blunders found by Stockfish.</p>
+            ) : analysis.status === "loading" || analysis.status === "analyzing" || analysis.status === "idle" ? (
+              <p>Stockfish is reviewing the game. Explainable moves will appear here when it finishes.</p>
+            ) : analysis.status === "error" ? (
+              <p>Stockfish could not finish the local review, so the AI coach does not have reliable evidence yet.</p>
+            ) : explainableMoves.length ? (
+              <>
+                <p>Choose a flagged move to ask the AI coach exactly what went wrong.</p>
+                <div className="ai-coach-moves">
+                  {explainableMoves.map(({ index, reviewed, move }) => (
+                    <button key={index} onClick={() => void requestMoveExplanation(index)}>
+                      <strong>{Math.floor(index / 2) + 1}{index % 2 ? "…" : "."} {move?.san}</strong>
+                      <span className={`move-grade move-grade--${reviewed.grade}`}>{gradeLabel(reviewed.grade)}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p>Stockfish did not flag any moves that need an AI explanation in this game.</p>
+            )}
+          </section>
 
           {analysisPly && selectedReview?.evidence && EXPLAINABLE_GRADES.has(selectedReview.grade) && (
             <div className="move-explanation" aria-live="polite">
@@ -1024,7 +1059,6 @@ export function ChessRoom() {
 
       <footer>
         <span>PAWN PATROL · EST. 2026</span>
-        <span>PRIVATE ROOMS · REAL-TIME PLAY · NO SIGN-UP</span>
       </footer>
     </main>
   );

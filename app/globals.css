@@ -184,6 +184,22 @@ button { color: inherit; }
 .match-actions button:disabled { opacity: .45; cursor: default; }
 .notice { margin-top: 12px; padding: 10px; background: #f0dfc3; color: #72511e; font-size: 10px; }
 
+.ai-coach {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--green);
+  background: rgba(255, 255, 255, 0.3);
+  padding: 14px;
+}
+.ai-coach-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--green); font: 700 9px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
+.ai-coach-head span:last-child { color: #7d8983; font-size: 7px; letter-spacing: .06em; }
+.ai-coach > p { margin: 10px 0 0; color: #5d6d66; font-size: 11px; line-height: 1.5; }
+.ai-coach-moves { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+.ai-coach-moves button { display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--paper); padding: 7px 8px; color: var(--green); cursor: pointer; }
+.ai-coach-moves button:hover { border-color: var(--green); background: rgba(23, 63, 53, 0.06); }
+.ai-coach-moves button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.ai-coach-moves strong { font: 700 10px/1 var(--font-geist-mono), monospace; }
+
 .move-explanation {
   margin-top: 14px;
   border: 1px solid var(--line);
