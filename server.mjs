@@ -26,6 +26,7 @@ Sentry.init({
   ],
   enableLogs: true,
   tracesSampleRate: 1.0,
+  streamGenAiSpans: true,
 });
 
 const STARTING_TIME = 10 * 60 * 1000;
@@ -509,9 +510,19 @@ const PIECE_NAMES = {
 };
 const explanationCache = new Map();
 const explanationRateLimits = new Map();
-const agentRuns = [];
-const agentTotals = { requests: 0, succeeded: 0, failed: 0, cacheHits: 0 };
-const AGENT_RUN_LIMIT = 12;
+const MOVE_COACH_AGENT_NAME = "Pawn Patrol Move Coach";
+const MOVE_COACH_SPAN_ORIGIN = "manual.ai.openrouter";
+const SENTRY_SPAN_STATUS_ERROR = 2;
+const MOVE_COACH_SYSTEM_INSTRUCTIONS = [
+  "Explain this chess error using only the supplied Stockfish evidence.",
+  "Do not invent moves, evaluations, threats, or tactical motifs.",
+  "The played line shows the punishment; the best line shows the alternative.",
+  "If the exact motif is not demonstrated, choose unclear.",
+  "Write in plain English for a club chess player and use at most two short sentences.",
+  "Always name pieces, for example 'the white knight on f3' or 'the black queen moves to d5'.",
+  "Board coordinates are allowed, but never use algebraic chess notation such as Nf3, e4, Qxd5, O-O, or move-number notation.",
+  "Turn the supplied move descriptions into natural prose instead of copying their sentence structure verbatim.",
+].join(" ");
 
 const REVIEW_PROMPT = [
   "This issue represents one finished chess game. Review the game using the",
@@ -528,54 +539,6 @@ function sendJson(res, status, payload) {
     "Cache-Control": "no-store",
   });
   res.end(JSON.stringify(payload));
-}
-
-function updateAgentRun(run, patch) {
-  Object.assign(run, patch, { updatedAt: Date.now() });
-}
-
-function beginAgentRun(state = "queued") {
-  const now = Date.now();
-  const run = {
-    id: randomUUID().slice(0, 8),
-    state,
-    model: OPENROUTER_MODEL,
-    provider: null,
-    attempts: 0,
-    statusCode: null,
-    errorType: null,
-    message: null,
-    startedAt: now,
-    updatedAt: now,
-    durationMs: null,
-  };
-  agentRuns.unshift(run);
-  agentRuns.splice(AGENT_RUN_LIMIT);
-  agentTotals.requests += 1;
-  return run;
-}
-
-function finishAgentRun(run, state, patch = {}) {
-  updateAgentRun(run, {
-    ...patch,
-    state,
-    durationMs: Date.now() - run.startedAt,
-  });
-  if (state === "succeeded") agentTotals.succeeded += 1;
-  else if (state === "failed") agentTotals.failed += 1;
-  else if (state === "cached") agentTotals.cacheHits += 1;
-}
-
-function agentStatusPayload() {
-  return {
-    configured: Boolean(OPENROUTER_API_KEY),
-    model: OPENROUTER_MODEL,
-    fallbackModels: OPENROUTER_FALLBACK_MODELS,
-    timeoutMs: OPENROUTER_TIMEOUT_MS,
-    active: agentRuns.filter((run) => run.state === "requesting" || run.state === "retrying").length,
-    totals: agentTotals,
-    runs: agentRuns,
-  };
 }
 
 class RequestError extends Error {
@@ -817,26 +780,40 @@ function parseOpenRouterExplanation(response, data) {
     provider: data?.provider ?? null,
     model: data?.model ?? OPENROUTER_MODEL,
     responseId: data?.id ?? null,
+    responseText: content,
+    finishReason: data?.choices?.[0]?.finish_reason ?? null,
+    usage: {
+      inputTokens: Number.isFinite(data?.usage?.prompt_tokens) ? data.usage.prompt_tokens : null,
+      outputTokens: Number.isFinite(data?.usage?.completion_tokens) ? data.usage.completion_tokens : null,
+      totalTokens: Number.isFinite(data?.usage?.total_tokens) ? data.usage.total_tokens : null,
+    },
   };
 }
 
-async function callOpenRouter(facts, run) {
+function setTokenUsage(span, usage) {
+  if (usage.inputTokens !== null) {
+    span.setAttribute("gen_ai.usage.input_tokens", usage.inputTokens);
+  }
+  if (usage.outputTokens !== null) {
+    span.setAttribute("gen_ai.usage.output_tokens", usage.outputTokens);
+  }
+  if (usage.totalTokens !== null) {
+    span.setAttribute("gen_ai.usage.total_tokens", usage.totalTokens);
+  }
+}
+
+function sentryTextMessage(role, content) {
+  return { role, parts: [{ type: "text", content }] };
+}
+
+async function callOpenRouter(facts, requestId) {
   const body = {
     model: OPENROUTER_MODEL,
     ...(OPENROUTER_FALLBACK_MODELS.length ? { models: OPENROUTER_FALLBACK_MODELS } : {}),
     messages: [
       {
         role: "system",
-        content: [
-          "Explain this chess error using only the supplied Stockfish evidence.",
-          "Do not invent moves, evaluations, threats, or tactical motifs.",
-          "The played line shows the punishment; the best line shows the alternative.",
-          "If the exact motif is not demonstrated, choose unclear.",
-          "Write in plain English for a club chess player and use at most two short sentences.",
-          "Always name pieces, for example 'the white knight on f3' or 'the black queen moves to d5'.",
-          "Board coordinates are allowed, but never use algebraic chess notation such as Nf3, e4, Qxd5, O-O, or move-number notation.",
-          "Turn the supplied move descriptions into natural prose instead of copying their sentence structure verbatim.",
-        ].join(" "),
+        content: MOVE_COACH_SYSTEM_INSTRUCTIONS,
       },
       { role: "user", content: JSON.stringify(facts) },
     ],
@@ -871,64 +848,136 @@ async function callOpenRouter(facts, run) {
 
   let lastError;
   for (let attempt = 1; attempt <= OPENROUTER_MAX_ATTEMPTS; attempt++) {
-    updateAgentRun(run, { state: "requesting", attempts: attempt, message: null });
     Sentry.logger.info("openrouter.request.started", {
-      request_id: run.id,
+      request_id: requestId,
       attempt,
       model: OPENROUTER_MODEL,
     });
     try {
-      const response = await fetch(OPENROUTER_URL, {
-        method: "POST",
-        signal: AbortSignal.timeout(OPENROUTER_TIMEOUT_MS),
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": process.env.APP_URL || "https://pawn-patrol.example",
-          "X-OpenRouter-Title": "Pawn Patrol",
-          "X-OpenRouter-Metadata": "enabled",
+      return await Sentry.startSpan({
+        name: `chat ${OPENROUTER_MODEL}`,
+        op: "gen_ai.chat",
+        attributes: {
+          "gen_ai.operation.name": "chat",
+          "gen_ai.provider.name": "openrouter",
+          "gen_ai.request.model": OPENROUTER_MODEL,
+          "gen_ai.agent.name": MOVE_COACH_AGENT_NAME,
+          "gen_ai.request.max_tokens": body.max_tokens,
+          "gen_ai.system_instructions": body.messages[0].content,
+          "gen_ai.input.messages": JSON.stringify([
+            sentryTextMessage("user", body.messages[1].content),
+          ]),
+          "gen_ai.conversation.id": requestId,
+          "sentry.origin": MOVE_COACH_SPAN_ORIGIN,
+          "server.address": "openrouter.ai",
+          "pawn_patrol.agent.attempt": attempt,
         },
-        body: JSON.stringify(body),
+      }, async (span) => {
+        try {
+          const response = await fetch(OPENROUTER_URL, {
+            method: "POST",
+            signal: AbortSignal.timeout(OPENROUTER_TIMEOUT_MS),
+            headers: {
+              Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": process.env.APP_URL || "https://pawn-patrol.example",
+              "X-OpenRouter-Title": "Pawn Patrol",
+              "X-OpenRouter-Metadata": "enabled",
+            },
+            body: JSON.stringify(body),
+          });
+          const data = await response.json().catch(() => ({}));
+          const result = parseOpenRouterExplanation(response, data);
+          span.setAttributes({
+            "gen_ai.response.model": result.model,
+            "gen_ai.output.messages": JSON.stringify([
+              sentryTextMessage("assistant", result.responseText),
+            ]),
+            "http.response.status_code": response.status,
+          });
+          if (result.responseId) span.setAttribute("gen_ai.response.id", result.responseId);
+          if (result.finishReason) {
+            span.setAttribute("gen_ai.response.finish_reasons", JSON.stringify([result.finishReason]));
+          }
+          if (result.provider) span.setAttribute("openrouter.provider.name", result.provider);
+          setTokenUsage(span, result.usage);
+          return { ...result, attempts: attempt };
+        } catch (error) {
+          const normalized = error instanceof OpenRouterError
+            ? error
+            : new OpenRouterError(
+                error?.name === "TimeoutError" ? `Timed out after ${OPENROUTER_TIMEOUT_MS}ms` : String(error?.message || error),
+                { errorType: error?.name === "TimeoutError" ? "timeout" : "network", retryable: true },
+              );
+          span.setStatus({ code: SENTRY_SPAN_STATUS_ERROR, message: normalized.errorType || "internal_error" });
+          span.setAttribute("error.type", normalized.errorType || "unknown");
+          if (normalized.statusCode !== null) {
+            span.setAttribute("http.response.status_code", normalized.statusCode);
+          }
+          if (normalized.provider) span.setAttribute("openrouter.provider.name", normalized.provider);
+          throw normalized;
+        }
       });
-      const data = await response.json().catch(() => ({}));
-      const result = parseOpenRouterExplanation(response, data);
-      updateAgentRun(run, {
-        provider: result.provider,
-        model: result.model,
-        statusCode: response.status,
-        errorType: null,
-      });
-      return result;
     } catch (error) {
-      const normalized = error instanceof OpenRouterError
-        ? error
-        : new OpenRouterError(
-            error?.name === "TimeoutError" ? `Timed out after ${OPENROUTER_TIMEOUT_MS}ms` : String(error?.message || error),
-            { errorType: error?.name === "TimeoutError" ? "timeout" : "network", retryable: true },
-          );
-      lastError = normalized;
-      updateAgentRun(run, {
-        provider: normalized.provider,
-        statusCode: normalized.statusCode,
-        errorType: normalized.errorType,
-        message: normalized.message,
-      });
+      lastError = error;
       Sentry.logger.warn("openrouter.request.attempt_failed", {
-        request_id: run.id,
+        request_id: requestId,
         attempt,
-        status_code: normalized.statusCode,
-        error_type: normalized.errorType,
-        provider: normalized.provider,
+        status_code: error.statusCode,
+        error_type: error.errorType,
+        provider: error.provider,
       });
-      if (!normalized.retryable || attempt === OPENROUTER_MAX_ATTEMPTS) break;
-      updateAgentRun(run, { state: "retrying" });
-      const delayMs = normalized.retryAfterMs > 0
-        ? Math.min(normalized.retryAfterMs, 10_000)
+      if (!error.retryable || attempt === OPENROUTER_MAX_ATTEMPTS) break;
+      const delayMs = error.retryAfterMs > 0
+        ? Math.min(error.retryAfterMs, 10_000)
         : 600 * (2 ** (attempt - 1));
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
   throw lastError;
+}
+
+async function runMoveCoach(facts, requestId) {
+  return Sentry.withIsolationScope(async (isolationScope) => {
+    isolationScope.setConversationId(requestId);
+    return Sentry.startSpan({
+      name: `invoke_agent ${MOVE_COACH_AGENT_NAME}`,
+      op: "gen_ai.invoke_agent",
+      attributes: {
+        "gen_ai.operation.name": "invoke_agent",
+        "gen_ai.agent.name": MOVE_COACH_AGENT_NAME,
+        "gen_ai.provider.name": "openrouter",
+        "gen_ai.request.model": OPENROUTER_MODEL,
+        "gen_ai.system_instructions": MOVE_COACH_SYSTEM_INSTRUCTIONS,
+        "gen_ai.input.messages": JSON.stringify([
+          sentryTextMessage("user", JSON.stringify(facts)),
+        ]),
+        "gen_ai.conversation.id": requestId,
+        "sentry.origin": MOVE_COACH_SPAN_ORIGIN,
+      },
+    }, async (span) => {
+      try {
+        const result = await callOpenRouter(facts, requestId);
+        span.setAttributes({
+          "gen_ai.response.model": result.model,
+          "gen_ai.output.messages": JSON.stringify([
+            sentryTextMessage("assistant", result.explanation),
+          ]),
+        });
+        if (result.responseId) span.setAttribute("gen_ai.response.id", result.responseId);
+        setTokenUsage(span, result.usage);
+        return result;
+      } catch (error) {
+        span.setStatus({ code: SENTRY_SPAN_STATUS_ERROR, message: error.errorType || "internal_error" });
+        span.setAttribute("error.type", error.errorType || "unknown");
+        Sentry.captureException(error, {
+          mechanism: { handled: true, type: MOVE_COACH_SPAN_ORIGIN },
+          tags: { "gen_ai.agent.name": MOVE_COACH_AGENT_NAME },
+        });
+        throw error;
+      }
+    });
+  });
 }
 
 async function handleMoveExplanationRequest(req, res) {
@@ -976,49 +1025,39 @@ async function handleMoveExplanationRequest(req, res) {
   const cacheKey = createHash("sha256").update(JSON.stringify(facts)).digest("hex");
   const cached = explanationCache.get(cacheKey);
   if (cached) {
-    const run = beginAgentRun("cached");
-    finishAgentRun(run, "cached", { message: "Served from the local explanation cache." });
-    sendJson(res, 200, { ...lines, ...cached, cached: true, requestId: run.id });
+    sendJson(res, 200, {
+      ...lines,
+      ...cached,
+      cached: true,
+      requestId: randomUUID().slice(0, 8),
+    });
     return;
   }
 
-  const run = beginAgentRun();
+  const requestId = randomUUID().slice(0, 8);
   try {
-    const result = await callOpenRouter(facts, run);
+    const result = await runMoveCoach(facts, requestId);
     const explanation = { motif: result.motif, explanation: result.explanation };
     cacheExplanation(cacheKey, explanation);
-    finishAgentRun(run, "succeeded", {
-      provider: result.provider,
-      model: result.model,
-      message: "Explanation generated.",
-    });
     Sentry.logger.info("openrouter.request.succeeded", {
-      request_id: run.id,
-      attempts: run.attempts,
-      duration_ms: run.durationMs,
-      model: run.model,
-      provider: run.provider,
+      request_id: requestId,
+      attempts: result.attempts,
+      model: result.model,
+      provider: result.provider,
       response_id: result.responseId,
     });
-    sendJson(res, 200, { ...lines, ...explanation, cached: false, requestId: run.id });
+    sendJson(res, 200, { ...lines, ...explanation, cached: false, requestId });
   } catch (error) {
-    finishAgentRun(run, "failed", {
-      statusCode: error?.statusCode ?? run.statusCode,
-      errorType: error?.errorType ?? run.errorType ?? "unknown",
-      provider: error?.provider ?? run.provider,
-      message: String(error?.message || "Unknown OpenRouter error").slice(0, 240),
-    });
     console.error("OpenRouter move explanation failed:", {
-      requestId: run.id,
-      attempts: run.attempts,
-      statusCode: run.statusCode,
-      errorType: run.errorType,
-      provider: run.provider,
-      message: run.message,
+      requestId,
+      statusCode: error?.statusCode ?? null,
+      errorType: error?.errorType ?? "unknown",
+      provider: error?.provider ?? null,
+      message: String(error?.message || "Unknown OpenRouter error").slice(0, 240),
     });
     sendJson(res, 502, {
       ...lines,
-      requestId: run.id,
+      requestId,
       error: "The AI explanation is unavailable; the verified engine lines are shown instead.",
     });
   }
@@ -1114,10 +1153,6 @@ async function handleReviewRequest(req, res, url) {
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
-  if (req.method === "GET" && url.pathname === "/api/agent-status") {
-    sendJson(res, 200, agentStatusPayload());
-    return;
-  }
   if (handleGamesRequest(req, res, url)) return;
   if (url.pathname === "/api/move-explanation") {
     void handleMoveExplanationRequest(req, res);

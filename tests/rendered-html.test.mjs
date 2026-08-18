@@ -19,6 +19,7 @@ test("ships the Pawn Patrol product instead of the starter preview", async () =>
   assert.match(client, /new WebSocket/);
   assert.match(client, /chess\.moves/);
   assert.match(client, /href="\/games"/);
+  assert.doesNotMatch(client, /DEEPSEEK|OPENROUTER|AGENT MONITOR/i);
   assert.match(archive, /Game ID/);
   assert.match(archive, /\/api\/games/);
   assert.match(archive, /Move sheet/);
@@ -26,6 +27,9 @@ test("ships the Pawn Patrol product instead of the starter preview", async () =>
   assert.doesNotMatch(archive, />FEN</);
   assert.match(server, /WebSocketServer/);
   assert.match(server, /table\.chess\.move/);
+  assert.match(server, /gen_ai\.invoke_agent/);
+  assert.match(server, /gen_ai\.chat/);
+  assert.doesNotMatch(server, /\/api\/agent-status/);
   assert.match(packageJson, /chess\.js/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });

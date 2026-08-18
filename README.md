@@ -35,13 +35,14 @@ graded inaccuracy, mistake, miss, or blunder after the game to request an
 explanation. The verified Stockfish lines remain visible if the model is
 unavailable.
 
-The server disables reasoning for these short structured answers, retries one
-transient provider failure, and keeps a small in-memory run history at
-`/api/agent-status`. Expand **Agent Monitor** in the AI Move Coach to see the
-provider, attempts, latency, HTTP status, and typed failure reason. Fallback
-models are optional and comma-separated; `OPENROUTER_ZDR=true` can be used to
-require a smaller zero-data-retention provider pool in addition to the default
-no-training data policy.
+The server disables reasoning for these short structured answers and retries
+one transient provider failure. Agent runs and individual model attempts are
+instrumented with Sentry's `gen_ai.invoke_agent` and `gen_ai.chat` spans,
+including latency, model, token usage, responses, retry failures, and a shared
+conversation ID. Operational details live in [Sentry Agents](https://docs.sentry.io/product/agents/),
+not in the player UI. Fallback models are optional and comma-separated;
+`OPENROUTER_ZDR=true` can be used to require a smaller zero-data-retention
+provider pool in addition to the default no-training data policy.
 
 ## Saved games and replay
 

@@ -60,28 +60,6 @@ type MoveExplanation =
       message?: string;
     };
 
-type AgentRun = {
-  id: string;
-  state: "queued" | "requesting" | "retrying" | "succeeded" | "failed" | "cached";
-  model: string;
-  provider: string | null;
-  attempts: number;
-  statusCode: number | null;
-  errorType: string | null;
-  message: string | null;
-  durationMs: number | null;
-};
-
-type AgentStatus = {
-  configured: boolean;
-  model: string;
-  fallbackModels: string[];
-  timeoutMs: number;
-  active: number;
-  totals: { requests: number; succeeded: number; failed: number; cacheHits: number };
-  runs: AgentRun[];
-};
-
 // Shown one at a time while a real Seer review runs (they take minutes).
 const SEER_QUOTES = [
   "Reading the game event…",
@@ -152,17 +130,6 @@ function playerLabel(role: Role) {
   if (role === "w") return "Playing white";
   if (role === "b") return "Playing black";
   return "Watching table";
-}
-
-function agentRunLabel(run: AgentRun | undefined, configured: boolean) {
-  if (!configured) return "NOT CONFIGURED";
-  if (!run) return "STANDING BY";
-  if (run.state === "requesting") return `CALLING · TRY ${run.attempts}`;
-  if (run.state === "retrying") return `RETRYING · TRY ${run.attempts + 1}`;
-  if (run.state === "succeeded") return "LAST RUN OK";
-  if (run.state === "cached") return "CACHE HIT";
-  if (run.state === "failed") return "LAST RUN FAILED";
-  return "QUEUED";
 }
 
 function relativeStatus(state: GameState, role: Role) {
@@ -239,7 +206,6 @@ export function ChessRoom() {
   const [replayPly, setReplayPly] = useState<number | null>(null);
   const [analysisPly, setAnalysisPly] = useState<number | null>(null);
   const [moveExplanations, setMoveExplanations] = useState<Record<number, MoveExplanation>>({});
-  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const reportedGradesRef = useRef(new Set<string>());
   const explanationRequestsRef = useRef(new Set<number>());
 
@@ -250,24 +216,6 @@ export function ChessRoom() {
     }
     return false;
   }, []);
-
-  const refreshAgentStatus = useCallback(async () => {
-    try {
-      const response = await fetch("/api/agent-status");
-      if (!response.ok) return;
-      setAgentStatus(await response.json() as AgentStatus);
-    } catch {
-      // Diagnostics should never interfere with the game or explanation flow.
-    }
-  }, []);
-
-  useEffect(() => {
-    // This is a mount-time synchronization with server-owned diagnostics.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refreshAgentStatus();
-    const interval = window.setInterval(() => void refreshAgentStatus(), 4_000);
-    return () => window.clearInterval(interval);
-  }, [refreshAgentStatus]);
 
   const loadPastGames = useCallback(async () => {
     setPastGamesLoading(true);
@@ -499,8 +447,6 @@ export function ChessRoom() {
     if (explanationRequestsRef.current.has(ply)) return;
     explanationRequestsRef.current.add(ply);
     setMoveExplanations((current) => ({ ...current, [ply]: { phase: "loading" } }));
-    void refreshAgentStatus();
-
     try {
       const response = await fetch("/api/move-explanation", {
         method: "POST",
@@ -557,7 +503,6 @@ export function ChessRoom() {
       }));
     } finally {
       explanationRequestsRef.current.delete(ply);
-      void refreshAgentStatus();
     }
   }
 
@@ -716,8 +661,6 @@ export function ChessRoom() {
       ? [{ index, reviewed, move: viewHistory[index] }]
       : [],
   );
-  const latestAgentRun = agentStatus?.runs[0];
-
   function moveCell(move?: { san: string; index: number }) {
     if (!move) return <span className="move-cell"><span>—</span></span>;
     const reviewed = !pastGame && state?.result ? analysis.moves[move.index] : null;
@@ -803,7 +746,7 @@ export function ChessRoom() {
                     <p>You&apos;ve been invited to table {invitedRoom}. Enter a name and join the game.</p>
                     <label>
                       <span>Your name</span>
-                      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Mikhail" maxLength={24} />
+                      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Magnus" maxLength={24} />
                     </label>
                     <button className="primary-button" onClick={() => connect(invitedRoom, name)}>Join table {invitedRoom} <span>→</span></button>
                   </>
@@ -814,7 +757,7 @@ export function ChessRoom() {
                     <p>Create a private table or enter a code from a friend. No account needed.</p>
                     <label>
                       <span>Your name</span>
-                      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Mikhail" maxLength={24} />
+                      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Magnus" maxLength={24} />
                     </label>
                     <button className="primary-button" onClick={startTable}>Create a table <span>→</span></button>
                     <div className="join-row">
@@ -918,7 +861,6 @@ export function ChessRoom() {
           <section className="ai-coach" aria-labelledby="ai-coach-title">
             <div className="ai-coach-head">
               <span id="ai-coach-title">AI MOVE COACH</span>
-              <span title={agentStatus?.model ?? "deepseek/deepseek-v3.2"}>DEEPSEEK · OPENROUTER</span>
             </div>
             {pastGame ? (
               <p>AI explanations are available immediately after a live game. Past-game support is coming next.</p>
@@ -943,45 +885,6 @@ export function ChessRoom() {
             ) : (
               <p>Stockfish did not flag any of your moves for an AI explanation in this game.</p>
             )}
-            <details className="agent-monitor">
-              <summary>
-                <span className={`agent-monitor-dot agent-monitor-dot--${latestAgentRun?.state ?? (agentStatus?.configured ? "idle" : "failed")}`} />
-                <span>AGENT MONITOR</span>
-                <strong>{agentRunLabel(latestAgentRun, agentStatus?.configured ?? true)}</strong>
-              </summary>
-              <div className="agent-monitor-body">
-                {!agentStatus ? (
-                  <p>Connecting to server diagnostics…</p>
-                ) : (
-                  <>
-                    <dl>
-                      <div><dt>Model</dt><dd>{agentStatus.model}</dd></div>
-                      <div><dt>Timeout</dt><dd>{Math.round(agentStatus.timeoutMs / 1000)}s × 2 tries</dd></div>
-                      <div><dt>Runs</dt><dd>{agentStatus.totals.requests}</dd></div>
-                      <div><dt>Success</dt><dd>{agentStatus.totals.succeeded} + {agentStatus.totals.cacheHits} cached</dd></div>
-                    </dl>
-                    {agentStatus.fallbackModels.length > 0 && (
-                      <p>Fallbacks: {agentStatus.fallbackModels.join(", ")}</p>
-                    )}
-                    <div className="agent-run-list">
-                      {agentStatus.runs.length ? agentStatus.runs.slice(0, 4).map((run) => (
-                        <div key={run.id} className={`agent-run agent-run--${run.state}`}>
-                          <code>#{run.id}</code>
-                          <strong>{run.state}</strong>
-                          <span>{run.provider || run.errorType || (run.state === "cached" ? "local cache" : "OpenRouter")}</span>
-                          <small>
-                            {run.attempts ? `${run.attempts} ${run.attempts === 1 ? "try" : "tries"}` : "no call"}
-                            {run.durationMs !== null ? ` · ${(run.durationMs / 1000).toFixed(1)}s` : ""}
-                            {run.statusCode ? ` · HTTP ${run.statusCode}` : ""}
-                          </small>
-                          {run.message && <p>{run.message}</p>}
-                        </div>
-                      )) : <p>No agent runs yet. Flagged moves will show up here.</p>}
-                    </div>
-                  </>
-                )}
-              </div>
-            </details>
           </section>
 
           {analysisPly && selectedReview?.evidence && EXPLAINABLE_GRADES.has(selectedReview.grade) && (
