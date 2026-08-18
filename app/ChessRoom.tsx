@@ -592,7 +592,7 @@ export function ChessRoom() {
       });
   }, [state, role, connection, pickMove, send]);
 
-  // Coach Ming watches the live grades and speaks up on notable moves.
+  // The coach watches the live grades and speaks up on notable moves.
   useEffect(() => {
     if (!state?.coach || !state.bot || role === "spectator") return;
     if (coachBaselineRef.current?.gameId !== state.gameId) {
@@ -1438,7 +1438,7 @@ export function ChessRoom() {
                           {coachEnabled ? "✓" : ""}
                         </span>
                         <span className="coach-toggle-copy">
-                          <strong>Coach Ming watches your game</strong>
+                          <strong>Coach watches your game</strong>
                           <small>
                             Live tips after mistakes, hints, and takebacks
                           </small>
@@ -1610,10 +1610,10 @@ export function ChessRoom() {
           )}
 
           {coachActive && state && (
-            <section className="live-coach" aria-label="Coach Ming live coaching">
+            <section className="live-coach" aria-label="Live coaching">
               <div className="live-coach-head">
                 <span className="live-coach-dot" aria-hidden />
-                <span className="live-coach-title">COACH MING · LIVE</span>
+                <span className="live-coach-title">COACH · LIVE</span>
                 <button
                   className="live-coach-hint"
                   onClick={() => void requestHint("maia")}
@@ -1770,7 +1770,7 @@ export function ChessRoom() {
 
           <section className="ai-coach" aria-labelledby="ai-coach-title">
             <div className="ai-coach-head">
-              <span id="ai-coach-title">COACH MING</span>
+              <span id="ai-coach-title">COACH</span>
             </div>
             {!state?.result ? (
               <p>

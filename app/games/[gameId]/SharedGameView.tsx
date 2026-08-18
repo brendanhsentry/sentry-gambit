@@ -465,7 +465,7 @@ export function SharedGameView({ gameId }: { gameId: string }) {
 
                 <section className="ai-coach" aria-labelledby="replay-ai-coach-title">
                   <div className="ai-coach-head">
-                    <span id="replay-ai-coach-title">COACH MING</span>
+                    <span id="replay-ai-coach-title">COACH</span>
                   </div>
                   {analysis.status === "loading" ||
                   analysis.status === "analyzing" ||
