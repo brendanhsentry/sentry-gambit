@@ -81,7 +81,12 @@ function endGameTraceWhenReady(table) {
 function captureFinishedGame(table) {
   if (!table.result || table.finishedIssueSent) return;
   table.finishedIssueSent = true;
-  gameStore.finishGame(table.gameId, table.result, table.chess.fen(), table.clock);
+  gameStore.finishGame(
+    table.gameId,
+    table.result,
+    table.chess.fen(),
+    table.clock,
+  );
 
   const plyCount = table.chess.history().length;
   table.sentrySpan.setAttributes({
@@ -149,7 +154,9 @@ function restoreTable(id, saved) {
       ...(move.promotion ? { promotion: move.promotion } : {}),
     });
   }
-  console.log(`Restored room ${id} game ${saved.id} at ply ${saved.history.length}`);
+  console.log(
+    `Restored room ${id} game ${saved.id} at ply ${saved.history.length}`,
+  );
   return {
     id,
     gameId: saved.id,
@@ -181,7 +188,10 @@ function obtainTable(roomId) {
       const saved = await gameStore.getLiveGame(roomId, IDLE_ROOM_TTL);
       if (saved) table = restoreTable(roomId, saved);
     } catch (error) {
-      console.error(`Failed to restore room ${roomId} from the game store:`, error);
+      console.error(
+        `Failed to restore room ${roomId} from the game store:`,
+        error,
+      );
     }
     table ??= createTable(roomId);
     tables.set(roomId, table);
@@ -333,7 +343,13 @@ function handleTableMessage(table, client, raw) {
     setBoardResult(table);
     if (!table.result) resumeClock(table, now);
     const ply = table.chess.history().length;
-    gameStore.recordMove(table.gameId, ply, acceptedMove, table.chess.fen(), table.clock);
+    gameStore.recordMove(
+      table.gameId,
+      ply,
+      acceptedMove,
+      table.chess.fen(),
+      table.clock,
+    );
     logGameEvent(table, "chess.move.accepted", {
       "chess.room.id": table.id,
       "chess.game.id": table.gameId,
@@ -548,8 +564,11 @@ const SENTRY_ORG = "sentry-gambit";
 const SENTRY_PROJECT_ID = "4511927685939200";
 const SEER_TOKEN = process.env.SEER_API_TOKEN || "";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "deepseek/deepseek-v3.2";
-const OPENROUTER_FALLBACK_MODELS = (process.env.OPENROUTER_FALLBACK_MODELS || "")
+const OPENROUTER_MODEL =
+  process.env.OPENROUTER_MODEL || "deepseek/deepseek-v3.2";
+const OPENROUTER_FALLBACK_MODELS = (
+  process.env.OPENROUTER_FALLBACK_MODELS || ""
+)
   .split(",")
   .map((model) => model.trim())
   .filter(Boolean)
@@ -560,7 +579,12 @@ const OPENROUTER_TIMEOUT_MS = Math.max(
 );
 const OPENROUTER_MAX_ATTEMPTS = 2;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const EXPLAINABLE_GRADES = new Set(["inaccuracy", "mistake", "miss", "blunder"]);
+const EXPLAINABLE_GRADES = new Set([
+  "inaccuracy",
+  "mistake",
+  "miss",
+  "blunder",
+]);
 const EXPLANATION_MOTIFS = new Set([
   "material_loss",
   "hanging_piece",
@@ -590,10 +614,12 @@ const MOVE_COACH_SYSTEM_INSTRUCTIONS = [
   "Do not invent moves, evaluations, threats, or tactical motifs.",
   "The played line shows the punishment; the best line shows the alternative.",
   "If the exact motif is not demonstrated, choose unclear.",
-  "Write in plain English for a club chess player and use at most two short sentences.",
+  "Write in plain English for a club chess player using no more than five short sentences.",
   "Always name pieces, for example 'the white knight on f3' or 'the black queen moves to d5'.",
   "Board coordinates are allowed, but never use algebraic chess notation such as Nf3, e4, Qxd5, O-O, or move-number notation.",
   "Turn the supplied move descriptions into natural prose instead of copying their sentence structure verbatim.",
+  "Sprinkle in a brief chess aphorism when it fits naturally.",
+  "The tone may be playful, tongue-in-cheek, and gently roasting, but keep the joke about the move rather than the player.",
 ].join(" ");
 
 const REVIEW_PROMPT = [
@@ -622,7 +648,8 @@ class RequestError extends Error {
 
 async function readJsonBody(req, maxBytes = 8_192) {
   const declaredLength = Number(req.headers["content-length"] || 0);
-  if (declaredLength > maxBytes) throw new RequestError(413, "Request is too large.");
+  if (declaredLength > maxBytes)
+    throw new RequestError(413, "Request is too large.");
 
   const chunks = [];
   let size = 0;
@@ -640,7 +667,10 @@ async function readJsonBody(req, maxBytes = 8_192) {
 }
 
 function parseUciMove(value) {
-  if (typeof value !== "string" || !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(value)) {
+  if (
+    typeof value !== "string" ||
+    !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(value)
+  ) {
     throw new RequestError(400, "Analysis contains an invalid move.");
   }
   return value;
@@ -654,7 +684,12 @@ function parseEngineLine(value) {
 }
 
 function parseExpectedPoints(value) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > 1
+  ) {
     throw new RequestError(400, "Analysis contains an invalid evaluation.");
   }
   return value;
@@ -703,7 +738,8 @@ function describeEngineLine(fen, moves) {
     } else {
       description = `${color}'s ${PIECE_NAMES[move.piece]} moves from ${from} to ${to}`;
     }
-    if (move.promotion) description += ` and promotes to a ${PIECE_NAMES[move.promotion]}`;
+    if (move.promotion)
+      description += ` and promotes to a ${PIECE_NAMES[move.promotion]}`;
     if (move.san.endsWith("#")) description += ", delivering checkmate";
     else if (move.san.endsWith("+")) description += ", giving check";
     return description;
@@ -714,7 +750,8 @@ function validateMoveAnalysis(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new RequestError(400, "Move analysis is required.");
   }
-  const fenBefore = typeof body.fenBefore === "string" ? body.fenBefore.trim() : "";
+  const fenBefore =
+    typeof body.fenBefore === "string" ? body.fenBefore.trim() : "";
   if (!fenBefore || fenBefore.length > 120) {
     throw new RequestError(400, "Analysis contains an invalid position.");
   }
@@ -726,7 +763,10 @@ function validateMoveAnalysis(body) {
   const playedLine = parseEngineLine(body.playedLine);
   const bestLine = parseEngineLine(body.bestLine);
   if (playedLine[0] !== playedMove) {
-    throw new RequestError(400, "The played line does not start with the played move.");
+    throw new RequestError(
+      400,
+      "The played line does not start with the played move.",
+    );
   }
 
   const playedLineSan = replayEngineLine(fenBefore, playedLine);
@@ -748,7 +788,8 @@ function validateMoveAnalysis(body) {
 
 function clientAddress(req) {
   const forwarded = req.headers["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded) return forwarded.split(",")[0].trim();
+  if (typeof forwarded === "string" && forwarded)
+    return forwarded.split(",")[0].trim();
   return req.socket.remoteAddress || "unknown";
 }
 
@@ -788,18 +829,27 @@ function openRouterErrorFromResponse(response, data) {
   const error = data?.error ?? choiceError;
   const statusCode = Number(error?.code) || response.status;
   const errorType = error?.metadata?.error_type || null;
-  const message = typeof error?.message === "string"
-    ? error.message.slice(0, 240)
-    : `OpenRouter returned ${statusCode}`;
+  const message =
+    typeof error?.message === "string"
+      ? error.message.slice(0, 240)
+      : `OpenRouter returned ${statusCode}`;
   const retryAfterSeconds = Number(response.headers.get("retry-after"));
-  const retryable = [408, 429, 500, 502, 503, 504].includes(statusCode)
-    || ["rate_limit_exceeded", "provider_overloaded", "provider_unavailable", "timeout", "server"]
-      .includes(errorType);
+  const retryable =
+    [408, 429, 500, 502, 503, 504].includes(statusCode) ||
+    [
+      "rate_limit_exceeded",
+      "provider_overloaded",
+      "provider_unavailable",
+      "timeout",
+      "server",
+    ].includes(errorType);
   return new OpenRouterError(message, {
     statusCode,
     errorType,
     provider: data?.provider ?? null,
-    retryAfterMs: Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : 0,
+    retryAfterMs: Number.isFinite(retryAfterSeconds)
+      ? retryAfterSeconds * 1000
+      : 0,
     retryable,
   });
 }
@@ -811,18 +861,26 @@ function parseOpenRouterExplanation(response, data) {
   const content = data?.choices?.[0]?.message?.content;
   if (typeof content !== "string" || !content.trim()) {
     const finishReason = data?.choices?.[0]?.finish_reason;
-    const reasoningTokens = data?.usage?.completion_tokens_details?.reasoning_tokens
-      ?? data?.usage?.reasoning_tokens;
+    const reasoningTokens =
+      data?.usage?.completion_tokens_details?.reasoning_tokens ??
+      data?.usage?.reasoning_tokens;
     const details = [
       finishReason ? `finish=${finishReason}` : null,
-      Number.isFinite(reasoningTokens) ? `reasoning_tokens=${reasoningTokens}` : null,
-    ].filter(Boolean).join(", ");
-    throw new OpenRouterError(`OpenRouter returned no explanation${details ? ` (${details})` : ""}`, {
-      statusCode: response.status,
-      provider: data?.provider ?? null,
-      errorType: "empty_response",
-      retryable: true,
-    });
+      Number.isFinite(reasoningTokens)
+        ? `reasoning_tokens=${reasoningTokens}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    throw new OpenRouterError(
+      `OpenRouter returned no explanation${details ? ` (${details})` : ""}`,
+      {
+        statusCode: response.status,
+        provider: data?.provider ?? null,
+        errorType: "empty_response",
+        retryable: true,
+      },
+    );
   }
 
   let parsed;
@@ -837,8 +895,13 @@ function parseOpenRouterExplanation(response, data) {
     });
   }
   const motif = typeof parsed?.motif === "string" ? parsed.motif : "";
-  const explanation = typeof parsed?.explanation === "string" ? parsed.explanation.trim() : "";
-  if (!EXPLANATION_MOTIFS.has(motif) || !explanation || explanation.length > 400) {
+  const explanation =
+    typeof parsed?.explanation === "string" ? parsed.explanation.trim() : "";
+  if (
+    !EXPLANATION_MOTIFS.has(motif) ||
+    !explanation ||
+    explanation.length > 400
+  ) {
     throw new OpenRouterError("OpenRouter returned an invalid explanation", {
       statusCode: response.status,
       provider: data?.provider ?? null,
@@ -855,9 +918,15 @@ function parseOpenRouterExplanation(response, data) {
     responseText: content,
     finishReason: data?.choices?.[0]?.finish_reason ?? null,
     usage: {
-      inputTokens: Number.isFinite(data?.usage?.prompt_tokens) ? data.usage.prompt_tokens : null,
-      outputTokens: Number.isFinite(data?.usage?.completion_tokens) ? data.usage.completion_tokens : null,
-      totalTokens: Number.isFinite(data?.usage?.total_tokens) ? data.usage.total_tokens : null,
+      inputTokens: Number.isFinite(data?.usage?.prompt_tokens)
+        ? data.usage.prompt_tokens
+        : null,
+      outputTokens: Number.isFinite(data?.usage?.completion_tokens)
+        ? data.usage.completion_tokens
+        : null,
+      totalTokens: Number.isFinite(data?.usage?.total_tokens)
+        ? data.usage.total_tokens
+        : null,
     },
   };
 }
@@ -881,7 +950,9 @@ function sentryTextMessage(role, content) {
 async function callOpenRouter(facts, requestId) {
   const body = {
     model: OPENROUTER_MODEL,
-    ...(OPENROUTER_FALLBACK_MODELS.length ? { models: OPENROUTER_FALLBACK_MODELS } : {}),
+    ...(OPENROUTER_FALLBACK_MODELS.length
+      ? { models: OPENROUTER_FALLBACK_MODELS }
+      : {}),
     messages: [
       {
         role: "system",
@@ -900,7 +971,8 @@ async function callOpenRouter(facts, requestId) {
             motif: { type: "string", enum: [...EXPLANATION_MOTIFS] },
             explanation: {
               type: "string",
-              description: "At most two short sentences supported by the engine lines.",
+              description:
+                "At most two short sentences supported by the engine lines.",
             },
           },
           required: ["motif", "explanation"],
@@ -926,70 +998,96 @@ async function callOpenRouter(facts, requestId) {
       model: OPENROUTER_MODEL,
     });
     try {
-      return await Sentry.startSpan({
-        name: `chat ${OPENROUTER_MODEL}`,
-        op: "gen_ai.chat",
-        attributes: {
-          "gen_ai.operation.name": "chat",
-          "gen_ai.provider.name": "openrouter",
-          "gen_ai.request.model": OPENROUTER_MODEL,
-          "gen_ai.agent.name": MOVE_COACH_AGENT_NAME,
-          "gen_ai.request.max_tokens": body.max_tokens,
-          "gen_ai.system_instructions": body.messages[0].content,
-          "gen_ai.input.messages": JSON.stringify([
-            sentryTextMessage("user", body.messages[1].content),
-          ]),
-          "gen_ai.conversation.id": requestId,
-          "sentry.origin": MOVE_COACH_SPAN_ORIGIN,
-          "server.address": "openrouter.ai",
-          "pawn_patrol.agent.attempt": attempt,
-        },
-      }, async (span) => {
-        try {
-          const response = await fetch(OPENROUTER_URL, {
-            method: "POST",
-            signal: AbortSignal.timeout(OPENROUTER_TIMEOUT_MS),
-            headers: {
-              Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-              "Content-Type": "application/json",
-              "HTTP-Referer": process.env.APP_URL || "https://pawn-patrol.example",
-              "X-OpenRouter-Title": "Pawn Patrol",
-              "X-OpenRouter-Metadata": "enabled",
-            },
-            body: JSON.stringify(body),
-          });
-          const data = await response.json().catch(() => ({}));
-          const result = parseOpenRouterExplanation(response, data);
-          span.setAttributes({
-            "gen_ai.response.model": result.model,
-            "gen_ai.output.messages": JSON.stringify([
-              sentryTextMessage("assistant", result.responseText),
+      return await Sentry.startSpan(
+        {
+          name: `chat ${OPENROUTER_MODEL}`,
+          op: "gen_ai.chat",
+          attributes: {
+            "gen_ai.operation.name": "chat",
+            "gen_ai.provider.name": "openrouter",
+            "gen_ai.request.model": OPENROUTER_MODEL,
+            "gen_ai.agent.name": MOVE_COACH_AGENT_NAME,
+            "gen_ai.request.max_tokens": body.max_tokens,
+            "gen_ai.system_instructions": body.messages[0].content,
+            "gen_ai.input.messages": JSON.stringify([
+              sentryTextMessage("user", body.messages[1].content),
             ]),
-            "http.response.status_code": response.status,
-          });
-          if (result.responseId) span.setAttribute("gen_ai.response.id", result.responseId);
-          if (result.finishReason) {
-            span.setAttribute("gen_ai.response.finish_reasons", JSON.stringify([result.finishReason]));
-          }
-          if (result.provider) span.setAttribute("openrouter.provider.name", result.provider);
-          setTokenUsage(span, result.usage);
-          return { ...result, attempts: attempt };
-        } catch (error) {
-          const normalized = error instanceof OpenRouterError
-            ? error
-            : new OpenRouterError(
-                error?.name === "TimeoutError" ? `Timed out after ${OPENROUTER_TIMEOUT_MS}ms` : String(error?.message || error),
-                { errorType: error?.name === "TimeoutError" ? "timeout" : "network", retryable: true },
+            "gen_ai.conversation.id": requestId,
+            "sentry.origin": MOVE_COACH_SPAN_ORIGIN,
+            "server.address": "openrouter.ai",
+            "pawn_patrol.agent.attempt": attempt,
+          },
+        },
+        async (span) => {
+          try {
+            const response = await fetch(OPENROUTER_URL, {
+              method: "POST",
+              signal: AbortSignal.timeout(OPENROUTER_TIMEOUT_MS),
+              headers: {
+                Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer":
+                  process.env.APP_URL || "https://pawn-patrol.example",
+                "X-OpenRouter-Title": "Pawn Patrol",
+                "X-OpenRouter-Metadata": "enabled",
+              },
+              body: JSON.stringify(body),
+            });
+            const data = await response.json().catch(() => ({}));
+            const result = parseOpenRouterExplanation(response, data);
+            span.setAttributes({
+              "gen_ai.response.model": result.model,
+              "gen_ai.output.messages": JSON.stringify([
+                sentryTextMessage("assistant", result.responseText),
+              ]),
+              "http.response.status_code": response.status,
+            });
+            if (result.responseId)
+              span.setAttribute("gen_ai.response.id", result.responseId);
+            if (result.finishReason) {
+              span.setAttribute(
+                "gen_ai.response.finish_reasons",
+                JSON.stringify([result.finishReason]),
               );
-          span.setStatus({ code: SENTRY_SPAN_STATUS_ERROR, message: normalized.errorType || "internal_error" });
-          span.setAttribute("error.type", normalized.errorType || "unknown");
-          if (normalized.statusCode !== null) {
-            span.setAttribute("http.response.status_code", normalized.statusCode);
+            }
+            if (result.provider)
+              span.setAttribute("openrouter.provider.name", result.provider);
+            setTokenUsage(span, result.usage);
+            return { ...result, attempts: attempt };
+          } catch (error) {
+            const normalized =
+              error instanceof OpenRouterError
+                ? error
+                : new OpenRouterError(
+                    error?.name === "TimeoutError"
+                      ? `Timed out after ${OPENROUTER_TIMEOUT_MS}ms`
+                      : String(error?.message || error),
+                    {
+                      errorType:
+                        error?.name === "TimeoutError" ? "timeout" : "network",
+                      retryable: true,
+                    },
+                  );
+            span.setStatus({
+              code: SENTRY_SPAN_STATUS_ERROR,
+              message: normalized.errorType || "internal_error",
+            });
+            span.setAttribute("error.type", normalized.errorType || "unknown");
+            if (normalized.statusCode !== null) {
+              span.setAttribute(
+                "http.response.status_code",
+                normalized.statusCode,
+              );
+            }
+            if (normalized.provider)
+              span.setAttribute(
+                "openrouter.provider.name",
+                normalized.provider,
+              );
+            throw normalized;
           }
-          if (normalized.provider) span.setAttribute("openrouter.provider.name", normalized.provider);
-          throw normalized;
-        }
-      });
+        },
+      );
     } catch (error) {
       lastError = error;
       Sentry.logger.warn("openrouter.request.attempt_failed", {
@@ -1000,9 +1098,10 @@ async function callOpenRouter(facts, requestId) {
         provider: error.provider,
       });
       if (!error.retryable || attempt === OPENROUTER_MAX_ATTEMPTS) break;
-      const delayMs = error.retryAfterMs > 0
-        ? Math.min(error.retryAfterMs, 10_000)
-        : 600 * (2 ** (attempt - 1));
+      const delayMs =
+        error.retryAfterMs > 0
+          ? Math.min(error.retryAfterMs, 10_000)
+          : 600 * 2 ** (attempt - 1);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
@@ -1012,43 +1111,50 @@ async function callOpenRouter(facts, requestId) {
 async function runMoveCoach(facts, requestId) {
   return Sentry.withIsolationScope(async (isolationScope) => {
     isolationScope.setConversationId(requestId);
-    return Sentry.startSpan({
-      name: `invoke_agent ${MOVE_COACH_AGENT_NAME}`,
-      op: "gen_ai.invoke_agent",
-      attributes: {
-        "gen_ai.operation.name": "invoke_agent",
-        "gen_ai.agent.name": MOVE_COACH_AGENT_NAME,
-        "gen_ai.provider.name": "openrouter",
-        "gen_ai.request.model": OPENROUTER_MODEL,
-        "gen_ai.system_instructions": MOVE_COACH_SYSTEM_INSTRUCTIONS,
-        "gen_ai.input.messages": JSON.stringify([
-          sentryTextMessage("user", JSON.stringify(facts)),
-        ]),
-        "gen_ai.conversation.id": requestId,
-        "sentry.origin": MOVE_COACH_SPAN_ORIGIN,
-      },
-    }, async (span) => {
-      try {
-        const result = await callOpenRouter(facts, requestId);
-        span.setAttributes({
-          "gen_ai.response.model": result.model,
-          "gen_ai.output.messages": JSON.stringify([
-            sentryTextMessage("assistant", result.explanation),
+    return Sentry.startSpan(
+      {
+        name: `invoke_agent ${MOVE_COACH_AGENT_NAME}`,
+        op: "gen_ai.invoke_agent",
+        attributes: {
+          "gen_ai.operation.name": "invoke_agent",
+          "gen_ai.agent.name": MOVE_COACH_AGENT_NAME,
+          "gen_ai.provider.name": "openrouter",
+          "gen_ai.request.model": OPENROUTER_MODEL,
+          "gen_ai.system_instructions": MOVE_COACH_SYSTEM_INSTRUCTIONS,
+          "gen_ai.input.messages": JSON.stringify([
+            sentryTextMessage("user", JSON.stringify(facts)),
           ]),
-        });
-        if (result.responseId) span.setAttribute("gen_ai.response.id", result.responseId);
-        setTokenUsage(span, result.usage);
-        return result;
-      } catch (error) {
-        span.setStatus({ code: SENTRY_SPAN_STATUS_ERROR, message: error.errorType || "internal_error" });
-        span.setAttribute("error.type", error.errorType || "unknown");
-        Sentry.captureException(error, {
-          mechanism: { handled: true, type: MOVE_COACH_SPAN_ORIGIN },
-          tags: { "gen_ai.agent.name": MOVE_COACH_AGENT_NAME },
-        });
-        throw error;
-      }
-    });
+          "gen_ai.conversation.id": requestId,
+          "sentry.origin": MOVE_COACH_SPAN_ORIGIN,
+        },
+      },
+      async (span) => {
+        try {
+          const result = await callOpenRouter(facts, requestId);
+          span.setAttributes({
+            "gen_ai.response.model": result.model,
+            "gen_ai.output.messages": JSON.stringify([
+              sentryTextMessage("assistant", result.explanation),
+            ]),
+          });
+          if (result.responseId)
+            span.setAttribute("gen_ai.response.id", result.responseId);
+          setTokenUsage(span, result.usage);
+          return result;
+        } catch (error) {
+          span.setStatus({
+            code: SENTRY_SPAN_STATUS_ERROR,
+            message: error.errorType || "internal_error",
+          });
+          span.setAttribute("error.type", error.errorType || "unknown");
+          Sentry.captureException(error, {
+            mechanism: { handled: true, type: MOVE_COACH_SPAN_ORIGIN },
+            tags: { "gen_ai.agent.name": MOVE_COACH_AGENT_NAME },
+          });
+          throw error;
+        }
+      },
+    );
   });
 }
 
@@ -1058,7 +1164,9 @@ async function handleMoveExplanationRequest(req, res) {
     return;
   }
   if (!consumeExplanationRateLimit(req)) {
-    sendJson(res, 429, { error: "Too many explanation requests. Try again shortly." });
+    sendJson(res, 429, {
+      error: "Too many explanation requests. Try again shortly.",
+    });
     return;
   }
 
@@ -1094,7 +1202,9 @@ async function handleMoveExplanationRequest(req, res) {
     expectedPointsBefore: analysis.bestExpectedPoints,
     expectedPointsAfter: analysis.playedExpectedPoints,
   };
-  const cacheKey = createHash("sha256").update(JSON.stringify(facts)).digest("hex");
+  const cacheKey = createHash("sha256")
+    .update(JSON.stringify(facts))
+    .digest("hex");
   const cached = explanationCache.get(cacheKey);
   if (cached) {
     sendJson(res, 200, {
@@ -1109,7 +1219,10 @@ async function handleMoveExplanationRequest(req, res) {
   const requestId = randomUUID().slice(0, 8);
   try {
     const result = await runMoveCoach(facts, requestId);
-    const explanation = { motif: result.motif, explanation: result.explanation };
+    const explanation = {
+      motif: result.motif,
+      explanation: result.explanation,
+    };
     cacheExplanation(cacheKey, explanation);
     Sentry.logger.info("openrouter.request.succeeded", {
       request_id: requestId,
@@ -1125,12 +1238,16 @@ async function handleMoveExplanationRequest(req, res) {
       statusCode: error?.statusCode ?? null,
       errorType: error?.errorType ?? "unknown",
       provider: error?.provider ?? null,
-      message: String(error?.message || "Unknown OpenRouter error").slice(0, 240),
+      message: String(error?.message || "Unknown OpenRouter error").slice(
+        0,
+        240,
+      ),
     });
     sendJson(res, 502, {
       ...lines,
       requestId,
-      error: "The AI explanation is unavailable; the verified engine lines are shown instead.",
+      error:
+        "The AI explanation is unavailable; the verified engine lines are shown instead.",
     });
   }
 }
@@ -1143,7 +1260,10 @@ function handleGamesRequest(req, res, url) {
   if (url.pathname === "/api/games") {
     void (async () => {
       sendJson(res, 200, {
-        games: await gameStore.listGames(playerKey, url.searchParams.get("limit") ?? 20),
+        games: await gameStore.listGames(
+          playerKey,
+          url.searchParams.get("limit") ?? 20,
+        ),
       });
     })().catch((error) => {
       console.error("Game list request failed:", error);
@@ -1154,7 +1274,10 @@ function handleGamesRequest(req, res, url) {
   const match = url.pathname.match(/^\/api\/games\/([^/]+)$/);
   if (!match) return false;
   void (async () => {
-    const game = await gameStore.getGame(decodeURIComponent(match[1]), playerKey);
+    const game = await gameStore.getGame(
+      decodeURIComponent(match[1]),
+      playerKey,
+    );
     sendJson(res, game ? 200 : 404, game ?? { error: "Game not found" });
   })().catch((error) => {
     console.error("Game detail request failed:", error);
@@ -1171,7 +1294,8 @@ async function sentryApi(path, options = {}) {
       "Content-Type": "application/json",
     },
   });
-  if (!response.ok) throw new Error(`Sentry API ${response.status} for ${path}`);
+  if (!response.ok)
+    throw new Error(`Sentry API ${response.status} for ${path}`);
   return response.json();
 }
 
@@ -1179,7 +1303,13 @@ function extractReview(autofix) {
   const blocks = Array.isArray(autofix?.blocks) ? autofix.blocks : [];
   const answers = blocks
     .map((block) => block?.message)
-    .filter((m) => m && m.role === "assistant" && typeof m.content === "string" && m.content.trim());
+    .filter(
+      (m) =>
+        m &&
+        m.role === "assistant" &&
+        typeof m.content === "string" &&
+        m.content.trim(),
+    );
   return answers.length ? answers[answers.length - 1].content : null;
 }
 
@@ -1190,7 +1320,9 @@ async function handleReviewRequest(req, res, url) {
   }
   try {
     if (req.method === "POST" && url.pathname === "/api/review") {
-      const gameId = (url.searchParams.get("gameId") || "").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64);
+      const gameId = (url.searchParams.get("gameId") || "")
+        .replace(/[^a-zA-Z0-9-]/g, "")
+        .slice(0, 64);
       if (!gameId) {
         sendJson(res, 400, { error: "gameId is required" });
         return;
@@ -1201,27 +1333,43 @@ async function handleReviewRequest(req, res, url) {
       );
       if (!Array.isArray(issues) || issues.length === 0) {
         // The game's issue can lag ingestion by a minute; the client retries.
-        sendJson(res, 404, { error: "Game not indexed yet. Try again shortly." });
+        sendJson(res, 404, {
+          error: "Game not indexed yet. Try again shortly.",
+        });
         return;
       }
       const issueId = issues[0].id;
-      const existing = await sentryApi(`/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/`);
+      const existing = await sentryApi(
+        `/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/`,
+      );
       if (!existing?.autofix || existing.autofix.status === "errored") {
-        await sentryApi(`/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/?mode=explorer`, {
-          method: "POST",
-          body: JSON.stringify({ step: "root_cause", referrer: "api.web", user_context: REVIEW_PROMPT }),
-        });
+        await sentryApi(
+          `/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/?mode=explorer`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              step: "root_cause",
+              referrer: "api.web",
+              user_context: REVIEW_PROMPT,
+            }),
+          },
+        );
       }
       sendJson(res, 200, { issueId, shortId: issues[0].shortId });
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/review/status") {
-      const issueId = (url.searchParams.get("issueId") || "").replace(/\D/g, "");
+      const issueId = (url.searchParams.get("issueId") || "").replace(
+        /\D/g,
+        "",
+      );
       if (!issueId) {
         sendJson(res, 400, { error: "issueId is required" });
         return;
       }
-      const data = await sentryApi(`/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/`);
+      const data = await sentryApi(
+        `/organizations/${SENTRY_ORG}/issues/${issueId}/autofix/`,
+      );
       const status = data?.autofix?.status ?? "none";
       sendJson(res, 200, { status, text: extractReview(data?.autofix) });
       return;
