@@ -1,7 +1,14 @@
 /** Node server: Next.js frontend plus an in-memory WebSocket chess table service. */
 import { createServer } from "node:http";
 import { createReadStream, statSync } from "node:fs";
-import { createHash, randomInt, randomUUID } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomInt,
+  randomUUID,
+  scryptSync,
+  timingSafeEqual,
+} from "node:crypto";
 import * as Sentry from "@sentry/node";
 import next from "next";
 import { WebSocketServer } from "ws";
@@ -88,6 +95,50 @@ function endGameTraceWhenReady(table) {
   table.sentrySpan.end();
 }
 
+const ELO_K = 32;
+
+function resultScore(result) {
+  if (result.startsWith("White wins")) return 1;
+  if (result.startsWith("Black wins")) return 0;
+  if (result.startsWith("Draw")) return 0.5;
+  return null;
+}
+
+// A game is rated when every seat is a signed-in player or a bot and at
+// least one side is a player. Bots act as fixed-rating anchors.
+async function applyGameRatings(table) {
+  const whiteScore = resultScore(table.result ?? "");
+  if (whiteScore === null || table.chess.history().length < 2) return;
+  const ratings = {};
+  const players = {};
+  for (const color of ["w", "b"]) {
+    const userId = table.seatUsers[color];
+    if (userId) {
+      const user = await gameStore.getUserById(userId);
+      if (!user) return;
+      players[color] = user;
+      ratings[color] = user.rating;
+    } else if (table.bot?.color === color) {
+      ratings[color] = table.bot.elo;
+    } else {
+      return;
+    }
+  }
+  if (!players.w && !players.b) return;
+  const expectedWhite = 1 / (1 + 10 ** ((ratings.b - ratings.w) / 400));
+  for (const color of ["w", "b"]) {
+    if (!players[color]) continue;
+    const score = color === "w" ? whiteScore : 1 - whiteScore;
+    const expected = color === "w" ? expectedWhite : 1 - expectedWhite;
+    const newRating = Math.round(ratings[color] + ELO_K * (score - expected));
+    const outcome = score === 1 ? "win" : score === 0 ? "loss" : "draw";
+    await gameStore.recordRatedResult(players[color].id, newRating, outcome);
+    console.log(
+      `Rated game ${table.gameId}: ${players[color].username} ${ratings[color]} -> ${newRating} (${outcome})`,
+    );
+  }
+}
+
 function captureFinishedGame(table) {
   if (!table.result || table.finishedIssueSent) return;
   table.finishedIssueSent = true;
@@ -97,6 +148,9 @@ function captureFinishedGame(table) {
     table.chess.fen(),
     table.clock,
   );
+  applyGameRatings(table).catch((error) => {
+    console.error(`Rating update failed for game ${table.gameId}:`, error);
+  });
 
   const plyCount = table.chess.history().length;
   table.sentrySpan.setAttributes({
@@ -142,6 +196,7 @@ function createTable(id, initialTimeMs = DEFAULT_STARTING_TIME) {
     clock: { w: initialTimeMs, b: initialTimeMs, running: null, since: null },
     gradedPlies: new Set(),
     playerColors: new Map(),
+    seatUsers: { w: null, b: null },
     sentrySpan: createGameTrace(id, gameId),
     sentryTraceEnded: false,
     finishedIssueSent: false,
@@ -181,6 +236,10 @@ function restoreTable(id, saved) {
     clock: { w: saved.clock.w, b: saved.clock.b, running: null, since: null },
     gradedPlies: new Set(),
     playerColors: new Map(Object.entries(saved.playerColors ?? {})),
+    seatUsers: {
+      w: saved.seatUsers?.w ?? null,
+      b: saved.seatUsers?.b ?? null,
+    },
     sentrySpan: createGameTrace(id, saved.id),
     sentryTraceEnded: false,
     finishedIssueSent: false,
@@ -614,11 +673,16 @@ function handleTableMessage(table, client, raw) {
       });
     }
     table.playerColors.clear();
+    table.seatUsers = { w: null, b: null };
     for (const color of ["w", "b"]) {
       const seated = table.seats[color];
       if (seated?.playerKey) {
         table.playerColors.set(seated.playerKey, color);
         gameStore.addPlayer(table.gameId, seated.playerKey, color);
+      }
+      if (seated?.userId) {
+        table.seatUsers[color] = seated.userId;
+        gameStore.setSeatUser(table.gameId, color, seated.userId);
       }
     }
     resumeClock(table);
@@ -642,9 +706,19 @@ async function joinTable(request, socket) {
     socket.close(1008, "A room code is required");
     return;
   }
+  const token = (url.searchParams.get("token") || "").slice(0, 64);
+  let user = null;
+  if (token) {
+    try {
+      user = await gameStore.getSessionUser(token);
+    } catch (error) {
+      console.error("Failed to resolve the signed-in player:", error);
+    }
+  }
   const name =
-    (url.searchParams.get("name") || "Guest player").trim().slice(0, 24) ||
-    "Guest player";
+    user?.username ??
+    ((url.searchParams.get("name") || "Guest player").trim().slice(0, 24) ||
+      "Guest player");
   const playerKey = (url.searchParams.get("playerKey") || "")
     .replace(/[^a-zA-Z0-9-]/g, "")
     .slice(0, 64);
@@ -657,13 +731,24 @@ async function joinTable(request, socket) {
   if (socket.readyState !== socket.OPEN) return;
 
   const role = chooseSeat(table, playerKey);
-  const client = { id: randomUUID(), name, role, playerKey, socket };
+  const client = {
+    id: randomUUID(),
+    name,
+    role,
+    playerKey,
+    userId: user?.id ?? null,
+    socket,
+  };
   table.clients.add(client);
   if (role === "w" || role === "b") {
     table.seats[role] = client;
     if (playerKey) {
       table.playerColors.set(playerKey, role);
       gameStore.addPlayer(table.gameId, playerKey, role);
+    }
+    if (user) {
+      table.seatUsers[role] = user.id;
+      gameStore.setSeatUser(table.gameId, role, user.id);
     }
   }
 
@@ -1440,6 +1525,135 @@ async function handleMoveExplanationRequest(req, res) {
   }
 }
 
+const authRateLimits = new Map();
+
+function consumeAuthRateLimit(req) {
+  const key = clientAddress(req);
+  const now = Date.now();
+  const existing = authRateLimits.get(key);
+  if (!existing || now - existing.startedAt >= 10 * 60 * 1000) {
+    authRateLimits.set(key, { startedAt: now, count: 1 });
+    return true;
+  }
+  existing.count += 1;
+  return existing.count <= 30;
+}
+
+function hashPassword(password) {
+  const salt = randomBytes(16).toString("hex");
+  return `${salt}:${scryptSync(password, salt, 32).toString("hex")}`;
+}
+
+function verifyPassword(password, stored) {
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash) return false;
+  return timingSafeEqual(scryptSync(password, salt, 32), Buffer.from(hash, "hex"));
+}
+
+function publicUser(user) {
+  return {
+    username: user.username,
+    rating: user.rating,
+    ratedGames: user.ratedGames,
+    wins: user.wins,
+    losses: user.losses,
+    draws: user.draws,
+  };
+}
+
+function bearerToken(req, url) {
+  const header = req.headers.authorization || "";
+  if (header.startsWith("Bearer ")) return header.slice(7).slice(0, 64);
+  return (url.searchParams.get("token") || "").slice(0, 64);
+}
+
+async function handleAuthRequest(req, res, url) {
+  try {
+    if (req.method === "GET" && url.pathname === "/api/auth/me") {
+      const token = bearerToken(req, url);
+      const user = token ? await gameStore.getSessionUser(token) : null;
+      if (!user) sendJson(res, 401, { error: "Not signed in." });
+      else sendJson(res, 200, { user: publicUser(user) });
+      return;
+    }
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed." });
+      return;
+    }
+    if (url.pathname === "/api/auth/logout") {
+      const token = bearerToken(req, url);
+      if (token) await gameStore.deleteSession(token);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+    if (!consumeAuthRateLimit(req)) {
+      sendJson(res, 429, { error: "Too many attempts. Try again shortly." });
+      return;
+    }
+    const body = await readJsonBody(req);
+    const username = typeof body?.username === "string" ? body.username.trim() : "";
+    const password = typeof body?.password === "string" ? body.password : "";
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{2,19}$/.test(username)) {
+      sendJson(res, 400, {
+        error: "Names are 3-20 letters, digits, dashes, or underscores.",
+      });
+      return;
+    }
+    if (password.length < 6 || password.length > 100) {
+      sendJson(res, 400, { error: "Passwords need at least 6 characters." });
+      return;
+    }
+    let user = null;
+    if (url.pathname === "/api/auth/register") {
+      user = await gameStore.createUser({
+        id: randomUUID(),
+        username,
+        passwordHash: hashPassword(password),
+      });
+      if (!user) {
+        sendJson(res, 409, { error: "That name is already taken." });
+        return;
+      }
+    } else if (url.pathname === "/api/auth/login") {
+      const existing = await gameStore.getUserByUsername(username);
+      if (!existing || !verifyPassword(password, existing.passwordHash)) {
+        sendJson(res, 401, { error: "Wrong name or password." });
+        return;
+      }
+      user = existing;
+    } else {
+      sendJson(res, 404, { error: "Not found" });
+      return;
+    }
+    const token = randomBytes(32).toString("hex").slice(0, 64);
+    await gameStore.createSession(token, user.id);
+    sendJson(res, 200, { token, user: publicUser(user) });
+  } catch (error) {
+    if (error instanceof RequestError) {
+      sendJson(res, error.status, { error: error.message });
+      return;
+    }
+    console.error("Auth request failed:", error);
+    sendJson(res, 500, { error: "Sign-in is unavailable right now." });
+  }
+}
+
+async function handleLeaderboardRequest(req, res, url) {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+  try {
+    const players = await gameStore.listLeaderboard(
+      url.searchParams.get("limit") ?? 50,
+    );
+    sendJson(res, 200, { players: players.map(publicUser) });
+  } catch (error) {
+    console.error("Leaderboard request failed:", error);
+    sendJson(res, 500, { error: "Failed to load the leaderboard" });
+  }
+}
+
 function handleGamesRequest(req, res, url) {
   if (req.method !== "GET") return false;
   const playerKey = (url.searchParams.get("playerKey") || "")
@@ -1630,6 +1844,14 @@ const server = createServer((req, res) => {
     return;
   }
   if (handleGamesRequest(req, res, url)) return;
+  if (url.pathname.startsWith("/api/auth/")) {
+    void handleAuthRequest(req, res, url);
+    return;
+  }
+  if (url.pathname === "/api/leaderboard") {
+    void handleLeaderboardRequest(req, res, url);
+    return;
+  }
   if (url.pathname === "/api/move-explanation") {
     void handleMoveExplanationRequest(req, res);
     return;

@@ -51,6 +51,25 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       PRIMARY KEY (game_id, player_key)
     );
 
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      username_lower TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      rating INTEGER NOT NULL DEFAULT 1200,
+      rated_games INTEGER NOT NULL DEFAULT 0,
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      draws INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS games_finished_at_idx
       ON games(status, finished_at DESC);
     CREATE INDEX IF NOT EXISTS game_players_player_idx
@@ -74,6 +93,10 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     database.exec(
       "ALTER TABLE games ADD COLUMN initial_time_ms INTEGER NOT NULL DEFAULT 600000",
     );
+  }
+  if (!gameColumns.some((column) => column.name === "white_user_id")) {
+    database.exec("ALTER TABLE games ADD COLUMN white_user_id TEXT");
+    database.exec("ALTER TABLE games ADD COLUMN black_user_id TEXT");
   }
 
   const statements = {
@@ -141,14 +164,57 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     `),
     selectLiveGame: database.prepare(`
       SELECT id, room, white_time_ms, black_time_ms, initial_time_ms,
-        bot_key, bot_color, bot_coach
+        bot_key, bot_color, bot_coach, white_user_id, black_user_id
       FROM games WHERE room = ? AND status = 'in_progress' AND updated_at >= ?
       ORDER BY updated_at DESC LIMIT 1
     `),
     selectPlayerColors: database.prepare(`
       SELECT player_key, color FROM game_players WHERE game_id = ?
     `),
+    insertUser: database.prepare(`
+      INSERT INTO users (id, username, username_lower, password_hash, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `),
+    selectUserByName: database.prepare(
+      "SELECT * FROM users WHERE username_lower = ?",
+    ),
+    selectUserById: database.prepare("SELECT * FROM users WHERE id = ?"),
+    insertSession: database.prepare(
+      "INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)",
+    ),
+    deleteSession: database.prepare("DELETE FROM sessions WHERE token = ?"),
+    selectSessionUser: database.prepare(`
+      SELECT users.* FROM sessions JOIN users ON users.id = sessions.user_id
+      WHERE sessions.token = ?
+    `),
+    setWhiteUser: database.prepare(
+      "UPDATE games SET white_user_id = ? WHERE id = ?",
+    ),
+    setBlackUser: database.prepare(
+      "UPDATE games SET black_user_id = ? WHERE id = ?",
+    ),
+    applyRating: database.prepare(`
+      UPDATE users SET rating = ?, rated_games = rated_games + 1,
+        wins = wins + ?, losses = losses + ?, draws = draws + ? WHERE id = ?
+    `),
+    selectLeaderboard: database.prepare(`
+      SELECT * FROM users WHERE rated_games > 0 ORDER BY rating DESC LIMIT ?
+    `),
   };
+
+  function mapUser(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      username: row.username,
+      passwordHash: row.password_hash,
+      rating: row.rating,
+      ratedGames: row.rated_games,
+      wins: row.wins,
+      losses: row.losses,
+      draws: row.draws,
+    };
+  }
 
   function mapMove(move) {
     return {
@@ -266,11 +332,60 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
         initialTimeMs: row.initial_time_ms,
         clock: { w: row.white_time_ms, b: row.black_time_ms },
         playerColors,
+        seatUsers: { w: row.white_user_id, b: row.black_user_id },
         bot: row.bot_key
           ? { key: row.bot_key, color: row.bot_color, coach: Boolean(row.bot_coach) }
           : null,
         history: statements.selectMoves.all(row.id).map(mapMove),
       };
+    },
+    setSeatUser(gameId, color, userId) {
+      const statement =
+        color === "w" ? statements.setWhiteUser : statements.setBlackUser;
+      statement.run(userId, gameId);
+    },
+    createUser({ id, username, passwordHash }) {
+      try {
+        statements.insertUser.run(
+          id,
+          username,
+          username.toLowerCase(),
+          passwordHash,
+          Date.now(),
+        );
+      } catch (error) {
+        if (String(error?.message).includes("UNIQUE")) return null;
+        throw error;
+      }
+      return mapUser(statements.selectUserById.get(id));
+    },
+    getUserByUsername(username) {
+      return mapUser(statements.selectUserByName.get(username.toLowerCase()));
+    },
+    getUserById(id) {
+      return mapUser(statements.selectUserById.get(id));
+    },
+    createSession(token, userId) {
+      statements.insertSession.run(token, userId, Date.now());
+    },
+    deleteSession(token) {
+      statements.deleteSession.run(token);
+    },
+    getSessionUser(token) {
+      return mapUser(statements.selectSessionUser.get(token));
+    },
+    recordRatedResult(userId, newRating, outcome) {
+      statements.applyRating.run(
+        newRating,
+        outcome === "win" ? 1 : 0,
+        outcome === "loss" ? 1 : 0,
+        outcome === "draw" ? 1 : 0,
+        userId,
+      );
+    },
+    listLeaderboard(limit = 50) {
+      const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+      return statements.selectLeaderboard.all(safeLimit).map(mapUser);
     },
     close() {
       database.close();

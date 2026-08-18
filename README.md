@@ -52,6 +52,16 @@ not in the player UI. Fallback models are optional and comma-separated;
 `OPENROUTER_ZDR=true` can be used to require a smaller zero-data-retention
 provider pool in addition to the default no-training data policy.
 
+## Accounts and the leaderboard
+
+Signing in is optional: guests can play everything. Creating an account
+(username + password, stored in the game store with scrypt-hashed passwords)
+puts your games on the Elo leaderboard at `/leaderboard`. Everyone starts at
+1200 with K=32. A finished game is rated when every seat is a signed-in player
+or a Patrol bot — the bots act as fixed anchors at their advertised ratings
+(1100/1500/1900) — and at least two moves were played. Games involving an
+anonymous guest stay unrated.
+
 ## Saved games and replay
 
 For local development, the server creates `data/pawn-patrol.sqlite`

@@ -38,6 +38,8 @@ import {
   type ReviewMove,
 } from "./move-analysis";
 import { BOTS, useMaiaEngine, type BotKey } from "./maia-bot";
+import { authToken, useAuth } from "./auth";
+import { AuthDialog } from "./AuthDialog";
 
 type Role = "w" | "b" | "spectator";
 
@@ -343,6 +345,8 @@ export function ChessRoom() {
   const [pendingBot, setPendingBot] = useState<BotKey | null>(null);
   const botMoveKeyRef = useRef("");
   const latestStateRef = useRef<GameState | null>(null);
+  const { user, signIn, register, signOut } = useAuth();
+  const [authOpen, setAuthOpen] = useState(false);
   const [coachEnabled, setCoachEnabled] = useState(true);
   const [coachFeed, setCoachFeed] = useState<CoachItem[]>([]);
   const [hint, setHint] = useState<CoachHint | null>(null);
@@ -896,8 +900,9 @@ export function ChessRoom() {
     setNotice("");
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const playerKey = browserPlayerKey();
+    const token = authToken();
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}&playerKey=${encodeURIComponent(playerKey)}${bot ? `&bot=${bot}` : ""}${initialTimeMs ? `&time=${initialTimeMs}` : ""}${bot && coach ? "&coach=1" : ""}`,
+      `${protocol}//${window.location.host}/ws?room=${encodeURIComponent(cleanRoom)}&name=${encodeURIComponent(cleanName)}&playerKey=${encodeURIComponent(playerKey)}${token ? `&token=${encodeURIComponent(token)}` : ""}${bot ? `&bot=${bot}` : ""}${initialTimeMs ? `&time=${initialTimeMs}` : ""}${bot && coach ? "&coach=1" : ""}`,
     );
     socketRef.current = socket;
 
@@ -1189,6 +1194,23 @@ export function ChessRoom() {
           </span>
         </Link>
         <div className="topbar-actions">
+          {user ? (
+            <>
+              <span className="topbar-user" title="Signed in">
+                {user.username} · {user.rating}
+              </span>
+              <button className="text-button" onClick={signOut}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button className="text-button" onClick={() => setAuthOpen(true)}>
+              Sign in
+            </button>
+          )}
+          <Link className="text-button" href="/leaderboard">
+            Leaderboard
+          </Link>
           <Link className="text-button" href="/games">
             Past games
           </Link>
@@ -1309,15 +1331,22 @@ export function ChessRoom() {
                       You&apos;ve been invited to table {invitedRoom}. Enter a
                       name and join the game.
                     </p>
-                    <label>
-                      <span>Your name</span>
-                      <input
-                        value={name}
-                        onChange={(event) => setName(event.target.value)}
-                        placeholder="e.g. Magnus"
-                        maxLength={24}
-                      />
-                    </label>
+                    {user ? (
+                      <p className="lobby-signed-in">
+                        PLAYING AS <strong>{user.username}</strong> · RATING{" "}
+                        {user.rating}
+                      </p>
+                    ) : (
+                      <label>
+                        <span>Your name</span>
+                        <input
+                          value={name}
+                          onChange={(event) => setName(event.target.value)}
+                          placeholder="e.g. Magnus"
+                          maxLength={24}
+                        />
+                      </label>
+                    )}
                     <button
                       className="primary-button"
                       onClick={() => connect(invitedRoom, name)}
@@ -1335,17 +1364,25 @@ export function ChessRoom() {
                     </h1>
                     <p>
                       Create a private table or enter a code from a friend. No
-                      account needed.
+                      account needed — sign in if you want rated games on the
+                      leaderboard.
                     </p>
-                    <label>
-                      <span>Your name</span>
-                      <input
-                        value={name}
-                        onChange={(event) => setName(event.target.value)}
-                        placeholder="e.g. Magnus"
-                        maxLength={24}
-                      />
-                    </label>
+                    {user ? (
+                      <p className="lobby-signed-in">
+                        PLAYING AS <strong>{user.username}</strong> · RATING{" "}
+                        {user.rating}
+                      </p>
+                    ) : (
+                      <label>
+                        <span>Your name</span>
+                        <input
+                          value={name}
+                          onChange={(event) => setName(event.target.value)}
+                          placeholder="e.g. Magnus"
+                          maxLength={24}
+                        />
+                      </label>
+                    )}
                     <fieldset className="time-control">
                       <legend>Time control</legend>
                       <div>
@@ -2233,6 +2270,14 @@ export function ChessRoom() {
             </div>
           </aside>
         </>
+      )}
+
+      {authOpen && (
+        <AuthDialog
+          onClose={() => setAuthOpen(false)}
+          signIn={signIn}
+          register={register}
+        />
       )}
 
       <footer>

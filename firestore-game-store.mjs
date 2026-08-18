@@ -3,6 +3,9 @@ import { FieldValue, Firestore } from "@google-cloud/firestore";
 export function openFirestoreGameStore() {
   const firestore = new Firestore({ ignoreUndefinedProperties: true });
   const games = firestore.collection("games");
+  const users = firestore.collection("users");
+  const usernames = firestore.collection("usernames");
+  const sessions = firestore.collection("sessions");
   const writeQueues = new Map();
 
   // Writes for one game run in order; failures are logged, never thrown at callers.
@@ -26,6 +29,21 @@ export function openFirestoreGameStore() {
       ...(move.promotion ? { promotion: move.promotion } : {}),
       fenAfter: move.fenAfter,
       playedAt: move.playedAt,
+    };
+  }
+
+  function mapUser(doc) {
+    if (!doc?.exists) return null;
+    const data = doc.data();
+    return {
+      id: doc.id,
+      username: data.username,
+      passwordHash: data.passwordHash,
+      rating: data.rating ?? 1200,
+      ratedGames: data.ratedGames ?? 0,
+      wins: data.wins ?? 0,
+      losses: data.losses ?? 0,
+      draws: data.draws ?? 0,
     };
   }
 
@@ -218,11 +236,79 @@ export function openFirestoreGameStore() {
         initialTimeMs: data.initialTimeMs ?? 600_000,
         clock: { w: data.whiteTimeMs, b: data.blackTimeMs },
         playerColors: data.playerColors ?? {},
+        seatUsers: {
+          w: data.whiteUserId ?? null,
+          b: data.blackUserId ?? null,
+        },
         bot: data.botKey
           ? { key: data.botKey, color: data.botColor, coach: data.botCoach === true }
           : null,
         history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),
       };
+    },
+    setSeatUser(gameId, color, userId) {
+      enqueue(gameId, () =>
+        games.doc(gameId).update({
+          [color === "w" ? "whiteUserId" : "blackUserId"]: userId,
+          updatedAt: Date.now(),
+        }),
+      );
+    },
+    async createUser({ id, username, passwordHash }) {
+      try {
+        await usernames.doc(username.toLowerCase()).create({ userId: id });
+      } catch (error) {
+        if (error?.code === 6) return null;
+        throw error;
+      }
+      await users.doc(id).create({
+        username,
+        passwordHash,
+        rating: 1200,
+        ratedGames: 0,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        createdAt: Date.now(),
+      });
+      return mapUser(await users.doc(id).get());
+    },
+    async getUserByUsername(username) {
+      const claim = await usernames.doc(username.toLowerCase()).get();
+      if (!claim.exists) return null;
+      return mapUser(await users.doc(claim.data().userId).get());
+    },
+    async getUserById(id) {
+      return mapUser(await users.doc(id).get());
+    },
+    createSession(token, userId) {
+      return sessions.doc(token).set({ userId, createdAt: Date.now() });
+    },
+    deleteSession(token) {
+      return sessions.doc(token).delete();
+    },
+    async getSessionUser(token) {
+      const session = await sessions.doc(token).get();
+      if (!session.exists) return null;
+      return mapUser(await users.doc(session.data().userId).get());
+    },
+    recordRatedResult(userId, newRating, outcome) {
+      return users.doc(userId).update({
+        rating: newRating,
+        ratedGames: FieldValue.increment(1),
+        wins: FieldValue.increment(outcome === "win" ? 1 : 0),
+        losses: FieldValue.increment(outcome === "loss" ? 1 : 0),
+        draws: FieldValue.increment(outcome === "draw" ? 1 : 0),
+      });
+    },
+    async listLeaderboard(limit = 50) {
+      const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+      // Filtering in code avoids a ratedGames+rating composite index.
+      const snapshot = await users.orderBy("rating", "desc").limit(200).get();
+      return snapshot.docs
+        .map(mapUser)
+        .filter((user) => user.ratedGames > 0)
+        .slice(0, safeLimit);
     },
     close() {
       return firestore.terminate();
