@@ -98,14 +98,22 @@ button { color: inherit; }
 .board-ghost--fade { z-index: 1; animation: piece-fade 140ms ease-out both; }
 @keyframes piece-slide { from { transform: translate(var(--dx), var(--dy)); } }
 @keyframes piece-fade { to { opacity: 0; transform: scale(0.7); } }
-.square { position: relative; border: 0; min-width: 0; padding: 0; aspect-ratio: 1; display: grid; place-items: center; cursor: pointer; overflow: hidden; }
+.drag-layer { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.drag-piece { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; display: grid; place-items: center; visibility: hidden; will-change: transform; filter: drop-shadow(0 7px 11px rgba(0, 0, 0, 0.35)); }
+.drag-piece .piece { transform: scale(1.1); }
+.square { position: relative; border: 0; min-width: 0; padding: 0; aspect-ratio: 1; display: grid; place-items: center; cursor: pointer; overflow: hidden; touch-action: none; }
 .square--light { background: #e8dfc9; color: var(--green); }
 .square--dark { background: #638376; color: #f6f0df; }
 .square:hover { filter: brightness(1.05); }
 .square:focus-visible { outline: 3px solid var(--amber); outline-offset: -3px; z-index: 4; }
 .square.was-moved::before { content: ""; position: absolute; inset: 0; background: rgba(225, 174, 74, .36); }
 .square.is-selected::before { content: ""; position: absolute; inset: 0; background: rgba(217, 154, 66, .62); }
-.square.is-check::after { content: ""; position: absolute; inset: 14%; border-radius: 50%; background: radial-gradient(circle, rgba(174,55,43,.7), rgba(174,55,43,0)); }
+.square.is-check::after { content: ""; position: absolute; inset: 14%; border-radius: 50%; background: radial-gradient(circle, rgba(174,55,43,.7), rgba(174,55,43,0)); animation: check-pulse 1.2s ease-in-out infinite; }
+@keyframes check-pulse { 0%, 100% { opacity: .55; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.06); } }
+.square--grabbable { cursor: grab; }
+.square--grabbable .piece { transition: transform 130ms ease; }
+.square--grabbable:hover .piece { transform: translateY(-8%) scale(1.05); }
+.chessboard--dragging, .chessboard--dragging .square { cursor: grabbing; }
 .piece { position: relative; z-index: 2; font-family: "Times New Roman", "Noto Sans Symbols 2", Georgia, serif; font-size: clamp(34px, 6.3vw, 69px); line-height: 1; transform: translateY(-2%); user-select: none; }
 .piece--w { color: #fffdf6; text-shadow: 0 1px 1px rgba(0,0,0,.72), 0 2px 3px rgba(0,0,0,.38); }
 .piece--b { color: #142c25; text-shadow: 0 1px 0 rgba(255,255,255,.3), 0 2px 2px rgba(0,0,0,.28); }

@@ -11,10 +11,12 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { IconSeer } from "./IconSeer";
+import { playCapture, playCheck, playGameEnd, playMove } from "./board-sounds";
 import { PIECE_GLYPHS } from "./chess-pieces";
 import { startGameReplay, stopGameReplay } from "./sentry-replay";
 import { gradeLabel, useMoveAnalysis, type ReviewMove } from "./move-analysis";
@@ -683,6 +685,13 @@ export function ChessRoom() {
   }, [viewFen]);
 
   const [anim, setAnim] = useState<BoardAnim | null>(null);
+  const [drag, setDrag] = useState<{
+    from: Square;
+    glyph: string;
+    color: Color;
+  } | null>(null);
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const dragElRef = useRef<HTMLSpanElement | null>(null);
   const animIdRef = useRef(0);
   const prevBoardRef = useRef<{ key: string; ply: number; fen: string } | null>(
     null,
@@ -742,9 +751,27 @@ export function ChessRoom() {
     }
     animIdRef.current += 1;
     setAnim({ id: animIdRef.current, ghosts, hide });
+    if (forward && ghosts.some((ghost) => ghost.fade)) playCapture();
+    else playMove();
+    if (forward && move.san.includes("+")) playCheck();
     const timer = window.setTimeout(() => setAnim(null), 180);
     return () => window.clearTimeout(timer);
   }, [boardKey, viewedPly, viewFen, viewHistory]);
+
+  // Chime when the game we were watching or playing reaches a result.
+  const resultSoundRef = useRef<{ gameId: string; hadResult: boolean } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!state) return;
+    const prev = resultSoundRef.current;
+    resultSoundRef.current = {
+      gameId: state.gameId,
+      hadResult: Boolean(state.result),
+    };
+    if (state.result && prev?.gameId === state.gameId && !prev.hadResult)
+      playGameEnd();
+  }, [state]);
 
   const legalTargets = useMemo(() => {
     if (!selected) return new Set<string>();
@@ -841,37 +868,96 @@ export function ChessRoom() {
       ? projectedTime(state.clock, bottomColor, now)
       : 600_000;
 
+  const canInteract =
+    !pastGame &&
+    replayPly === null &&
+    !!state &&
+    !state.result &&
+    role !== "spectator" &&
+    chess.turn() === role;
+
+  function tryMove(from: Square, to: Square) {
+    if (role === "spectator") return false;
+    const options = chess
+      .moves({ square: from, verbose: true })
+      .filter((move) => move.to === to);
+    if (!options.length) return false;
+    if (options.some((move) => move.promotion)) {
+      setPromotion({ from, to, color: role });
+      return true;
+    }
+    send({ type: "move", from, to });
+    return true;
+  }
+
   function handleSquare(square: Square) {
-    if (
-      pastGame ||
-      replayPly !== null ||
-      !state ||
-      state.result ||
-      role === "spectator" ||
-      chess.turn() !== role
-    )
-      return;
+    if (!canInteract) return;
     const piece = chess.get(square);
-    if (!selected) {
+    if (!selected || piece?.color === role) {
       if (piece?.color === role) setSelected(square);
       return;
     }
-    if (piece?.color === role) {
-      setSelected(square);
-      return;
-    }
-    const options = chess
-      .moves({ square: selected, verbose: true })
-      .filter((move) => move.to === square);
-    if (!options.length) {
-      setSelected(null);
-      return;
-    }
-    if (options.some((move) => move.promotion)) {
-      setPromotion({ from: selected, to: square, color: role });
-      return;
-    }
-    send({ type: "move", from: selected, to: square });
+    if (!tryMove(selected, square)) setSelected(null);
+  }
+
+  function handlePointerDown(event: ReactPointerEvent, square: Square) {
+    if (!canInteract || event.button !== 0) return;
+    const piece = chess.get(square);
+    if (piece?.color !== role) return;
+    const board = boardRef.current;
+    if (!board) return;
+    event.preventDefault();
+    setSelected(square);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let started = false;
+    const place = (ev: PointerEvent) => {
+      const rect = board.getBoundingClientRect();
+      const x = ev.clientX - rect.left - board.clientLeft;
+      const y = ev.clientY - rect.top - board.clientTop;
+      const el = dragElRef.current;
+      if (el) {
+        const half = board.clientWidth / 16;
+        el.style.transform = `translate(${x - half}px, ${y - half}px)`;
+        el.style.visibility = "visible";
+      }
+      return { x, y };
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (!started) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
+        started = true;
+        setDrag({
+          from: square,
+          glyph: PIECE_GLYPHS[piece.type],
+          color: piece.color,
+        });
+      }
+      place(ev);
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", finish);
+      setDrag(null);
+    };
+    const onUp = (ev: PointerEvent) => {
+      const wasStarted = started;
+      const { x, y } = place(ev);
+      finish();
+      if (!wasStarted) return;
+      const size = board.clientWidth / 8;
+      const fx = Math.floor(x / size);
+      const fy = Math.floor(y / size);
+      if (fx < 0 || fx > 7 || fy < 0 || fy > 7) return;
+      const file = FILES[orientation === "w" ? fx : 7 - fx];
+      const rank = orientation === "w" ? 8 - fy : fy + 1;
+      const target = `${file}${rank}` as Square;
+      if (target !== square) tryMove(square, target);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", finish);
   }
 
   function goToPly(ply: number) {
@@ -1043,7 +1129,8 @@ export function ChessRoom() {
 
           <div className="board-wrap">
             <div
-              className="chessboard"
+              ref={boardRef}
+              className={`chessboard ${drag ? "chessboard--dragging" : ""}`}
               role="grid"
               aria-label={`Chess board, ${orientation === "w" ? "white" : "black"} orientation`}
             >
@@ -1060,11 +1147,13 @@ export function ChessRoom() {
                     piece?.type === "k" &&
                     piece.color === chess.turn() &&
                     chess.isCheck();
+                  const grabbable = canInteract && piece?.color === role;
                   return (
                     <button
                       key={square}
-                      className={`square ${dark ? "square--dark" : "square--light"} ${isSelected ? "is-selected" : ""} ${wasMoved ? "was-moved" : ""} ${isCheckedKing ? "is-check" : ""}`}
+                      className={`square ${dark ? "square--dark" : "square--light"} ${isSelected ? "is-selected" : ""} ${wasMoved ? "was-moved" : ""} ${isCheckedKing ? "is-check" : ""} ${grabbable ? "square--grabbable" : ""}`}
                       onClick={() => handleSquare(square)}
+                      onPointerDown={(event) => handlePointerDown(event, square)}
                       role="gridcell"
                       aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ""}`}
                     >
@@ -1078,7 +1167,7 @@ export function ChessRoom() {
                         <span
                           className={`piece piece--${piece.color}`}
                           style={
-                            anim?.hide.has(square)
+                            anim?.hide.has(square) || drag?.from === square
                               ? { visibility: "hidden" }
                               : undefined
                           }
@@ -1123,6 +1212,15 @@ export function ChessRoom() {
                       </span>
                     );
                   })}
+                </div>
+              )}
+              {drag && (
+                <div className="drag-layer" aria-hidden>
+                  <span className="drag-piece" ref={dragElRef}>
+                    <span className={`piece piece--${drag.color}`}>
+                      {drag.glyph}
+                    </span>
+                  </span>
                 </div>
               )}
             </div>
