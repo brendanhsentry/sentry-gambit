@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const base = new URL(`${protocol}://${host}`);
-  const socialImage = new URL("/og.png", base).toString();
+  const socialImage = new URL("/og.jpg", base).toString();
 
   return {
     metadataBase: base,
@@ -40,7 +40,7 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       title: "Pawn Patrol",
       description: "Live chess, one move at a time.",
-      images: [{ url: socialImage, width: 1200, height: 630 }],
+      images: [{ url: socialImage, width: 1200, height: 630, type: "image/jpeg" }],
     },
     twitter: {
       card: "summary_large_image",
