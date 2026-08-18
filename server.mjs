@@ -1,6 +1,6 @@
 /** Node server: Next.js frontend plus an in-memory WebSocket chess table service. */
 import { createServer } from "node:http";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 import * as Sentry from "@sentry/node";
 import next from "next";
 import { WebSocketServer } from "ws";
@@ -119,6 +119,7 @@ function createTable(id) {
     chess: new Chess(),
     clients: new Set(),
     seats: { w: null, b: null },
+    seatOrder: randomInt(2) === 0 ? ["w", "b"] : ["b", "w"],
     result: null,
     clock: { w: STARTING_TIME, b: STARTING_TIME, running: null, since: null },
     gradedPlies: new Set(),
@@ -417,7 +418,7 @@ function joinTable(request, socket) {
     tables.set(roomId, table);
   }
 
-  const role = !table.seats.w ? "w" : !table.seats.b ? "b" : "spectator";
+  const role = table.seatOrder.find((color) => !table.seats[color]) ?? "spectator";
   const client = { id: randomUUID(), name, role, playerKey, socket };
   table.clients.add(client);
   if (role === "w" || role === "b") {
