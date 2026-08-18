@@ -496,7 +496,11 @@ export function ChessRoom() {
     const bot = state?.bot;
     if (!state || !bot || state.result || role === "spectator" || connection !== "online")
       return;
-    if (new Chess(state.fen).turn() !== bot.color) return;
+    if (new Chess(state.fen).turn() !== bot.color) {
+      // Reset so an undo returning to a previously seen ply retriggers the bot.
+      botMoveKeyRef.current = "";
+      return;
+    }
     const moveKey = `${state.gameId}:${state.history.length}`;
     if (botMoveKeyRef.current === moveKey) return;
     botMoveKeyRef.current = moveKey;

@@ -76,6 +76,15 @@ export function openFirestoreGameStore() {
         }),
       );
     },
+    setBot(gameId, bot) {
+      enqueue(gameId, () =>
+        games.doc(gameId).update({
+          botKey: bot.key,
+          botColor: bot.color,
+          updatedAt: Date.now(),
+        }),
+      );
+    },
     addPlayer(gameId, playerKey, color) {
       enqueue(gameId, () =>
         games.doc(gameId).update({
@@ -206,6 +215,7 @@ export function openFirestoreGameStore() {
         room: data.room,
         clock: { w: data.whiteTimeMs, b: data.blackTimeMs },
         playerColors: data.playerColors ?? {},
+        bot: data.botKey ? { key: data.botKey, color: data.botColor } : null,
         history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),
       };
     },

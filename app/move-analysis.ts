@@ -123,6 +123,8 @@ class StockfishClient {
     this.worker = new Worker(ENGINE_PATH);
     this.worker.addEventListener("message", (event) => this.listener?.(String(event.data)));
     this.ready = this.initialize();
+    // Boot failures surface when search() awaits ready; an all-book game never awaits it.
+    this.ready.catch(() => {});
   }
 
   private waitFor(command: string, predicate: (line: string) => boolean) {

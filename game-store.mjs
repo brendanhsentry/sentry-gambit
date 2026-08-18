@@ -62,6 +62,10 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       "ALTER TABLE games ADD COLUMN shareable INTEGER NOT NULL DEFAULT 0",
     );
   }
+  if (!gameColumns.some((column) => column.name === "bot_key")) {
+    database.exec("ALTER TABLE games ADD COLUMN bot_key TEXT");
+    database.exec("ALTER TABLE games ADD COLUMN bot_color TEXT");
+  }
 
   const statements = {
     insertGame: database.prepare(`
@@ -75,6 +79,9 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     `),
     addPlayer: database.prepare(`
       INSERT OR IGNORE INTO game_players (game_id, player_key, color) VALUES (?, ?, ?)
+    `),
+    setBot: database.prepare(`
+      UPDATE games SET bot_key = ?, bot_color = ?, updated_at = ? WHERE id = ?
     `),
     insertMove: database.prepare(`
       INSERT OR REPLACE INTO moves (
@@ -124,7 +131,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       FROM moves WHERE game_id = ? ORDER BY ply
     `),
     selectLiveGame: database.prepare(`
-      SELECT id, room, white_time_ms, black_time_ms
+      SELECT id, room, white_time_ms, black_time_ms, bot_key, bot_color
       FROM games WHERE room = ? AND status = 'in_progress' AND updated_at >= ?
       ORDER BY updated_at DESC LIMIT 1
     `),
@@ -170,6 +177,9 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     },
     addPlayer(gameId, playerKey, color) {
       statements.addPlayer.run(gameId, playerKey, color);
+    },
+    setBot(gameId, bot) {
+      statements.setBot.run(bot.key, bot.color, Date.now(), gameId);
     },
     recordMove(gameId, ply, move, fen, clock) {
       const now = Date.now();
@@ -236,6 +246,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
         room: row.room,
         clock: { w: row.white_time_ms, b: row.black_time_ms },
         playerColors,
+        bot: row.bot_key ? { key: row.bot_key, color: row.bot_color } : null,
         history: statements.selectMoves.all(row.id).map(mapMove),
       };
     },

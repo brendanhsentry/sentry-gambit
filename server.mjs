@@ -163,7 +163,7 @@ function restoreTable(id, saved) {
   console.log(
     `Restored room ${id} game ${saved.id} at ply ${saved.history.length}`,
   );
-  return {
+  const table = {
     id,
     gameId: saved.id,
     chess,
@@ -179,6 +179,12 @@ function restoreTable(id, saved) {
     finishedIssueSent: false,
     touchedAt: Date.now(),
   };
+  if (saved.bot && BOTS[saved.bot.key]) {
+    const { key, color } = saved.bot;
+    table.bot = { key, name: BOTS[key].name, elo: BOTS[key].elo, color };
+    table.seats[color] = { id: randomUUID(), name: `${BOTS[key].name} (Bot)` };
+  }
+  return table;
 }
 
 const pendingRestores = new Map();
@@ -646,6 +652,7 @@ async function joinTable(request, socket) {
     if (!table.seats[botColor] && !reserved) {
       table.bot = { key: botKey, name: BOTS[botKey].name, elo: BOTS[botKey].elo, color: botColor };
       table.seats[botColor] = { id: randomUUID(), name: `${BOTS[botKey].name} (Bot)` };
+      gameStore.setBot(table.gameId, { key: botKey, color: botColor });
     }
   }
   gameStore.updatePlayers(table.gameId, {
