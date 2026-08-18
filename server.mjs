@@ -36,9 +36,9 @@ Sentry.init({
 const STARTING_TIME = 10 * 60 * 1000;
 const IDLE_ROOM_TTL = 60 * 60 * 1000;
 const BOTS = {
-  milo: { name: "Milo", elo: 1100 },
-  frida: { name: "Frida", elo: 1500 },
-  viktor: { name: "Viktor", elo: 1900 },
+  haiku: { name: "Haiku", elo: 1100 },
+  sonnet: { name: "Sonnet", elo: 1500 },
+  opus: { name: "Opus", elo: 1900 },
 };
 const MOVE_GRADES = new Set([
   "brilliant",

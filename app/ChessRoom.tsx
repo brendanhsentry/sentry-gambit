@@ -1210,13 +1210,13 @@ export function ChessRoom() {
                           >
                             <strong>{BOTS[key].name}</strong>
                             <small>ELO {BOTS[key].elo}</small>
-                            <em>
-                              {pendingBot === key
-                                ? maiaStatus === "loading"
+                            {pendingBot === key && (
+                              <em>
+                                {maiaStatus === "loading"
                                   ? `LOADING ${maiaProgress}%`
-                                  : "STARTING…"
-                                : BOTS[key].tagline}
-                            </em>
+                                  : "STARTING…"}
+                              </em>
+                            )}
                           </button>
                         ))}
                       </div>
