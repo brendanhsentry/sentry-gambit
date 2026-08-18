@@ -46,14 +46,16 @@ provider pool in addition to the default no-training data policy.
 
 ## Saved games and replay
 
-The server creates `data/pawn-patrol.sqlite` automatically. Every accepted move
-is stored with its notation and resulting position, and results are finalized
-on checkmate, draw, resignation, timeout, or rematch. The Past Games panel lists
-games played from the current browser; a random player key in `localStorage`
-keeps the account-free archive from becoming a public game list.
+For local development, the server creates `data/pawn-patrol.sqlite`
+automatically. In Cloud Run, completed games are written as independent JSON
+objects on the mounted Cloud Storage archive. Every accepted move is stored with
+its notation and resulting position, and results are finalized on checkmate,
+draw, resignation, timeout, or rematch. The Past Games panel lists games played
+from the current browser; a random player key in `localStorage` keeps the
+account-free archive from becoming a public game list.
 
 Click a saved game, a move in the move sheet, or the replay arrows to step
-through its positions. You can change the database location with:
+through its positions. You can change the local database location with:
 
 ```bash
 DATABASE_PATH=/persistent/path/pawn-patrol.sqlite npm run start
@@ -62,29 +64,46 @@ DATABASE_PATH=/persistent/path/pawn-patrol.sqlite npm run start
 Back up the database file together with its `-wal` and `-shm` files, or stop the
 server before copying just the main file.
 
+To exercise the production archive backend against an ordinary local directory:
+
+```bash
+GAME_ARCHIVE_PATH=/tmp/pawn-patrol-archive npm run start
+```
+
 ## Deploying (Google Cloud Run)
 
 The app runs as a single container (see `Dockerfile`). Active sockets and clocks
-are held in memory, so the service must run as one instance. SQLite also requires
-`DATABASE_PATH` to point at a persistent, POSIX-compatible mounted volume in
-production. Cloud Run's default container filesystem is ephemeral, so without a
-mount saved games will not survive a new revision or instance.
+are held in memory, so the service must run as one instance. The deployment
+workflow creates a dedicated Cloud Storage bucket, grants the runtime service
+account object access, mounts it at `/archive`, and sets `GAME_ARCHIVE_PATH`.
+Completed games therefore survive new Cloud Run revisions. SQLite is deliberately
+not placed on the Cloud Storage mount because Cloud Storage FUSE does not provide
+the POSIX locking and patch semantics a database requires.
 
 Build the image locally and deploy it (`gcloud run deploy --source` is blocked
 in this project — the default build service account is denied by org policy):
 
 ```bash
 gcloud auth configure-docker us-west1-docker.pkg.dev
+gcloud storage buckets create gs://YOUR_ARCHIVE_BUCKET \
+  --project devinfra-remote-dev \
+  --location us-west1 \
+  --uniform-bucket-level-access
+gcloud storage buckets add-iam-policy-binding gs://YOUR_ARCHIVE_BUCKET \
+  --member serviceAccount:YOUR_CLOUD_RUN_SERVICE_ACCOUNT \
+  --role roles/storage.objectUser
 docker buildx build --platform linux/amd64 \
-  -t us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/pawn-patrol:latest --push .
-gcloud run deploy pawn-patrol \
-  --image us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/pawn-patrol:latest \
+  -t us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:latest --push .
+gcloud run deploy sentry-gambit \
+  --image us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:latest \
   --project devinfra-remote-dev \
   --region us-west1 \
   --allow-unauthenticated \
   --max-instances 1 \
   --timeout 3600 \
-  --memory 512Mi
+  --memory 512Mi \
+  --update-env-vars GAME_ARCHIVE_PATH=/archive \
+  --add-volume mount-path=/archive,type=cloud-storage,bucket=YOUR_ARCHIVE_BUCKET,readonly=false
 ```
 
 `--timeout 3600` keeps WebSocket connections open for up to an hour;

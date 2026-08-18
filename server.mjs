@@ -5,7 +5,7 @@ import * as Sentry from "@sentry/node";
 import next from "next";
 import { WebSocketServer } from "ws";
 import { Chess } from "chess.js";
-import { openGameStore } from "./game-store.mjs";
+import { openGameStore, openJsonGameStore } from "./game-store.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
 if (dev) {
@@ -16,7 +16,9 @@ if (dev) {
   }
 }
 const port = Number(process.env.PORT) || 3000;
-const gameStore = openGameStore();
+const gameStore = process.env.GAME_ARCHIVE_PATH
+  ? openJsonGameStore(process.env.GAME_ARCHIVE_PATH)
+  : openGameStore();
 
 Sentry.init({
   dsn: "https://69f4666f8a913ed118913d18660fe20d@o4511927634296832.ingest.us.sentry.io/4511927685939200",

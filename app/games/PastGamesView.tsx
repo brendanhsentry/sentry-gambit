@@ -3,8 +3,16 @@
 import { Chess, type Square } from "chess.js";
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { PIECE_GLYPHS } from "../chess-pieces";
+import { IconSeer } from "../IconSeer";
+import {
+  gradeLabel,
+  useMoveAnalysis,
+  type ReviewMove,
+} from "../move-analysis";
 
 type PlayerColor = "w" | "b";
 
@@ -20,17 +28,19 @@ type PastGameSummary = {
   plyCount: number;
 };
 
-type SavedMove = {
-  from: string;
-  to: string;
-  san: string;
-  color: PlayerColor;
-  promotion?: string;
+type SavedMove = ReviewMove & {
   fenAfter: string;
   playedAt: number;
 };
 
 type PastGame = PastGameSummary & { history: SavedMove[] };
+
+type SeerReview =
+  | { phase: "idle" }
+  | { phase: "requesting" }
+  | { phase: "running"; gameId: string; issueId: string; shortId: string }
+  | { phase: "done"; text: string; shortId: string }
+  | { phase: "error"; message: string };
 
 const START_FEN = new Chess().fen();
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
@@ -87,26 +97,32 @@ export function PastGamesView() {
   const [copied, setCopied] = useState(false);
   const [replayPly, setReplayPly] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [seer, setSeer] = useState<SeerReview>({ phase: "idle" });
+  const selectedGameIdRef = useRef<string | null>(null);
 
   const loadGame = useCallback(async (gameId: string) => {
+    selectedGameIdRef.current = gameId;
     setSelectedId(gameId);
     setDetailLoading(true);
     setError("");
+    setSeer({ phase: "idle" });
     try {
       const key = browserPlayerKey();
       const response = await fetch(
         `/api/games/${encodeURIComponent(gameId)}?playerKey=${encodeURIComponent(key)}`,
       );
       if (!response.ok) throw new Error("Game not found");
-      const game = await response.json() as PastGame;
+      const game = (await response.json()) as PastGame;
+      if (selectedGameIdRef.current !== gameId) return;
       setSelectedGame(game);
       setReplayPly(game.history.length);
       setIsPlaying(false);
     } catch {
+      if (selectedGameIdRef.current !== gameId) return;
       setSelectedGame(null);
       setError("That saved game could not be opened.");
     } finally {
-      setDetailLoading(false);
+      if (selectedGameIdRef.current === gameId) setDetailLoading(false);
     }
   }, []);
 
@@ -115,21 +131,28 @@ export function PastGamesView() {
     setError("");
     try {
       const key = browserPlayerKey();
-      const response = await fetch(`/api/games?limit=100&playerKey=${encodeURIComponent(key)}`);
+      const response = await fetch(
+        `/api/games?limit=100&playerKey=${encodeURIComponent(key)}`,
+      );
       if (!response.ok) throw new Error("Archive unavailable");
-      const data = await response.json() as { games: PastGameSummary[] };
+      const data = (await response.json()) as { games: PastGameSummary[] };
       setGames(data.games);
-      const nextId = selectedId && data.games.some((game) => game.id === selectedId)
-        ? selectedId
-        : data.games[0]?.id;
+      const nextId =
+        selectedId && data.games.some((game) => game.id === selectedId)
+          ? selectedId
+          : data.games[0]?.id;
       if (nextId) await loadGame(nextId);
       else {
+        selectedGameIdRef.current = null;
         setSelectedId(null);
         setSelectedGame(null);
+        setSeer({ phase: "idle" });
       }
     } catch {
+      selectedGameIdRef.current = null;
       setGames([]);
       setSelectedGame(null);
+      setSeer({ phase: "idle" });
       setError("Your game archive is unavailable right now.");
     } finally {
       setLoading(false);
@@ -147,30 +170,31 @@ export function PastGamesView() {
   const filteredGames = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return games;
-    return games.filter((game) => [
-      game.id,
-      game.room,
-      game.players.w,
-      game.players.b,
-      game.result,
-    ].some((value) => value?.toLowerCase().includes(normalized)));
+    return games.filter((game) =>
+      [game.id, game.room, game.players.w, game.players.b, game.result].some(
+        (value) => value?.toLowerCase().includes(normalized),
+      ),
+    );
   }, [games, query]);
 
   const movePairs = useMemo(() => {
     if (!selectedGame) return [];
-    return selectedGame.history.reduce<Array<{ number: number; w?: SavedMove; b?: SavedMove }>>(
-      (pairs, move, index) => {
-        if (index % 2 === 0) pairs.push({ number: Math.floor(index / 2) + 1, w: move });
-        else pairs[pairs.length - 1].b = move;
-        return pairs;
-      },
-      [],
-    );
+    return selectedGame.history.reduce<
+      Array<{ number: number; w?: SavedMove; b?: SavedMove }>
+    >((pairs, move, index) => {
+      if (index % 2 === 0)
+        pairs.push({ number: Math.floor(index / 2) + 1, w: move });
+      else pairs[pairs.length - 1].b = move;
+      return pairs;
+    }, []);
   }, [selectedGame]);
 
-  const replayFen = replayPly === 0
-    ? START_FEN
-    : selectedGame?.history[replayPly - 1]?.fenAfter ?? selectedGame?.finalFen ?? START_FEN;
+  const replayFen =
+    replayPly === 0
+      ? START_FEN
+      : (selectedGame?.history[replayPly - 1]?.fenAfter ??
+        selectedGame?.finalFen ??
+        START_FEN);
   const replayBoard = useMemo(() => {
     try {
       return new Chess(replayFen);
@@ -180,6 +204,99 @@ export function PastGamesView() {
   }, [replayFen]);
   const replayMove = selectedGame?.history[replayPly - 1];
   const lastPly = selectedGame?.history.length ?? 0;
+  const analysis = useMoveAnalysis(
+    selectedGame?.id ?? "past-game",
+    selectedGame?.history ?? [],
+    Boolean(selectedGame?.history.length),
+  );
+
+  const requestSeerReview = useCallback(async () => {
+    const gameId = selectedGame?.id;
+    if (!gameId) return;
+    setSeer({ phase: "requesting" });
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      if (selectedGameIdRef.current !== gameId) return;
+      try {
+        const response = await fetch(
+          `/api/review?gameId=${encodeURIComponent(gameId)}`,
+          { method: "POST" },
+        );
+        if (selectedGameIdRef.current !== gameId) return;
+        if (response.ok) {
+          const data = await response.json();
+          setSeer({
+            phase: "running",
+            gameId,
+            issueId: String(data.issueId),
+            shortId: String(data.shortId ?? ""),
+          });
+          return;
+        }
+        if (response.status !== 404) {
+          const data = await response
+            .json()
+            .catch(() => ({} as { error?: string }));
+          setSeer({
+            phase: "error",
+            message: data.error ?? "The review could not be started.",
+          });
+          return;
+        }
+      } catch {
+        // Retry recent games while Sentry finishes indexing them.
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 5_000));
+    }
+
+    if (selectedGameIdRef.current === gameId) {
+      setSeer({
+        phase: "error",
+        message: "This game has not reached Seer yet. Try again in a minute.",
+      });
+    }
+  }, [selectedGame?.id]);
+
+  useEffect(() => {
+    if (seer.phase !== "running") return;
+    let active = true;
+
+    const checkStatus = async () => {
+      try {
+        const response = await fetch(
+          `/api/review/status?issueId=${encodeURIComponent(seer.issueId)}`,
+        );
+        if (!response.ok || !active || selectedGameIdRef.current !== seer.gameId)
+          return;
+        const data = await response.json();
+        if (data.status === "completed" && data.text) {
+          setSeer({
+            phase: "done",
+            text: String(data.text),
+            shortId: seer.shortId,
+          });
+        } else if (
+          data.status === "errored" ||
+          data.status === "failed" ||
+          data.status === "cancelled"
+        ) {
+          setSeer({
+            phase: "error",
+            message: "Seer hit an error while reviewing. Try again.",
+          });
+        }
+      } catch {
+        // Keep polling through temporary network failures.
+      }
+    };
+
+    void checkStatus();
+    const interval = window.setInterval(() => void checkStatus(), 7_500);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [seer]);
 
   useEffect(() => {
     if (!isPlaying || replayPly >= lastPly) return;
@@ -224,12 +341,23 @@ export function PastGamesView() {
       <header className="topbar">
         <Link className="brand" href="/" aria-label="Pawn Patrol home">
           <span className="brand-mark">
-            <Image src="/pawn-patrol-sentry-correct.png" alt="" width={30} height={30} priority unoptimized />
+            <Image
+              src="/pawn-patrol-sentry-correct.png"
+              alt=""
+              width={30}
+              height={30}
+              priority
+              unoptimized
+            />
           </span>
-          <span>PAWN <em>PATROL</em></span>
+          <span>
+            PAWN <em>PATROL</em>
+          </span>
         </Link>
-        <div className="topbar-note">GAME RECORDS · SQLITE ARCHIVE</div>
-        <Link className="text-button" href="/">Back to tables</Link>
+        <div className="topbar-note">GAME RECORDS</div>
+        <Link className="text-button" href="/">
+          Back to tables
+        </Link>
       </header>
 
       <section className="archive-page">
@@ -257,29 +385,45 @@ export function PastGamesView() {
                   placeholder="Player, room, result, ID…"
                 />
               </label>
-              <button onClick={() => void loadGames()} disabled={loading}>Refresh</button>
+              <button onClick={() => void loadGames()} disabled={loading}>
+                Refresh
+              </button>
             </div>
 
             <div className="game-record-list">
               {loading ? (
-                <div className="archive-empty"><span>♟</span><p>Opening the archive…</p></div>
-              ) : filteredGames.length ? filteredGames.map((game) => (
-                <button
-                  key={game.id}
-                  className={selectedId === game.id ? "is-active" : ""}
-                  onClick={() => void loadGame(game.id)}
-                >
-                  <span className="record-date">{formatDate(game.finishedAt)}</span>
-                  <strong>{playerName(game, "w")} <i>vs</i> {playerName(game, "b")}</strong>
-                  <span className="record-result">{game.result}</span>
-                  <span className="record-meta">
-                    <code>{game.id}</code><small>{game.plyCount} plies</small>
-                  </span>
-                </button>
-              )) : (
+                <div className="archive-empty">
+                  <span>♟</span>
+                  <p>Opening the archive…</p>
+                </div>
+              ) : filteredGames.length ? (
+                filteredGames.map((game) => (
+                  <button
+                    key={game.id}
+                    className={selectedId === game.id ? "is-active" : ""}
+                    onClick={() => void loadGame(game.id)}
+                  >
+                    <span className="record-date">
+                      {formatDate(game.finishedAt)}
+                    </span>
+                    <strong>
+                      {playerName(game, "w")} <i>vs</i> {playerName(game, "b")}
+                    </strong>
+                    <span className="record-result">{game.result}</span>
+                    <span className="record-meta">
+                      <code>{game.id}</code>
+                      <small>{game.plyCount} plies</small>
+                    </span>
+                  </button>
+                ))
+              ) : (
                 <div className="archive-empty">
                   <span>{PIECE_GLYPHS.p}</span>
-                  <p>{games.length ? "No records match your search." : "Finished games you play will appear here."}</p>
+                  <p>
+                    {games.length
+                      ? "No records match your search."
+                      : "Finished games you play will appear here."}
+                  </p>
                 </div>
               )}
             </div>
@@ -287,94 +431,311 @@ export function PastGamesView() {
 
           <article className="game-record-detail" aria-live="polite">
             {detailLoading ? (
-              <div className="record-placeholder"><span>♞</span><p>Loading game record…</p></div>
+              <div className="record-placeholder">
+                <span>♞</span>
+                <p>Loading game record…</p>
+              </div>
             ) : selectedGame ? (
               <>
                 <div className="record-heading">
                   <div>
-                    <span className={`result-chip result-chip--${resultTone(selectedGame.result)}`}>
+                    <span
+                      className={`result-chip result-chip--${resultTone(selectedGame.result)}`}
+                    >
                       {selectedGame.result}
                     </span>
-                    <h2>{playerName(selectedGame, "w")} <i>vs</i> {playerName(selectedGame, "b")}</h2>
+                    <h2>
+                      {playerName(selectedGame, "w")} <i>vs</i>{" "}
+                      {playerName(selectedGame, "b")}
+                    </h2>
                     <p>{formatDate(selectedGame.finishedAt)}</p>
                   </div>
-                  <div className="record-room"><span>ROOM</span><strong>{selectedGame.room}</strong></div>
+                  <div className="record-room">
+                    <span>ROOM</span>
+                    <strong>{selectedGame.room}</strong>
+                  </div>
                 </div>
 
                 <dl className="record-facts">
                   <div className="record-fact--id">
                     <dt>Game ID</dt>
-                    <dd><code>{selectedGame.id}</code><button onClick={copyGameId}>{copied ? "Copied" : "Copy"}</button></dd>
+                    <dd>
+                      <code>{selectedGame.id}</code>
+                      <button onClick={copyGameId}>
+                        {copied ? "Copied" : "Copy"}
+                      </button>
+                    </dd>
                   </div>
-                  <div><dt>Started</dt><dd>{formatDate(selectedGame.startedAt)}</dd></div>
-                  <div><dt>Duration</dt><dd>{formatDuration(selectedGame.startedAt, selectedGame.finishedAt)}</dd></div>
-                  <div><dt>Moves</dt><dd>{selectedGame.history.length} plies</dd></div>
-                  <div><dt>White clock</dt><dd>{formatClock(selectedGame.clock.w)}</dd></div>
-                  <div><dt>Black clock</dt><dd>{formatClock(selectedGame.clock.b)}</dd></div>
+                  <div>
+                    <dt>Started</dt>
+                    <dd>{formatDate(selectedGame.startedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Duration</dt>
+                    <dd>
+                      {formatDuration(
+                        selectedGame.startedAt,
+                        selectedGame.finishedAt,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Moves</dt>
+                    <dd>{selectedGame.history.length} plies</dd>
+                  </div>
+                  <div>
+                    <dt>White clock</dt>
+                    <dd>{formatClock(selectedGame.clock.w)}</dd>
+                  </div>
+                  <div>
+                    <dt>Black clock</dt>
+                    <dd>{formatClock(selectedGame.clock.b)}</dd>
+                  </div>
                 </dl>
+
+                <section className="record-seer" aria-labelledby="record-seer-title">
+                  <div className="record-seer-head">
+                    <div>
+                      <span className="seer-eye">
+                        <IconSeer
+                          size={18}
+                          animation={
+                            seer.phase === "requesting" ||
+                            seer.phase === "running"
+                              ? "loading"
+                              : undefined
+                          }
+                        />
+                      </span>
+                      <div>
+                        <h3 id="record-seer-title">Ask Seer</h3>
+                        <p>Get an AI post-game review of this saved match.</p>
+                      </div>
+                    </div>
+                    <button
+                      className="record-seer-button"
+                      onClick={() => void requestSeerReview()}
+                      disabled={
+                        seer.phase === "requesting" || seer.phase === "running"
+                      }
+                    >
+                      <IconSeer size={15} />
+                      {seer.phase === "requesting"
+                        ? "Finding game…"
+                        : seer.phase === "running"
+                          ? "Reviewing…"
+                          : seer.phase === "done"
+                            ? "Ask again"
+                            : "Ask Seer"}
+                    </button>
+                  </div>
+                  <div className="record-seer-body" aria-live="polite">
+                    {seer.phase === "idle" && (
+                      <p>
+                        Seer will replay the game, identify the turning points,
+                        and explain what decided the result.
+                      </p>
+                    )}
+                    {(seer.phase === "requesting" ||
+                      seer.phase === "running") && (
+                      <p className="record-seer-progress">
+                        {seer.phase === "requesting"
+                          ? "Finding this game in Sentry…"
+                          : "Seer is reviewing every move. You can keep using the replay while it works."}
+                      </p>
+                    )}
+                    {seer.phase === "done" && (
+                      <div className="record-seer-review">
+                        {seer.shortId && (
+                          <span className="seer-chip">{seer.shortId}</span>
+                        )}
+                        <div className="seer-md">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {seer.text}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+                    {seer.phase === "error" && (
+                      <p className="seer-error">
+                        {seer.message}{" "}
+                        <button
+                          className="seer-retry"
+                          onClick={() => void requestSeerReview()}
+                        >
+                          Retry
+                        </button>
+                      </p>
+                    )}
+                  </div>
+                </section>
 
                 <section className="record-replay">
                   <div className="record-section-title">
                     <h3>Game replay</h3>
-                    <span aria-live="polite">{replayPly === 0 ? "STARTING POSITION" : `POSITION ${replayPly} OF ${lastPly}`}</span>
+                    <span aria-live="polite">
+                      {replayPly === 0
+                        ? "STARTING POSITION"
+                        : `POSITION ${replayPly} OF ${lastPly}`}
+                      {analysis.status === "loading" ||
+                      analysis.status === "analyzing"
+                        ? ` · GRADING ${analysis.completed}/${lastPly}`
+                        : analysis.status === "complete"
+                          ? " · GRADES READY"
+                          : analysis.status === "error"
+                            ? " · GRADES UNAVAILABLE"
+                            : ""}
+                    </span>
                   </div>
                   <div className="record-replay-layout">
                     <div className="record-board-column">
                       <div className="record-board">
-                        <div className="chessboard" role="grid" aria-label={`Chess position after ${replayPly} of ${lastPly} moves`}>
-                          {RANKS.flatMap((rank, rankIndex) => FILES.map((file, fileIndex) => {
-                            const square = `${file}${rank}` as Square;
-                            const piece = replayBoard.get(square);
-                            const dark = (rank + fileIndex) % 2 === 1;
-                            const wasMoved = replayMove?.from === square || replayMove?.to === square;
-                            return (
-                              <div
-                                key={square}
-                                className={`square ${dark ? "square--dark" : "square--light"} ${wasMoved ? "was-moved" : ""}`}
-                                role="gridcell"
-                                aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ""}`}
-                              >
-                                {fileIndex === 0 && <span className="rank-label">{rank}</span>}
-                                {rankIndex === 7 && <span className="file-label">{file}</span>}
-                                {piece && <span className={`piece piece--${piece.color}`}>{PIECE_GLYPHS[piece.type]}</span>}
-                              </div>
-                            );
-                          }))}
+                        <div
+                          className="chessboard"
+                          role="grid"
+                          aria-label={`Chess position after ${replayPly} of ${lastPly} moves`}
+                        >
+                          {RANKS.flatMap((rank, rankIndex) =>
+                            FILES.map((file, fileIndex) => {
+                              const square = `${file}${rank}` as Square;
+                              const piece = replayBoard.get(square);
+                              const dark = (rank + fileIndex) % 2 === 1;
+                              const wasMoved =
+                                replayMove?.from === square ||
+                                replayMove?.to === square;
+                              return (
+                                <div
+                                  key={square}
+                                  className={`square ${dark ? "square--dark" : "square--light"} ${wasMoved ? "was-moved" : ""}`}
+                                  role="gridcell"
+                                  aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ""}`}
+                                >
+                                  {fileIndex === 0 && (
+                                    <span className="rank-label">{rank}</span>
+                                  )}
+                                  {rankIndex === 7 && (
+                                    <span className="file-label">{file}</span>
+                                  )}
+                                  {piece && (
+                                    <span
+                                      className={`piece piece--${piece.color}`}
+                                    >
+                                      {PIECE_GLYPHS[piece.type]}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            }),
+                          )}
                         </div>
                       </div>
-                      <div className="record-replay-controls" aria-label="Replay controls">
-                        <button onClick={() => goToPly(0)} disabled={replayPly === 0} aria-label="Go to starting position">|‹</button>
-                        <button onClick={() => goToPly(replayPly - 1)} disabled={replayPly === 0} aria-label="Previous move">‹</button>
-                        <button className="record-play-button" onClick={togglePlayback} disabled={!lastPly} aria-label={isPlaying ? "Pause replay" : "Play replay"}>
-                          {isPlaying ? "Pause" : replayPly === lastPly ? "Replay" : "Play"}
+                      <div
+                        className="record-replay-controls"
+                        aria-label="Replay controls"
+                      >
+                        <button
+                          onClick={() => goToPly(0)}
+                          disabled={replayPly === 0}
+                          aria-label="Go to starting position"
+                        >
+                          |‹
                         </button>
-                        <button onClick={() => goToPly(replayPly + 1)} disabled={replayPly === lastPly} aria-label="Next move">›</button>
-                        <button onClick={() => goToPly(lastPly)} disabled={replayPly === lastPly} aria-label="Go to final position">›|</button>
+                        <button
+                          onClick={() => goToPly(replayPly - 1)}
+                          disabled={replayPly === 0}
+                          aria-label="Previous move"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          className="record-play-button"
+                          onClick={togglePlayback}
+                          disabled={!lastPly}
+                          aria-label={
+                            isPlaying ? "Pause replay" : "Play replay"
+                          }
+                        >
+                          {isPlaying
+                            ? "Pause"
+                            : replayPly === lastPly
+                              ? "Replay"
+                              : "Play"}
+                        </button>
+                        <button
+                          onClick={() => goToPly(replayPly + 1)}
+                          disabled={replayPly === lastPly}
+                          aria-label="Next move"
+                        >
+                          ›
+                        </button>
+                        <button
+                          onClick={() => goToPly(lastPly)}
+                          disabled={replayPly === lastPly}
+                          aria-label="Go to final position"
+                        >
+                          ›|
+                        </button>
                       </div>
                     </div>
 
                     <div className="record-moves">
-                      <div className="record-move-table" role="table" aria-label="Move sheet">
+                      <div
+                        className="record-move-table"
+                        role="table"
+                        aria-label="Move sheet"
+                      >
                         <div className="record-move-head" role="row">
-                          <span>#</span><span>White</span><span>Black</span>
+                          <span>#</span>
+                          <span>White</span>
+                          <span>Black</span>
                         </div>
                         {movePairs.map((pair) => (
-                          <div className="record-move-row" role="row" key={pair.number}>
+                          <div
+                            className="record-move-row"
+                            role="row"
+                            key={pair.number}
+                          >
                             <span>{pair.number}.</span>
-                            {([pair.w, pair.b] as Array<SavedMove | undefined>).map((move, index) => {
+                            {(
+                              [pair.w, pair.b] as Array<SavedMove | undefined>
+                            ).map((move, index) => {
                               const ply = (pair.number - 1) * 2 + index + 1;
+                              const reviewed = analysis.moves[ply - 1];
+                              const grade = reviewed
+                                ? gradeLabel(reviewed.grade)
+                                : null;
                               return move ? (
                                 <button
                                   key={index}
-                                  className={replayPly === ply ? "is-current" : ""}
-                                  title={`Played ${formatDate(move.playedAt)}`}
+                                  className={
+                                    replayPly === ply ? "is-current" : ""
+                                  }
+                                  title={`${grade ? `${grade} · ` : ""}Played ${formatDate(move.playedAt)}${reviewed?.expectedPointsLoss === null || reviewed?.expectedPointsLoss === undefined ? "" : ` · ${(reviewed.expectedPointsLoss * 100).toFixed(1)} expected points lost`}`}
                                   onClick={() => goToPly(ply)}
-                                  aria-label={`Show position after ${move.san}`}
+                                  aria-label={`Show position after ${move.san}${grade ? `, graded ${grade}` : ""}`}
                                 >
-                                  <strong>{move.san}</strong>
-                                  <small>{move.from} → {move.to}{move.promotion ? ` = ${move.promotion.toUpperCase()}` : ""}</small>
+                                  <span className="record-move-notation">
+                                    <strong>{move.san}</strong>
+                                    <small>
+                                      {move.from} → {move.to}
+                                      {move.promotion
+                                        ? ` = ${move.promotion.toUpperCase()}`
+                                        : ""}
+                                    </small>
+                                  </span>
+                                  {reviewed && (
+                                    <span
+                                      className={`move-grade move-grade--${reviewed.grade}`}
+                                    >
+                                      {grade}
+                                    </span>
+                                  )}
                                 </button>
-                              ) : <div key={index} className="empty-cell">—</div>;
+                              ) : (
+                                <div key={index} className="empty-cell">
+                                  —
+                                </div>
+                              );
                             })}
                           </div>
                         ))}
@@ -384,9 +745,16 @@ export function PastGamesView() {
                 </section>
               </>
             ) : (
-              <div className="record-placeholder"><span>{PIECE_GLYPHS.p}</span><p>Select a game to inspect its record.</p></div>
+              <div className="record-placeholder">
+                <span>{PIECE_GLYPHS.p}</span>
+                <p>Select a game to inspect its record.</p>
+              </div>
             )}
-            {error && <div className="notice" role="status">{error}</div>}
+            {error && (
+              <div className="notice" role="status">
+                {error}
+              </div>
+            )}
           </article>
         </div>
       </section>
