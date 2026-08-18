@@ -1,11 +1,5 @@
-import { createHash } from "node:crypto";
-import {
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const DEFAULT_DATABASE_PATH = resolve(
@@ -110,7 +104,27 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       SELECT color, san, from_square, to_square, promotion, fen_after, played_at
       FROM moves WHERE game_id = ? ORDER BY ply
     `),
+    selectLiveGame: database.prepare(`
+      SELECT id, room, white_time_ms, black_time_ms
+      FROM games WHERE room = ? AND status = 'in_progress' AND updated_at >= ?
+      ORDER BY updated_at DESC LIMIT 1
+    `),
+    selectPlayerColors: database.prepare(`
+      SELECT player_key, color FROM game_players WHERE game_id = ?
+    `),
   };
+
+  function mapMove(move) {
+    return {
+      from: move.from_square,
+      to: move.to_square,
+      san: move.san,
+      color: move.color,
+      ...(move.promotion ? { promotion: move.promotion } : {}),
+      fenAfter: move.fen_after,
+      playedAt: move.played_at,
+    };
+  }
 
   function summary(row) {
     return {
@@ -167,184 +181,26 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       if (!row) return null;
       return {
         ...summary(row),
-        history: statements.selectMoves.all(gameId).map((move) => ({
-          from: move.from_square,
-          to: move.to_square,
-          san: move.san,
-          color: move.color,
-          ...(move.promotion ? { promotion: move.promotion } : {}),
-          fenAfter: move.fen_after,
-          playedAt: move.played_at,
-        })),
+        history: statements.selectMoves.all(gameId).map(mapMove),
+      };
+    },
+    getLiveGame(room, maxAgeMs) {
+      const row = statements.selectLiveGame.get(room, Date.now() - maxAgeMs);
+      if (!row) return null;
+      const playerColors = {};
+      for (const player of statements.selectPlayerColors.all(row.id)) {
+        playerColors[player.player_key] = player.color;
+      }
+      return {
+        id: row.id,
+        room: row.room,
+        clock: { w: row.white_time_ms, b: row.black_time_ms },
+        playerColors,
+        history: statements.selectMoves.all(row.id).map(mapMove),
       };
     },
     close() {
       database.close();
     },
-  };
-}
-
-function playerDirectory(root, playerKey) {
-  const digest = createHash("sha256").update(playerKey).digest("hex");
-  return join(root, "players", digest);
-}
-
-function archiveFilename(root, playerKey, gameId) {
-  if (!/^[a-zA-Z0-9-]{1,64}$/.test(gameId)) return null;
-  return join(playerDirectory(root, playerKey), `${gameId}.json`);
-}
-
-function readArchivedGame(filename) {
-  try {
-    const game = JSON.parse(readFileSync(filename, "utf8"));
-    if (
-      !game ||
-      typeof game !== "object" ||
-      typeof game.id !== "string" ||
-      typeof game.finishedAt !== "number" ||
-      !Array.isArray(game.history)
-    )
-      return null;
-    return game;
-  } catch (error) {
-    if (error?.code !== "ENOENT") {
-      console.warn(`Skipping unreadable game archive ${filename}:`, error.message);
-    }
-    return null;
-  }
-}
-
-function archivedSummary(game) {
-  return {
-    id: game.id,
-    room: game.room,
-    players: game.players,
-    result: game.result,
-    startedAt: game.startedAt,
-    finishedAt: game.finishedAt,
-    finalFen: game.finalFen,
-    clock: game.clock,
-    plyCount: game.plyCount,
-  };
-}
-
-/**
- * Store completed games as one JSON object per player and game. This is safe on
- * an object-backed Cloud Storage mount because files are never patched or
- * shared between games; SQLite itself must not be placed on that mount.
- */
-export function openJsonGameStore(archivePath) {
-  const root = resolve(archivePath);
-  mkdirSync(join(root, "players"), { recursive: true });
-  const games = new Map();
-
-  function getActiveGame(gameId) {
-    return games.get(gameId) ?? null;
-  }
-
-  return {
-    createGame(game) {
-      if (games.has(game.id)) return;
-      const now = Date.now();
-      games.set(game.id, {
-        id: game.id,
-        room: game.room,
-        players: { w: null, b: null },
-        playerKeys: new Set(),
-        result: null,
-        status: "in_progress",
-        startedAt: now,
-        updatedAt: now,
-        finishedAt: null,
-        finalFen: game.fen,
-        clock: { w: game.clock.w, b: game.clock.b },
-        history: [],
-      });
-    },
-    updatePlayers(gameId, players) {
-      const game = getActiveGame(gameId);
-      if (!game) return;
-      game.players = { w: players.w, b: players.b };
-      game.updatedAt = Date.now();
-    },
-    addPlayer(gameId, playerKey) {
-      const game = getActiveGame(gameId);
-      if (game && playerKey) game.playerKeys.add(playerKey);
-    },
-    recordMove(gameId, _ply, move, fen, clock) {
-      const game = getActiveGame(gameId);
-      if (!game) return;
-      const now = Date.now();
-      game.history.push({
-        from: move.from,
-        to: move.to,
-        san: move.san,
-        color: move.color,
-        ...(move.promotion ? { promotion: move.promotion } : {}),
-        fenAfter: fen,
-        playedAt: now,
-      });
-      game.finalFen = fen;
-      game.clock = { w: clock.w, b: clock.b };
-      game.updatedAt = now;
-    },
-    finishGame(gameId, result, fen, clock) {
-      const game = getActiveGame(gameId);
-      if (!game || game.status === "completed") return;
-      const now = Date.now();
-      game.result = result;
-      game.status = "completed";
-      game.finishedAt = now;
-      game.updatedAt = now;
-      game.finalFen = fen;
-      game.clock = { w: clock.w, b: clock.b };
-
-      const archived = {
-        id: game.id,
-        room: game.room,
-        players: game.players,
-        result: game.result,
-        startedAt: game.startedAt,
-        finishedAt: game.finishedAt,
-        finalFen: game.finalFen,
-        clock: game.clock,
-        plyCount: game.history.length,
-        history: game.history,
-      };
-      const contents = JSON.stringify(archived);
-      for (const playerKey of game.playerKeys) {
-        const directory = playerDirectory(root, playerKey);
-        mkdirSync(directory, { recursive: true });
-        writeFileSync(join(directory, `${game.id}.json`), contents, "utf8");
-      }
-    },
-    deleteGame(gameId) {
-      games.delete(gameId);
-    },
-    listGames(playerKey, limit = 20) {
-      if (!playerKey) return [];
-      const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
-      const directory = playerDirectory(root, playerKey);
-      let filenames;
-      try {
-        filenames = readdirSync(directory);
-      } catch (error) {
-        if (error?.code === "ENOENT") return [];
-        throw error;
-      }
-      return filenames
-        .filter((filename) => filename.endsWith(".json"))
-        .map((filename) => readArchivedGame(join(directory, filename)))
-        .filter(Boolean)
-        .sort((a, b) => b.finishedAt - a.finishedAt)
-        .slice(0, safeLimit)
-        .map(archivedSummary);
-    },
-    getGame(gameId, playerKey) {
-      if (!playerKey) return null;
-      const filename = archiveFilename(root, playerKey, gameId);
-      return filename ? readArchivedGame(filename) : null;
-    },
-    close() {},
   };
 }

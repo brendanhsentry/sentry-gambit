@@ -10,12 +10,6 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      PROJECT_ID: devinfra-remote-dev
-      PROJECT_NUMBER: "714494020823"
-      REGION: us-west1
-      SERVICE: sentry-gambit
-      ARCHIVE_BUCKET: sentry-gambit-data-714494020823
     permissions:
       contents: read
       id-token: write
@@ -26,26 +20,6 @@ jobs:
           workload_identity_provider: projects/714494020823/locations/global/workloadIdentityPools/github/providers/github-oidc
           service_account: gha-sentry-gambit@devinfra-remote-dev.iam.gserviceaccount.com
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Ensure persistent game archive exists
-        run: |
-          runtime_service_account="$(
-            gcloud run services describe "${SERVICE}" \
-              --project="${PROJECT_ID}" \
-              --region="${REGION}" \
-              --format='value(spec.template.spec.serviceAccountName)' 2>/dev/null || true
-          )"
-          if [[ -z "${runtime_service_account}" ]]; then
-            runtime_service_account="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-          fi
-          if ! gcloud storage buckets describe "gs://${ARCHIVE_BUCKET}" >/dev/null 2>&1; then
-            gcloud storage buckets create "gs://${ARCHIVE_BUCKET}" \
-              --project="${PROJECT_ID}" \
-              --location="${REGION}" \
-              --uniform-bucket-level-access
-          fi
-          gcloud storage buckets add-iam-policy-binding "gs://${ARCHIVE_BUCKET}" \
-            --member="serviceAccount:${runtime_service_account}" \
-            --role="roles/storage.objectUser"
       - name: Build and push image
         run: |
           gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
@@ -57,11 +31,9 @@ jobs:
           project_id: devinfra-remote-dev
           region: us-west1
           image: us-west1-docker.pkg.dev/devinfra-remote-dev/cloud-run-source-deploy/sentry-gambit:${{ github.sha }}
-          # deploys reset in-progress games: state is in-memory on one instance
+          # single instance: live game state is in memory, persisted to Firestore
           flags: >-
             --max-instances=1
             --timeout=3600
             --memory=512Mi
             --update-secrets=SEER_API_TOKEN=seer-api-token:latest
-            --update-env-vars=GAME_ARCHIVE_PATH=/archive
-            --add-volume=mount-path=/archive,type=cloud-storage,bucket=${{ env.ARCHIVE_BUCKET }},readonly=false

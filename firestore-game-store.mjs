@@ -17,6 +17,18 @@ export function openFirestoreGameStore() {
     return tail;
   }
 
+  function mapMove(move) {
+    return {
+      from: move.from,
+      to: move.to,
+      san: move.san,
+      color: move.color,
+      ...(move.promotion ? { promotion: move.promotion } : {}),
+      fenAfter: move.fenAfter,
+      playedAt: move.playedAt,
+    };
+  }
+
   function summary(doc) {
     const data = doc.data();
     return {
@@ -62,10 +74,11 @@ export function openFirestoreGameStore() {
         }),
       );
     },
-    addPlayer(gameId, playerKey) {
+    addPlayer(gameId, playerKey, color) {
       enqueue(gameId, () =>
         games.doc(gameId).update({
           playerKeys: FieldValue.arrayUnion(playerKey),
+          [`playerColors.${playerKey}`]: color,
           updatedAt: Date.now(),
         }),
       );
@@ -131,18 +144,26 @@ export function openFirestoreGameStore() {
       const moves = await games.doc(gameId).collection("moves").orderBy("ply").get();
       return {
         ...summary(doc),
-        history: moves.docs.map((moveDoc) => {
-          const move = moveDoc.data();
-          return {
-            from: move.from,
-            to: move.to,
-            san: move.san,
-            color: move.color,
-            ...(move.promotion ? { promotion: move.promotion } : {}),
-            fenAfter: move.fenAfter,
-            playedAt: move.playedAt,
-          };
-        }),
+        history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),
+      };
+    },
+    async getLiveGame(room, maxAgeMs) {
+      const snapshot = await games
+        .where("room", "==", room)
+        .where("status", "==", "in_progress")
+        .get();
+      const doc = snapshot.docs
+        .sort((a, b) => (b.data().updatedAt ?? 0) - (a.data().updatedAt ?? 0))[0];
+      if (!doc) return null;
+      const data = doc.data();
+      if (Date.now() - data.updatedAt > maxAgeMs) return null;
+      const moves = await games.doc(doc.id).collection("moves").orderBy("ply").get();
+      return {
+        id: doc.id,
+        room: data.room,
+        clock: { w: data.whiteTimeMs, b: data.blackTimeMs },
+        playerColors: data.playerColors ?? {},
+        history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),
       };
     },
     close() {

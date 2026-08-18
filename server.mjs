@@ -124,6 +124,7 @@ function createTable(id) {
     result: null,
     clock: { w: STARTING_TIME, b: STARTING_TIME, running: null, since: null },
     gradedPlies: new Set(),
+    playerColors: new Map(),
     sentrySpan: createGameTrace(id, gameId),
     sentryTraceEnded: false,
     finishedIssueSent: false,
@@ -136,6 +137,66 @@ function createTable(id) {
     clock: table.clock,
   });
   return table;
+}
+
+function restoreTable(id, saved) {
+  const chess = new Chess();
+  for (const move of saved.history) {
+    chess.move({
+      from: move.from,
+      to: move.to,
+      ...(move.promotion ? { promotion: move.promotion } : {}),
+    });
+  }
+  console.log(`Restored room ${id} game ${saved.id} at ply ${saved.history.length}`);
+  return {
+    id,
+    gameId: saved.id,
+    chess,
+    clients: new Set(),
+    seats: { w: null, b: null },
+    result: null,
+    clock: { w: saved.clock.w, b: saved.clock.b, running: null, since: null },
+    gradedPlies: new Set(),
+    playerColors: new Map(Object.entries(saved.playerColors ?? {})),
+    sentrySpan: createGameTrace(id, saved.id),
+    sentryTraceEnded: false,
+    finishedIssueSent: false,
+    touchedAt: Date.now(),
+  };
+}
+
+const pendingRestores = new Map();
+
+function obtainTable(roomId) {
+  const existing = tables.get(roomId);
+  if (existing) return existing;
+  const pending = pendingRestores.get(roomId);
+  if (pending) return pending;
+  const promise = (async () => {
+    let table = null;
+    try {
+      const saved = await gameStore.getLiveGame(roomId, IDLE_ROOM_TTL);
+      if (saved) table = restoreTable(roomId, saved);
+    } catch (error) {
+      console.error(`Failed to restore room ${roomId} from the game store:`, error);
+    }
+    table ??= createTable(roomId);
+    tables.set(roomId, table);
+    return table;
+  })().finally(() => pendingRestores.delete(roomId));
+  pendingRestores.set(roomId, promise);
+  return promise;
+}
+
+function chooseSeat(table, playerKey) {
+  const reserved = playerKey ? table.playerColors.get(playerKey) : undefined;
+  if (reserved) return table.seats[reserved] ? "spectator" : reserved;
+  const reservedColors = new Set(table.playerColors.values());
+  for (const color of ["w", "b"]) {
+    if (!table.seats[color] && !reservedColors.has(color)) return color;
+  }
+  return "spectator";
 }
 
 function serializeTable(table) {
@@ -381,9 +442,13 @@ function handleTableMessage(table, client, raw) {
       w: table.seats.w?.name ?? null,
       b: table.seats.b?.name ?? null,
     });
+    table.playerColors.clear();
     for (const color of ["w", "b"]) {
       const seated = table.seats[color];
-      if (seated?.playerKey) gameStore.addPlayer(table.gameId, seated.playerKey, color);
+      if (seated?.playerKey) {
+        table.playerColors.set(seated.playerKey, color);
+        gameStore.addPlayer(table.gameId, seated.playerKey, color);
+      }
     }
     resumeClock(table);
     broadcast(table);
@@ -396,7 +461,7 @@ function handleTableMessage(table, client, raw) {
   }
 }
 
-function joinTable(request, socket) {
+async function joinTable(request, socket) {
   const url = new URL(request.url, "http://localhost");
   const roomId = (url.searchParams.get("room") || "")
     .toUpperCase()
@@ -413,18 +478,18 @@ function joinTable(request, socket) {
     .replace(/[^a-zA-Z0-9-]/g, "")
     .slice(0, 64);
 
-  let table = tables.get(roomId);
-  if (!table) {
-    table = createTable(roomId);
-    tables.set(roomId, table);
-  }
+  const table = await obtainTable(roomId);
+  if (socket.readyState !== socket.OPEN) return;
 
-  const role = !table.seats.w ? "w" : !table.seats.b ? "b" : "spectator";
+  const role = chooseSeat(table, playerKey);
   const client = { id: randomUUID(), name, role, playerKey, socket };
   table.clients.add(client);
   if (role === "w" || role === "b") {
     table.seats[role] = client;
-    if (playerKey) gameStore.addPlayer(table.gameId, playerKey, role);
+    if (playerKey) {
+      table.playerColors.set(playerKey, role);
+      gameStore.addPlayer(table.gameId, playerKey, role);
+    }
   }
   gameStore.updatePlayers(table.gameId, {
     w: table.seats.w?.name ?? null,
@@ -1183,7 +1248,12 @@ const wss = new WebSocketServer({ noServer: true });
 server.on("upgrade", (req, socket, head) => {
   const { pathname } = new URL(req.url, "http://localhost");
   if (pathname === "/ws") {
-    wss.handleUpgrade(req, socket, head, (ws) => joinTable(req, ws));
+    wss.handleUpgrade(req, socket, head, (ws) =>
+      joinTable(req, ws).catch((error) => {
+        console.error("Failed to join table:", error);
+        ws.close(1011, "The room could not be joined");
+      }),
+    );
   } else if (handleNextUpgrade) {
     // Next dev-mode hot reload uses its own WebSocket.
     handleNextUpgrade(req, socket, head);
