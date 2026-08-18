@@ -33,7 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s · Pawn Patrol",
     },
     description: "Start a private chess table, share the code, and play live.",
-    icons: { icon: "/favicon.png", shortcut: "/favicon.png" },
+    icons: { icon: "/pawn-patrol-icon.svg", shortcut: "/pawn-patrol-icon.svg" },
     openGraph: {
       title: "Pawn Patrol",
       description: "Live chess, one move at a time.",

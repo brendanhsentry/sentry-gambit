@@ -1,6 +1,6 @@
 /** Node server: Next.js frontend plus an in-memory WebSocket chess table service. */
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as Sentry from "@sentry/node";
 import next from "next";
 import { WebSocketServer } from "ws";
@@ -8,6 +8,13 @@ import { Chess } from "chess.js";
 import { openGameStore } from "./game-store.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
+if (dev) {
+  try {
+    process.loadEnvFile(".env.local");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
 const port = Number(process.env.PORT) || 3000;
 const gameStore = openGameStore();
 
@@ -467,6 +474,23 @@ const handleNextUpgrade =
 const SENTRY_ORG = "sentry-gambit";
 const SENTRY_PROJECT_ID = "4511927685939200";
 const SEER_TOKEN = process.env.SEER_API_TOKEN || "";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4-flash-0731";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const EXPLAINABLE_GRADES = new Set(["inaccuracy", "mistake", "miss", "blunder"]);
+const EXPLANATION_MOTIFS = new Set([
+  "material_loss",
+  "hanging_piece",
+  "fork",
+  "pin",
+  "skewer",
+  "mate_threat",
+  "missed_win",
+  "positional",
+  "unclear",
+]);
+const explanationCache = new Map();
+const explanationRateLimits = new Map();
 
 const REVIEW_PROMPT = [
   "This issue represents one finished chess game. Review the game using the",
@@ -483,6 +507,272 @@ function sendJson(res, status, payload) {
     "Cache-Control": "no-store",
   });
   res.end(JSON.stringify(payload));
+}
+
+class RequestError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function readJsonBody(req, maxBytes = 8_192) {
+  const declaredLength = Number(req.headers["content-length"] || 0);
+  if (declaredLength > maxBytes) throw new RequestError(413, "Request is too large.");
+
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) throw new RequestError(413, "Request is too large.");
+    chunks.push(chunk);
+  }
+
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new RequestError(400, "Request body must be valid JSON.");
+  }
+}
+
+function parseUciMove(value) {
+  if (typeof value !== "string" || !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(value)) {
+    throw new RequestError(400, "Analysis contains an invalid move.");
+  }
+  return value;
+}
+
+function parseEngineLine(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 16) {
+    throw new RequestError(400, "Analysis contains an invalid engine line.");
+  }
+  return value.map(parseUciMove);
+}
+
+function parseExpectedPoints(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new RequestError(400, "Analysis contains an invalid evaluation.");
+  }
+  return value;
+}
+
+function replayEngineLine(fen, moves) {
+  let board;
+  try {
+    board = new Chess(fen);
+  } catch {
+    throw new RequestError(400, "Analysis contains an invalid position.");
+  }
+
+  const san = [];
+  for (const uci of moves.slice(0, 10)) {
+    try {
+      const move = board.move({
+        from: uci.slice(0, 2),
+        to: uci.slice(2, 4),
+        promotion: uci[4] || "q",
+      });
+      if (!move) throw new Error("Illegal move");
+      san.push(move.san);
+    } catch {
+      throw new RequestError(400, "Analysis contains an illegal engine line.");
+    }
+  }
+  return san;
+}
+
+function validateMoveAnalysis(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new RequestError(400, "Move analysis is required.");
+  }
+  const fenBefore = typeof body.fenBefore === "string" ? body.fenBefore.trim() : "";
+  if (!fenBefore || fenBefore.length > 120) {
+    throw new RequestError(400, "Analysis contains an invalid position.");
+  }
+  const grade = typeof body.grade === "string" ? body.grade : "";
+  if (!EXPLAINABLE_GRADES.has(grade)) {
+    throw new RequestError(400, "Only significant errors can be explained.");
+  }
+  const playedMove = parseUciMove(body.playedMove);
+  const playedLine = parseEngineLine(body.playedLine);
+  const bestLine = parseEngineLine(body.bestLine);
+  if (playedLine[0] !== playedMove) {
+    throw new RequestError(400, "The played line does not start with the played move.");
+  }
+
+  const playedLineSan = replayEngineLine(fenBefore, playedLine);
+  const bestLineSan = replayEngineLine(fenBefore, bestLine);
+  return {
+    grade,
+    fenBefore,
+    playedMove,
+    playedLine,
+    bestLine,
+    playedLineSan,
+    bestLineSan,
+    bestExpectedPoints: parseExpectedPoints(body.bestExpectedPoints),
+    playedExpectedPoints: parseExpectedPoints(body.playedExpectedPoints),
+  };
+}
+
+function clientAddress(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded) return forwarded.split(",")[0].trim();
+  return req.socket.remoteAddress || "unknown";
+}
+
+function consumeExplanationRateLimit(req) {
+  const key = clientAddress(req);
+  const now = Date.now();
+  const existing = explanationRateLimits.get(key);
+  if (!existing || now - existing.startedAt >= 10 * 60 * 1000) {
+    explanationRateLimits.set(key, { startedAt: now, count: 1 });
+    return true;
+  }
+  existing.count += 1;
+  return existing.count <= 20;
+}
+
+function cacheExplanation(key, value) {
+  if (explanationCache.size >= 500) {
+    const oldest = explanationCache.keys().next().value;
+    if (oldest) explanationCache.delete(oldest);
+  }
+  explanationCache.set(key, value);
+}
+
+async function callOpenRouter(facts) {
+  const response = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    signal: AbortSignal.timeout(12_000),
+    headers: {
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.APP_URL || "https://pawn-patrol.example",
+      "X-OpenRouter-Title": "Pawn Patrol",
+    },
+    body: JSON.stringify({
+      model: OPENROUTER_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "Explain this chess error using only the supplied Stockfish evidence.",
+            "Do not invent moves, evaluations, threats, or tactical motifs.",
+            "The played line shows the punishment; the best line shows the alternative.",
+            "If the exact motif is not demonstrated, choose unclear.",
+            "Use at most two short sentences and write for a club chess player.",
+          ].join(" "),
+        },
+        { role: "user", content: JSON.stringify(facts) },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "move_explanation",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              motif: { type: "string", enum: [...EXPLANATION_MOTIFS] },
+              explanation: {
+                type: "string",
+                description: "At most two short sentences supported by the engine lines.",
+              },
+            },
+            required: ["motif", "explanation"],
+            additionalProperties: false,
+          },
+        },
+      },
+      provider: {
+        require_parameters: true,
+        data_collection: "deny",
+        zdr: true,
+      },
+      max_tokens: 180,
+    }),
+  });
+
+  if (!response.ok) throw new Error(`OpenRouter returned ${response.status}`);
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content !== "string") throw new Error("OpenRouter returned no explanation");
+
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("OpenRouter returned invalid JSON");
+  }
+  const motif = typeof parsed?.motif === "string" ? parsed.motif : "";
+  const explanation = typeof parsed?.explanation === "string" ? parsed.explanation.trim() : "";
+  if (!EXPLANATION_MOTIFS.has(motif) || !explanation || explanation.length > 400) {
+    throw new Error("OpenRouter returned an invalid explanation");
+  }
+  return { motif, explanation };
+}
+
+async function handleMoveExplanationRequest(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+  if (!consumeExplanationRateLimit(req)) {
+    sendJson(res, 429, { error: "Too many explanation requests. Try again shortly." });
+    return;
+  }
+
+  let analysis;
+  try {
+    analysis = validateMoveAnalysis(await readJsonBody(req));
+  } catch (error) {
+    sendJson(res, error instanceof RequestError ? error.status : 400, {
+      error: error instanceof Error ? error.message : "Invalid request.",
+    });
+    return;
+  }
+
+  const lines = {
+    playedLine: analysis.playedLineSan,
+    bestLine: analysis.bestLineSan,
+  };
+  if (!OPENROUTER_API_KEY) {
+    sendJson(res, 503, {
+      ...lines,
+      error: "Move explanations are not configured.",
+    });
+    return;
+  }
+
+  const facts = {
+    grade: analysis.grade,
+    fenBefore: analysis.fenBefore,
+    playedMove: analysis.playedLineSan[0],
+    playedLine: analysis.playedLineSan,
+    bestMove: analysis.bestLineSan[0],
+    bestLine: analysis.bestLineSan,
+    expectedPointsBefore: analysis.bestExpectedPoints,
+    expectedPointsAfter: analysis.playedExpectedPoints,
+  };
+  const cacheKey = createHash("sha256").update(JSON.stringify(facts)).digest("hex");
+  const cached = explanationCache.get(cacheKey);
+  if (cached) {
+    sendJson(res, 200, { ...lines, ...cached, cached: true });
+    return;
+  }
+
+  try {
+    const explanation = await callOpenRouter(facts);
+    cacheExplanation(cacheKey, explanation);
+    sendJson(res, 200, { ...lines, ...explanation, cached: false });
+  } catch (error) {
+    console.error("OpenRouter move explanation failed:", error.message);
+    sendJson(res, 502, {
+      ...lines,
+      error: "The AI explanation is unavailable; the verified engine lines are shown instead.",
+    });
+  }
 }
 
 function handleGamesRequest(req, res, url) {
@@ -576,6 +866,10 @@ async function handleReviewRequest(req, res, url) {
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (handleGamesRequest(req, res, url)) return;
+  if (url.pathname === "/api/move-explanation") {
+    void handleMoveExplanationRequest(req, res);
+    return;
+  }
   if (url.pathname.startsWith("/api/review")) {
     void handleReviewRequest(req, res, url);
     return;

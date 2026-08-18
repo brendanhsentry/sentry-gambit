@@ -18,6 +18,21 @@ npm run build    # production build
 npm run start    # production server
 ```
 
+To enable on-demand explanations for Stockfish mistakes and blunders, create an
+OpenRouter API key and put it in the ignored `.env.local` file:
+
+```bash
+OPENROUTER_API_KEY=your_key_here
+OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731
+APP_URL=http://localhost:3000
+```
+
+The key is used only by the Node server. The browser sends validated engine
+lines to `/api/move-explanation`; it never receives the credential. Click a
+graded inaccuracy, mistake, miss, or blunder after the game to request an
+explanation. The verified Stockfish lines remain visible if the model is
+unavailable.
+
 ## Saved games and replay
 
 The server creates `data/pawn-patrol.sqlite` automatically. Every accepted move
@@ -63,6 +78,20 @@ gcloud run deploy pawn-patrol \
 
 `--timeout 3600` keeps WebSocket connections open for up to an hour;
 clients reconnect automatically on the same room code.
+
+For production, inject `OPENROUTER_API_KEY` into the Cloud Run service as a
+runtime secret, and optionally set `OPENROUTER_MODEL` and `APP_URL` as ordinary
+environment variables. Saving a value in GitHub Actions secrets alone does not
+make it available to Cloud Run; the deployment workflow must explicitly pass
+or bind that secret to the service. The current documented deployment is
+manual, so Google Secret Manager plus Cloud Run's `--set-secrets` option is the
+recommended path.
+
+If a GitHub Actions deployment is added later, create an Actions secret named
+`OPENROUTER_API_KEY` under **Repository settings → Secrets and variables →
+Actions**, then have the workflow update the Cloud Run secret binding. Never
+put the key in a `NEXT_PUBLIC_` variable, Docker build argument, source file, or
+committed environment file.
 
 ## Sentry Move Logs
 

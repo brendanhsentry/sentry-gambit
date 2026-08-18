@@ -54,7 +54,7 @@ button { color: inherit; }
 }
 
 .brand em { color: var(--amber); font-family: Georgia, serif; font-size: 1.25em; }
-.brand-mark { width: 32px; height: 38px; display: grid; place-items: center; border-right: 1px solid var(--line); padding-right: 12px; }
+.brand-mark { width: 42px; height: 38px; display: grid; place-items: center; border-right: 1px solid var(--line); padding-right: 12px; }
 .brand-mark img { width: 30px; height: 30px; object-fit: contain; }
 .topbar-note { font: 600 10px/1 var(--font-geist-mono), monospace; letter-spacing: 0.13em; color: #52665e; }
 .live-dot { width: 6px; height: 6px; display: inline-block; border-radius: 50%; background: var(--amber); margin-right: 8px; box-shadow: 0 0 0 4px rgba(217,154,66,.13); }
@@ -100,8 +100,8 @@ button { color: inherit; }
 .square.was-moved::before { content: ""; position: absolute; inset: 0; background: rgba(225, 174, 74, .36); }
 .square.is-selected::before { content: ""; position: absolute; inset: 0; background: rgba(217, 154, 66, .62); }
 .square.is-check::after { content: ""; position: absolute; inset: 14%; border-radius: 50%; background: radial-gradient(circle, rgba(174,55,43,.7), rgba(174,55,43,0)); }
-.piece { position: relative; z-index: 2; font-family: "Times New Roman", Georgia, serif; font-size: clamp(34px, 6.3vw, 69px); line-height: 1; transform: translateY(-2%); user-select: none; }
-.piece--w { color: #fffdf6; text-shadow: 0 1px 0 #777, 0 2px 2px rgba(0,0,0,.5); }
+.piece { position: relative; z-index: 2; font-family: "Times New Roman", "Noto Sans Symbols 2", Georgia, serif; font-size: clamp(34px, 6.3vw, 69px); line-height: 1; transform: translateY(-2%); user-select: none; }
+.piece--w { color: #fffdf6; text-shadow: 0 1px 1px rgba(0,0,0,.72), 0 2px 3px rgba(0,0,0,.38); }
 .piece--b { color: #142c25; text-shadow: 0 1px 0 rgba(255,255,255,.3), 0 2px 2px rgba(0,0,0,.28); }
 .move-dot { position: absolute; z-index: 3; width: 19%; aspect-ratio: 1; border-radius: 50%; background: rgba(12,47,40,.47); pointer-events: none; }
 .capture-ring { position: absolute; z-index: 3; inset: 7%; border: clamp(3px, .45vw, 6px) solid rgba(217,154,66,.7); border-radius: 50%; pointer-events: none; }
@@ -184,6 +184,25 @@ button { color: inherit; }
 .match-actions button:disabled { opacity: .45; cursor: default; }
 .notice { margin-top: 12px; padding: 10px; background: #f0dfc3; color: #72511e; font-size: 10px; }
 
+.move-explanation {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--amber);
+  background: rgba(255, 255, 255, 0.3);
+  padding: 14px;
+}
+.move-explanation-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.move-explanation-head strong { color: var(--green); font: 700 12px/1 var(--font-geist-mono), monospace; }
+.move-explanation-head small { margin-left: auto; color: #718078; font: 600 8px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }
+.move-explanation-copy { margin: 12px 0; color: #354a42; font-size: 12px; line-height: 1.55; }
+.move-explanation-loading { margin: 12px 0 0; color: #718078; font-size: 11px; line-height: 1.45; }
+.move-explanation-error { margin: 12px 0; color: #9b3e34; font-size: 11px; line-height: 1.45; }
+.move-explanation-error button { margin-left: 7px; border: 0; border-bottom: 1px solid var(--green); background: transparent; padding: 0; color: var(--green); cursor: pointer; font: inherit; }
+.engine-line { display: grid; gap: 5px; margin-top: 10px; border-left: 2px solid #b6473c; padding-left: 9px; }
+.engine-line--best { border-left-color: #4f8d58; }
+.engine-line span { color: #7d8983; font: 650 8px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
+.engine-line code { color: #354a42; font: 600 10px/1.5 var(--font-geist-mono), monospace; white-space: normal; }
+
 footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; color: #7b8781; font: 600 8px/1 var(--font-geist-mono), monospace; letter-spacing: .11em; }
 
 @media (max-width: 920px) {
@@ -196,7 +215,7 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 @media (max-width: 600px) {
   .topbar { height: 62px; padding: 0 16px; }
   .brand { font-size: 11px; gap: 8px; }
-  .brand-mark { width: 26px; padding-right: 8px; }
+  .brand-mark { width: 32px; padding-right: 8px; }
   .brand-mark img { width: 24px; height: 24px; }
   .text-button { font-size: 9px; }
   .game-layout { width: 100%; margin: 16px auto 32px; gap: 28px; }

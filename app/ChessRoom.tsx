@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconSeer } from "./IconSeer";
+import { PIECE_GLYPHS } from "./chess-pieces";
 import { startGameReplay, stopGameReplay } from "./sentry-replay";
 import { gradeLabel, useMoveAnalysis, type ReviewMove } from "./move-analysis";
 
@@ -45,13 +46,20 @@ type ServerMessage =
   | { type: "state"; state: GameState }
   | { type: "error"; message: string };
 
+type MoveExplanation =
+  | { phase: "loading" }
+  | {
+      phase: "done" | "error";
+      motif: string | null;
+      explanation: string | null;
+      playedLine: string[];
+      bestLine: string[];
+      message?: string;
+    };
+
 const START_FEN = new Chess().fen();
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
-const PIECES: Record<Color, Record<PieceSymbol, string>> = {
-  w: { p: "♙", n: "♘", b: "♗", r: "♖", q: "♕", k: "♔" },
-  b: { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" },
-};
-
+const EXPLAINABLE_GRADES = new Set(["inaccuracy", "mistake", "miss", "blunder"]);
 function makeRoomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
@@ -159,7 +167,10 @@ export function ChessRoom() {
   const [pastGamesLoading, setPastGamesLoading] = useState(true);
   const [pastGame, setPastGame] = useState<PastGame | null>(null);
   const [replayPly, setReplayPly] = useState<number | null>(null);
+  const [analysisPly, setAnalysisPly] = useState<number | null>(null);
+  const [moveExplanations, setMoveExplanations] = useState<Record<number, MoveExplanation>>({});
   const reportedGradesRef = useRef(new Set<string>());
+  const explanationRequestsRef = useRef(new Set<number>());
 
   const send = useCallback((payload: object) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -237,6 +248,9 @@ export function ChessRoom() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSeer({ phase: "idle" });
     setReplayPly(null);
+    setAnalysisPly(null);
+    setMoveExplanations({});
+    explanationRequestsRef.current.clear();
   }, [currentGameId]);
 
   const requestSeerReview = useCallback(async () => {
@@ -325,6 +339,82 @@ export function ChessRoom() {
     () => pastGame?.history ?? state?.history ?? [],
     [pastGame?.history, state?.history],
   );
+
+  async function requestMoveExplanation(index: number) {
+    const ply = index + 1;
+    setAnalysisPly(ply);
+    goToPly(ply);
+
+    const reviewed = analysis.moves[index];
+    if (
+      pastGame ||
+      !state?.result ||
+      !reviewed?.evidence ||
+      !EXPLAINABLE_GRADES.has(reviewed.grade)
+    ) return;
+
+    const existing = moveExplanations[ply];
+    if (existing?.phase === "loading" || existing?.phase === "done") return;
+    if (explanationRequestsRef.current.has(ply)) return;
+    explanationRequestsRef.current.add(ply);
+    setMoveExplanations((current) => ({ ...current, [ply]: { phase: "loading" } }));
+
+    try {
+      const response = await fetch("/api/move-explanation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grade: reviewed.grade, ...reviewed.evidence }),
+      });
+      const data = await response.json() as {
+        motif?: string;
+        explanation?: string;
+        playedLine?: string[];
+        bestLine?: string[];
+        error?: string;
+      };
+      const playedLine = Array.isArray(data.playedLine) ? data.playedLine : [];
+      const bestLine = Array.isArray(data.bestLine) ? data.bestLine : [];
+      if (!response.ok || !data.explanation) {
+        setMoveExplanations((current) => ({
+          ...current,
+          [ply]: {
+            phase: "error",
+            motif: null,
+            explanation: null,
+            playedLine,
+            bestLine,
+            message: data.error ?? "The AI explanation is unavailable.",
+          },
+        }));
+        return;
+      }
+      setMoveExplanations((current) => ({
+        ...current,
+        [ply]: {
+          phase: "done",
+          motif: data.motif ?? "unclear",
+          explanation: data.explanation ?? null,
+          playedLine,
+          bestLine,
+        },
+      }));
+    } catch {
+      setMoveExplanations((current) => ({
+        ...current,
+        [ply]: {
+          phase: "error",
+          motif: null,
+          explanation: null,
+          playedLine: [],
+          bestLine: [],
+          message: "The AI explanation could not be reached.",
+        },
+      }));
+    } finally {
+      explanationRequestsRef.current.delete(ply);
+    }
+  }
+
   const lastPly = viewHistory.length;
   const viewedPly = replayPly ?? lastPly;
   const viewFen = useMemo(() => {
@@ -471,6 +561,8 @@ export function ChessRoom() {
     else pairs[pairs.length - 1].b = { san: move.san, index };
     return pairs;
   }, []);
+  const selectedReview = analysisPly ? analysis.moves[analysisPly - 1] : null;
+  const selectedExplanation = analysisPly ? moveExplanations[analysisPly] : null;
 
   function moveCell(move?: { san: string; index: number }) {
     if (!move) return <span className="move-cell"><span>—</span></span>;
@@ -482,7 +574,7 @@ export function ChessRoom() {
       <button
         className={`move-cell ${viewedPly === move.index + 1 ? "is-current" : ""}`}
         title={title}
-        onClick={() => goToPly(move.index + 1)}
+        onClick={() => void requestMoveExplanation(move.index)}
         aria-label={`Show position after ${move.san}`}
       >
         <span>{move.san}</span>
@@ -496,7 +588,7 @@ export function ChessRoom() {
       <header className="topbar">
         <Link className="brand" href="/" aria-label="Pawn Patrol home">
           <span className="brand-mark">
-            <Image src="/favicon.png" alt="" width={30} height={30} priority />
+            <Image src="/pawn-patrol-icon.svg" alt="" width={30} height={30} priority />
           </span>
           <span>PAWN <em>PATROL</em></span>
         </Link>
@@ -541,7 +633,7 @@ export function ChessRoom() {
                   >
                     {fileIndex === 0 && <span className="rank-label">{rank}</span>}
                     {rankIndex === 7 && <span className="file-label">{file}</span>}
-                    {piece && <span className={`piece piece--${piece.color}`}>{PIECES[piece.color][piece.type]}</span>}
+                    {piece && <span className={`piece piece--${piece.color}`}>{PIECE_GLYPHS[piece.type]}</span>}
                     {isTarget && <span className={piece ? "capture-ring" : "move-dot"} />}
                   </button>
                 );
@@ -586,7 +678,7 @@ export function ChessRoom() {
                 <div>
                   {(["q", "r", "b", "n"] as PieceSymbol[]).map((piece) => (
                     <button key={piece} onClick={() => send({ type: "move", from: promotion.from, to: promotion.to, promotion: piece })} aria-label={`Promote to ${piece}`}>
-                      {PIECES[promotion.color][piece]}
+                      {PIECE_GLYPHS[piece]}
                     </button>
                   ))}
                 </div>
@@ -665,9 +757,48 @@ export function ChessRoom() {
                 <div className="move-row" key={pair.number}>
                   <span>{pair.number}.</span>{moveCell(pair.w)}{moveCell(pair.b)}
                 </div>
-              )) : <div className="empty-moves"><span>♙</span><p>The move sheet is empty.<br />White begins.</p></div>}
+              )) : <div className="empty-moves"><span>{PIECE_GLYPHS.p}</span><p>The move sheet is empty.<br />White begins.</p></div>}
             </div>
           </div>
+
+          {analysisPly && selectedReview?.evidence && EXPLAINABLE_GRADES.has(selectedReview.grade) && (
+            <div className="move-explanation" aria-live="polite">
+              <div className="move-explanation-head">
+                <span className={`move-grade move-grade--${selectedReview.grade}`}>{gradeLabel(selectedReview.grade)}</span>
+                <strong>{Math.ceil(analysisPly / 2)}{analysisPly % 2 ? "." : "…"} {viewHistory[analysisPly - 1]?.san}</strong>
+                {selectedReview.expectedPointsLoss !== null && (
+                  <small>{(selectedReview.expectedPointsLoss * 100).toFixed(1)} expected points lost</small>
+                )}
+              </div>
+              {selectedExplanation?.phase === "loading" || !selectedExplanation ? (
+                <p className="move-explanation-loading">Asking the coach to explain Stockfish&apos;s line…</p>
+              ) : (
+                <>
+                  {selectedExplanation.phase === "done" && (
+                    <p className="move-explanation-copy">{selectedExplanation.explanation}</p>
+                  )}
+                  {selectedExplanation.phase === "error" && (
+                    <p className="move-explanation-error">
+                      {selectedExplanation.message}
+                      <button onClick={() => void requestMoveExplanation(analysisPly - 1)}>Retry</button>
+                    </p>
+                  )}
+                  {selectedExplanation.playedLine.length > 0 && (
+                    <div className="engine-line">
+                      <span>ENGINE CONTINUATION</span>
+                      <code>{selectedExplanation.playedLine.join(" ")}</code>
+                    </div>
+                  )}
+                  {selectedExplanation.bestLine.length > 0 && (
+                    <div className="engine-line engine-line--best">
+                      <span>BETTER LINE</span>
+                      <code>{selectedExplanation.bestLine.join(" ")}</code>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {state && !pastGame && (
             <div className="match-actions">

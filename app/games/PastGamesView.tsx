@@ -1,9 +1,10 @@
 "use client";
 
-import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
+import { Chess, type Square } from "chess.js";
 import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PIECE_GLYPHS } from "../chess-pieces";
 
 type PlayerColor = "w" | "b";
 
@@ -34,11 +35,6 @@ type PastGame = PastGameSummary & { history: SavedMove[] };
 const START_FEN = new Chess().fen();
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const;
-const PIECES: Record<Color, Record<PieceSymbol, string>> = {
-  w: { p: "♙", n: "♘", b: "♗", r: "♖", q: "♕", k: "♔" },
-  b: { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" },
-};
-
 function browserPlayerKey() {
   const storageKey = "pawn-patrol-player-key";
   const existing = window.localStorage.getItem(storageKey);
@@ -228,7 +224,7 @@ export function PastGamesView() {
       <header className="topbar">
         <Link className="brand" href="/" aria-label="Pawn Patrol home">
           <span className="brand-mark">
-            <Image src="/favicon.png" alt="" width={30} height={30} priority />
+            <Image src="/pawn-patrol-icon.svg" alt="" width={30} height={30} priority />
           </span>
           <span>PAWN <em>PATROL</em></span>
         </Link>
@@ -282,7 +278,7 @@ export function PastGamesView() {
                 </button>
               )) : (
                 <div className="archive-empty">
-                  <span>♙</span>
+                  <span>{PIECE_GLYPHS.p}</span>
                   <p>{games.length ? "No records match your search." : "Finished games you play will appear here."}</p>
                 </div>
               )}
@@ -340,7 +336,7 @@ export function PastGamesView() {
                               >
                                 {fileIndex === 0 && <span className="rank-label">{rank}</span>}
                                 {rankIndex === 7 && <span className="file-label">{file}</span>}
-                                {piece && <span className={`piece piece--${piece.color}`}>{PIECES[piece.color][piece.type]}</span>}
+                                {piece && <span className={`piece piece--${piece.color}`}>{PIECE_GLYPHS[piece.type]}</span>}
                               </div>
                             );
                           }))}
@@ -388,7 +384,7 @@ export function PastGamesView() {
                 </section>
               </>
             ) : (
-              <div className="record-placeholder"><span>♙</span><p>Select a game to inspect its record.</p></div>
+              <div className="record-placeholder"><span>{PIECE_GLYPHS.p}</span><p>Select a game to inspect its record.</p></div>
             )}
             {error && <div className="notice" role="status">{error}</div>}
           </article>

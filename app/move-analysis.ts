@@ -22,6 +22,16 @@ export type MoveGrade =
 export type ClassifiedMove = {
   grade: MoveGrade;
   expectedPointsLoss: number | null;
+  evidence: MoveAnalysisEvidence | null;
+};
+
+export type MoveAnalysisEvidence = {
+  fenBefore: string;
+  playedMove: string;
+  playedLine: string[];
+  bestLine: string[];
+  bestExpectedPoints: number;
+  playedExpectedPoints: number;
 };
 
 type EngineLine = {
@@ -247,10 +257,20 @@ function classifyMove(
   previousReview: EngineReview | null,
 ): ClassifiedMove {
   const loss = review.loss;
-  const isBest = review.best.move === uci(move);
+  const playedMove = uci(move);
+  const isBest = review.best.move === playedMove;
   const secondEp = review.second?.expectedPoints ?? review.best.expectedPoints;
   const criticalGap = review.best.expectedPoints - secondEp;
-  const sacrifice = detectsSacrifice(fen, uci(move), review.played.pv, move.color);
+  const sacrifice = detectsSacrifice(fen, playedMove, review.played.pv, move.color);
+  const evidence: MoveAnalysisEvidence = {
+    fenBefore: fen,
+    playedMove,
+    playedLine: review.played.pv,
+    bestLine: review.best.pv,
+    bestExpectedPoints: review.best.expectedPoints,
+    playedExpectedPoints: review.played.expectedPoints,
+  };
+  let grade: MoveGrade;
 
   if (
     loss <= 0.02 &&
@@ -258,32 +278,29 @@ function classifyMove(
     review.played.expectedPoints >= 0.45 &&
     secondEp < 0.9
   ) {
-    return { grade: "brilliant", expectedPointsLoss: loss };
-  }
+    grade = "brilliant";
+  } else {
+    const changesOutcome =
+      (review.best.expectedPoints >= 0.72 && secondEp < 0.55) ||
+      (review.best.expectedPoints >= 0.45 && secondEp < 0.25);
+    const opponentCreatedOpportunity = previousReview?.loss !== undefined && previousReview.loss >= 0.1;
 
-  const changesOutcome =
-    (review.best.expectedPoints >= 0.72 && secondEp < 0.55) ||
-    (review.best.expectedPoints >= 0.45 && secondEp < 0.25);
-  if (loss <= 0.02 && (criticalGap >= 0.12 || changesOutcome)) {
-    return { grade: "great", expectedPointsLoss: loss };
-  }
-
-  const opponentCreatedOpportunity = previousReview?.loss !== undefined && previousReview.loss >= 0.1;
-  if (
+    if (loss <= 0.02 && (criticalGap >= 0.12 || changesOutcome)) grade = "great";
+    else if (
     opponentCreatedOpportunity &&
     review.best.expectedPoints >= 0.7 &&
     review.played.expectedPoints < 0.58 &&
     loss >= 0.1
-  ) {
-    return { grade: "miss", expectedPointsLoss: loss };
+    ) grade = "miss";
+    else if (isBest) grade = "best";
+    else if (loss <= 0.02) grade = "excellent";
+    else if (loss <= 0.05) grade = "good";
+    else if (loss <= 0.1) grade = "inaccuracy";
+    else if (loss <= 0.2) grade = "mistake";
+    else grade = "blunder";
   }
 
-  if (isBest) return { grade: "best", expectedPointsLoss: loss };
-  if (loss <= 0.02) return { grade: "excellent", expectedPointsLoss: loss };
-  if (loss <= 0.05) return { grade: "good", expectedPointsLoss: loss };
-  if (loss <= 0.1) return { grade: "inaccuracy", expectedPointsLoss: loss };
-  if (loss <= 0.2) return { grade: "mistake", expectedPointsLoss: loss };
-  return { grade: "blunder", expectedPointsLoss: loss };
+  return { grade, expectedPointsLoss: loss, evidence };
 }
 
 export function useMoveAnalysis(gameId: string, history: ReviewMove[], enabled: boolean): AnalysisState {
@@ -317,7 +334,7 @@ export function useMoveAnalysis(gameId: string, history: ReviewMove[], enabled: 
         const beforeFen = board.fen();
 
         if (isBookMove(moves, index)) {
-          results[index] = { grade: "book", expectedPointsLoss: null };
+          results[index] = { grade: "book", expectedPointsLoss: null, evidence: null };
         } else {
           const review = await engine.reviewMove(beforeFen, uci(move));
           rawReviews[index] = review;
