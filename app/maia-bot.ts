@@ -6,15 +6,15 @@ import MOVE_INDEX_JSON from "./maia-moves.json";
 
 const MOVE_INDEX = MOVE_INDEX_JSON as Record<string, number>;
 
-export type BotKey = "debug" | "warning" | "fatal";
+export type BotKey = "milo" | "frida" | "viktor";
 
 export const BOTS: Record<
   BotKey,
   { name: string; elo: number; tagline: string }
 > = {
-  debug: { name: "Debug", elo: 1100, tagline: "Logs everything, sees nothing." },
-  warning: { name: "Warning", elo: 1500, tagline: "Ignored at your own risk." },
-  fatal: { name: "Fatal", elo: 1900, tagline: "Unhandled and unforgiving." },
+  milo: { name: "Milo", elo: 1100, tagline: "Still learning the rules." },
+  frida: { name: "Frida", elo: 1500, tagline: "A solid club player." },
+  viktor: { name: "Viktor", elo: 1900, tagline: "Shows no mercy." },
 };
 
 export type MaiaStatus = "idle" | "loading" | "ready" | "error";
