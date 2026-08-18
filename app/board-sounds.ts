@@ -1,7 +1,24 @@
+const MUTE_KEY = "pawn-patrol-muted";
 let ctx: AudioContext | null = null;
+let muted =
+  typeof window !== "undefined" &&
+  window.localStorage.getItem(MUTE_KEY) === "1";
+
+export function soundsMuted() {
+  return muted;
+}
+
+export function setSoundsMuted(next: boolean) {
+  muted = next;
+  try {
+    window.localStorage.setItem(MUTE_KEY, next ? "1" : "0");
+  } catch {
+    // Sounds still mute for this visit even if the preference cannot persist.
+  }
+}
 
 function audioContext() {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || muted) return null;
   const Ctor =
     window.AudioContext ??
     (window as Window & { webkitAudioContext?: typeof AudioContext })

@@ -81,6 +81,9 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
         final_fen = ?, white_time_ms = ?, black_time_ms = ? WHERE id = ?
     `),
     deleteGame: database.prepare("DELETE FROM games WHERE id = ?"),
+    deleteMovesFrom: database.prepare(
+      "DELETE FROM moves WHERE game_id = ? AND ply >= ?",
+    ),
     selectGames: database.prepare(`
       SELECT games.id, games.room, games.white_name, games.black_name, games.result,
         games.started_at, games.finished_at, games.final_fen,
@@ -156,6 +159,18 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       database.exec("BEGIN IMMEDIATE");
       try {
         statements.insertMove.run(gameId, ply, move.color, move.san, move.from, move.to, move.promotion ?? null, fen, now);
+        statements.updatePosition.run(fen, clock.w, clock.b, now, gameId);
+        database.exec("COMMIT");
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+    },
+    undoMoves(gameId, fromPly, fen, clock) {
+      const now = Date.now();
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        statements.deleteMovesFrom.run(gameId, fromPly);
         statements.updatePosition.run(fen, clock.w, clock.b, now, gameId);
         database.exec("COMMIT");
       } catch (error) {

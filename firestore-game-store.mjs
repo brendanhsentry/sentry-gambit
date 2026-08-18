@@ -107,6 +107,26 @@ export function openFirestoreGameStore() {
         return batch.commit();
       });
     },
+    undoMoves(gameId, fromPly, fen, clock) {
+      const now = Date.now();
+      enqueue(gameId, async () => {
+        const stale = await games
+          .doc(gameId)
+          .collection("moves")
+          .where("ply", ">=", fromPly)
+          .get();
+        const batch = firestore.batch();
+        stale.docs.forEach((doc) => batch.delete(doc.ref));
+        batch.update(games.doc(gameId), {
+          finalFen: fen,
+          whiteTimeMs: clock.w,
+          blackTimeMs: clock.b,
+          plyCount: fromPly - 1,
+          updatedAt: now,
+        });
+        return batch.commit();
+      });
+    },
     finishGame(gameId, result, fen, clock) {
       const now = Date.now();
       enqueue(gameId, () =>

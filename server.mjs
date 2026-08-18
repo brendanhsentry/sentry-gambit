@@ -435,6 +435,42 @@ function handleTableMessage(table, client, raw) {
     return;
   }
 
+  // A player takes back their own last move; the opponent's reply goes too.
+  if (message.type === "undo") {
+    if (table.result || (client.role !== "w" && client.role !== "b")) return;
+    const plies = table.chess.turn() === client.role ? 2 : 1;
+    if (table.chess.history().length < plies) return;
+    if (flagIfExpired(table)) {
+      captureFinishedGame(table);
+      broadcast(table);
+      return;
+    }
+    const now = Date.now();
+    pauseClock(table, now);
+    for (let i = 0; i < plies; i++) table.chess.undo();
+    const newLength = table.chess.history().length;
+    for (const ply of [...table.gradedPlies]) {
+      if (ply > newLength) table.gradedPlies.delete(ply);
+    }
+    gameStore.undoMoves(
+      table.gameId,
+      newLength + 1,
+      table.chess.fen(),
+      table.clock,
+    );
+    logGameEvent(table, "chess.move.undone", {
+      "chess.room.id": table.id,
+      "chess.game.id": table.gameId,
+      "chess.undo.by": client.role === "w" ? "white" : "black",
+      "chess.undo.plies": plies,
+      "chess.move.ply": newLength,
+      "chess.position.fen_after": table.chess.fen(),
+    });
+    resumeClock(table, now);
+    broadcast(table);
+    return;
+  }
+
   if (message.type === "reset") {
     if (client.role === "spectator") return;
     if (!table.sentryTraceEnded) table.sentrySpan.end();

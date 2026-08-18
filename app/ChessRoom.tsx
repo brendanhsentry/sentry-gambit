@@ -16,7 +16,14 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { IconSeer } from "./IconSeer";
-import { playCapture, playCheck, playGameEnd, playMove } from "./board-sounds";
+import {
+  playCapture,
+  playCheck,
+  playGameEnd,
+  playMove,
+  setSoundsMuted,
+  soundsMuted,
+} from "./board-sounds";
 import { PIECE_GLYPHS } from "./chess-pieces";
 import { startGameReplay, stopGameReplay } from "./sentry-replay";
 import { gradeLabel, useMoveAnalysis, type ReviewMove } from "./move-analysis";
@@ -684,6 +691,18 @@ export function ChessRoom() {
     }
   }, [viewFen]);
 
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    // The stored preference is only readable after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMuted(soundsMuted());
+  }, []);
+  function toggleMute() {
+    const next = !muted;
+    setSoundsMuted(next);
+    setMuted(next);
+  }
+
   const [anim, setAnim] = useState<BoardAnim | null>(null);
   const [drag, setDrag] = useState<{
     from: Square;
@@ -1094,16 +1113,42 @@ export function ChessRoom() {
                   ? `PRIVATE TABLE · ${room}`
                   : "PRIVATE TABLE"}
             </span>
-            <span className={`connection ${connection}`}>
-              {pastGame
-                ? "REPLAY"
-                : connection === "online"
-                  ? "CONNECTED"
-                  : connection === "connecting"
-                    ? "CONNECTING"
-                    : connection === "offline"
-                      ? "RECONNECTING"
-                      : "READY"}
+            <span className="eyebrow-tools">
+              <button
+                className="sound-toggle"
+                onClick={toggleMute}
+                aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+                title={muted ? "Unmute sounds" : "Mute sounds"}
+              >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M8 3 4.5 6H2v4h2.5L8 13V3Z" />
+                  {muted ? (
+                    <path d="m10.5 6.5 4 3m0-3-4 3" />
+                  ) : (
+                    <path d="M10.5 6a3.2 3.2 0 0 1 0 4M12.5 4.5a5.6 5.6 0 0 1 0 7" />
+                  )}
+                </svg>
+              </button>
+              <span className={`connection ${connection}`}>
+                {pastGame
+                  ? "REPLAY"
+                  : connection === "online"
+                    ? "CONNECTED"
+                    : connection === "connecting"
+                      ? "CONNECTING"
+                      : connection === "offline"
+                        ? "RECONNECTING"
+                        : "READY"}
+              </span>
             </span>
           </div>
 
@@ -1654,6 +1699,20 @@ export function ChessRoom() {
           {state && !pastGame && (
             <div className="match-actions">
               <button onClick={() => send({ type: "reset" })}>↻ Rematch</button>
+              <button
+                onClick={() => send({ type: "undo" })}
+                disabled={
+                  role === "spectator" ||
+                  Boolean(state.result) ||
+                  replayPly !== null ||
+                  state.history.length <
+                    ((state.history.length % 2 === 0 ? "w" : "b") === role
+                      ? 2
+                      : 1)
+                }
+              >
+                ↶ Undo
+              </button>
               <button
                 onClick={() => send({ type: "resign" })}
                 disabled={role === "spectator" || Boolean(state.result)}
