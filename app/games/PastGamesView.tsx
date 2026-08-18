@@ -38,7 +38,14 @@ type PastGame = PastGameSummary & { history: SavedMove[] };
 type SeerReview =
   | { phase: "idle" }
   | { phase: "requesting" }
-  | { phase: "running"; gameId: string; issueId: string; shortId: string }
+  | {
+      phase: "running";
+      gameId: string;
+      issueId: string;
+      shortId: string;
+      activity: string[];
+      draft: string | null;
+    }
   | { phase: "done"; text: string; shortId: string }
   | { phase: "error"; message: string };
 
@@ -230,6 +237,8 @@ export function PastGamesView() {
             gameId,
             issueId: String(data.issueId),
             shortId: String(data.shortId ?? ""),
+            activity: [],
+            draft: null,
           });
           return;
         }
@@ -284,6 +293,16 @@ export function PastGamesView() {
             phase: "error",
             message: "Seer hit an error while reviewing. Try again.",
           });
+        } else {
+          const activity = Array.isArray(data.activity) ? data.activity : [];
+          const draft = typeof data.draft === "string" ? data.draft : null;
+          setSeer((current) =>
+            current.phase === "running" &&
+            (current.draft !== draft ||
+              JSON.stringify(current.activity) !== JSON.stringify(activity))
+              ? { ...current, activity, draft }
+              : current,
+          );
         }
       } catch {
         // Keep polling through temporary network failures.
@@ -291,7 +310,7 @@ export function PastGamesView() {
     };
 
     void checkStatus();
-    const interval = window.setInterval(() => void checkStatus(), 7_500);
+    const interval = window.setInterval(() => void checkStatus(), 3_000);
     return () => {
       active = false;
       window.clearInterval(interval);
@@ -541,8 +560,39 @@ export function PastGamesView() {
                       <p className="record-seer-progress">
                         {seer.phase === "requesting"
                           ? "Finding this game in Sentry…"
-                          : "Seer is reviewing every move. You can keep using the replay while it works."}
+                          : seer.draft
+                            ? "Seer is writing the review…"
+                            : "Seer is reviewing every move. You can keep using the replay while it works."}
                       </p>
+                    )}
+                    {seer.phase === "running" && seer.activity.length > 0 && (
+                      <div className="seer-scan-log">
+                        {seer.activity.map((line, index) => (
+                          <div
+                            key={`${index}-${line}`}
+                            className={
+                              index === seer.activity.length - 1
+                                ? "seer-step--current"
+                                : undefined
+                            }
+                          >
+                            {line}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {seer.phase === "running" && seer.draft && (
+                      <div className="seer-draft">
+                        <span className="seer-draft-label">LIVE DRAFT</span>
+                        <div className="seer-clip">
+                          <div className="seer-md seer-md--preview">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {seer.draft}
+                            </ReactMarkdown>
+                          </div>
+                          <div className="seer-fade" aria-hidden />
+                        </div>
+                      </div>
                     )}
                     {seer.phase === "done" && (
                       <div className="record-seer-review">
