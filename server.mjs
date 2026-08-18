@@ -392,7 +392,8 @@ function handleTableMessage(table, client, raw) {
     if (table.result || (client.role !== "w" && client.role !== "b")) return;
     // A seated human relays the bot's moves, since the bot runs in their browser.
     const movedByBot =
-      table.bot?.color === table.chess.turn() && client.role !== table.bot.color;
+      table.bot?.color === table.chess.turn() &&
+      client.role !== table.bot.color;
     if (client.role !== table.chess.turn() && !movedByBot) {
       send(client, { type: "error", message: "Wait for your turn." });
       return;
@@ -660,12 +661,25 @@ async function joinTable(request, socket) {
   // A seated human bringing a bot key gives the opposite seat to the bot,
   // both on game creation and when rejoining a restored bot game.
   const botKey = url.searchParams.get("bot") || "";
-  if (BOTS[botKey] && !table.bot && !table.result && (role === "w" || role === "b")) {
+  if (
+    BOTS[botKey] &&
+    !table.bot &&
+    !table.result &&
+    (role === "w" || role === "b")
+  ) {
     const botColor = role === "w" ? "b" : "w";
     const reserved = [...table.playerColors.values()].includes(botColor);
     if (!table.seats[botColor] && !reserved) {
-      table.bot = { key: botKey, name: BOTS[botKey].name, elo: BOTS[botKey].elo, color: botColor };
-      table.seats[botColor] = { id: randomUUID(), name: `${BOTS[botKey].name} (Bot)` };
+      table.bot = {
+        key: botKey,
+        name: BOTS[botKey].name,
+        elo: BOTS[botKey].elo,
+        color: botColor,
+      };
+      table.seats[botColor] = {
+        id: randomUUID(),
+        name: `${BOTS[botKey].name} (Bot)`,
+      };
       gameStore.setBot(table.gameId, { key: botKey, color: botColor });
     }
   }
@@ -779,7 +793,6 @@ const MOVE_COACH_SYSTEM_INSTRUCTIONS = [
   "Always name pieces, for example 'the white knight on f3' or 'the black queen moves to d5'.",
   "Board coordinates are allowed, but never use algebraic chess notation such as Nf3, e4, Qxd5, O-O, or move-number notation.",
   "Turn the supplied move descriptions into natural prose instead of copying their sentence structure verbatim.",
-  "Sprinkle in a brief chess aphorism when it fits naturally.",
   "The tone may be playful, tongue-in-cheek, and gently roasting, but keep the joke about the move rather than the player.",
 ].join(" ");
 
