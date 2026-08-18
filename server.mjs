@@ -36,7 +36,7 @@ Sentry.init({
 
 const DEFAULT_STARTING_TIME = 10 * 60 * 1000;
 const STARTING_TIMES = new Set(
-  [1, 3, 5, 10].map((minutes) => minutes * 60 * 1000),
+  [1, 3, 5, 10, 15].map((minutes) => minutes * 60 * 1000),
 );
 const IDLE_ROOM_TTL = 60 * 60 * 1000;
 const BOTS = {

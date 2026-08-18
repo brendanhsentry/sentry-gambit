@@ -147,7 +147,7 @@ button { color: inherit; }
 .lobby-card input:focus { border-color: var(--green); box-shadow: 0 0 0 2px rgba(23,63,53,.08); }
 .time-control { margin: 13px 0 0; padding: 0; border: 0; }
 .time-control legend { margin-bottom: 7px; color: #57655f; font: 600 9px/1 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .1em; }
-.time-control > div { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.time-control > div { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .time-control button { display: flex; min-width: 0; flex-direction: column; gap: 4px; padding: 8px 6px; border: 1px solid var(--line); background: #fffdf8; cursor: pointer; text-align: left; }
 .time-control button:hover { background: #f2ecdd; }
 .time-control button.selected { border-color: var(--green); background: var(--green); color: white; box-shadow: inset 0 -3px var(--amber); }

@@ -74,7 +74,7 @@ type MoveExplanation =
     };
 
 const START_FEN = new Chess().fen();
-const TIME_CONTROLS = [1, 3, 5, 10] as const;
+const TIME_CONTROLS = [1, 3, 5, 10, 15] as const;
 type TimeControl = (typeof TIME_CONTROLS)[number];
 const DEFAULT_TIME_CONTROL: TimeControl = 10;
 const TIME_CONTROL_NAMES: Record<TimeControl, string> = {
@@ -82,6 +82,7 @@ const TIME_CONTROL_NAMES: Record<TimeControl, string> = {
   3: "Blitz",
   5: "Blitz",
   10: "Rapid",
+  15: "Rapid",
 };
 const TRAY_ORDER = ["q", "r", "b", "n", "p"] as const;
 const PIECE_VALUES: Record<PieceSymbol, number> = {
