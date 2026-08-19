@@ -942,6 +942,8 @@ const handleNextUpgrade =
 
 const SENTRY_ORG = "sentry-gambit";
 const SENTRY_PROJECT_ID = "4511927685939200";
+const SENTRY_DATA_API_BASE =
+  process.env.SENTRY_DATA_API_BASE || "https://us.sentry.io/api/0";
 const SEER_TOKEN = process.env.SEER_API_TOKEN || "";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const OPENROUTER_MODEL =
@@ -1796,8 +1798,12 @@ function handleGamesRequest(req, res, url) {
   return true;
 }
 
-async function sentryApi(path, options = {}) {
-  const response = await fetch(`https://sentry.io/api/0${path}`, {
+async function sentryApi(
+  path,
+  options = {},
+  baseUrl = "https://sentry.io/api/0",
+) {
+  const response = await fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${SEER_TOKEN}`,
@@ -1820,6 +1826,10 @@ async function sentryApi(path, options = {}) {
     throw error;
   }
   return responseText ? JSON.parse(responseText) : null;
+}
+
+function sentryDataApi(path, options) {
+  return sentryApi(path, options, SENTRY_DATA_API_BASE);
 }
 
 const exploreRateLimits = new Map();
@@ -2062,7 +2072,7 @@ async function handleExploreRequest(req, res, url) {
     for (const field of Object.values(EXPLORE_GAME_FIELDS)) {
       gameParams.append("field", field);
     }
-    const gameResult = await sentryApi(
+    const gameResult = await sentryDataApi(
       `/organizations/${SENTRY_ORG}/events/?${gameParams}`,
     );
     const gameRows = Array.isArray(gameResult?.data) ? gameResult.data : [];
@@ -2089,7 +2099,7 @@ async function handleExploreRequest(req, res, url) {
       for (const field of Object.values(EXPLORE_GRADE_FIELDS)) {
         gradeParams.append("field", field);
       }
-      const gradeResult = await sentryApi(
+      const gradeResult = await sentryDataApi(
         `/organizations/${SENTRY_ORG}/events/?${gradeParams}`,
       );
       gradeRows = Array.isArray(gradeResult?.data) ? gradeResult.data : [];
@@ -2114,6 +2124,8 @@ async function handleExploreRequest(req, res, url) {
     const errorMessage =
       error?.statusCode === 401 || error?.statusCode === 403
         ? "Sentry Explore is missing org:read access."
+        : error?.statusCode === 404
+          ? "Sentry Explore could not find the configured organization or project."
         : error?.statusCode === 400
           ? "Sentry rejected the generated Logs query."
           : "Sentry Explore could not answer right now.";
