@@ -35,6 +35,7 @@ import {
   type MoveGrade,
   type ReviewMove,
 } from "./move-analysis";
+import { isOpeningPosition, openingName } from "./opening-book";
 import { BOTS, useMaiaEngine, type BotKey } from "./maia-bot";
 import { authToken, useAuth } from "./auth";
 import { TopBar } from "./TopBar";
@@ -168,14 +169,16 @@ const COACH_PRAISE_GRADES = new Set(["brilliant", "great"]);
 type CoachItem = {
   id: number;
   ply: number;
-  kind: "mistake" | "praise";
-  grade: MoveGrade;
+  kind: "mistake" | "praise" | "opening" | "note";
+  grade: MoveGrade | null;
   san: string;
   bestSan: string | null;
   text: string;
   motif: string | null;
   thinking: boolean;
 };
+
+const NOTE_COOLDOWN_PLIES = 8;
 
 type CoachHint =
   | { phase: "loading"; tier: "maia" | "best" }
@@ -376,6 +379,13 @@ export function ChessRoom() {
   const coachSeenRef = useRef(new Set<string>());
   const coachBaselineRef = useRef<{ gameId: string; ply: number } | null>(null);
   const coachIdRef = useRef(1);
+  const lastNotePlyRef = useRef(-Infinity);
+  const openingRef = useRef<{
+    gameId: string;
+    itemId: number | null;
+    name: string | null;
+    done: boolean;
+  } | null>(null);
   const suggestionRef = useRef<{ fen: string; san: string } | null>(null);
 
   const send = useCallback((payload: object) => {
@@ -623,19 +633,66 @@ export function ChessRoom() {
       // Joining mid-game (e.g. after a refresh) must not replay the backlog.
       coachBaselineRef.current = { gameId: state.gameId, ply: state.history.length };
       coachSeenRef.current.clear();
+      lastNotePlyRef.current = -Infinity;
       setCoachFeed([]);
       return;
     }
     if (state.result) return;
     const baseline = coachBaselineRef.current.ply;
+    const pushNote = (
+      ply: number,
+      san: string,
+      text: string,
+      grade: MoveGrade | null = null,
+    ) => {
+      const item: CoachItem = {
+        id: coachIdRef.current++,
+        ply,
+        kind: "note",
+        grade,
+        san,
+        bestSan: null,
+        text,
+        motif: null,
+        thinking: false,
+      };
+      setCoachFeed((current) => [item, ...current].slice(0, 6));
+    };
     analysis.moves.forEach((reviewed, index) => {
       const ply = index + 1;
       const move = state.history[index];
-      if (!reviewed || !move || ply <= baseline || move.color !== role) return;
-      const isAlert = COACH_ALERT_GRADES.has(reviewed.grade);
-      if (!isAlert && !COACH_PRAISE_GRADES.has(reviewed.grade)) return;
+      if (!reviewed || !move || ply <= baseline) return;
       const seenKey = `${state.gameId}:${ply}:${move.san}`;
       if (coachSeenRef.current.has(seenKey)) return;
+      const offCooldown = ply - lastNotePlyRef.current >= NOTE_COOLDOWN_PLIES;
+      if (move.color !== role) {
+        if (!COACH_ALERT_GRADES.has(reviewed.grade)) return;
+        coachSeenRef.current.add(seenKey);
+        if (!offCooldown) return;
+        lastNotePlyRef.current = ply;
+        pushNote(ply, move.san, "The bot slipped — look for tactics.", reviewed.grade);
+        return;
+      }
+      const isAlert = COACH_ALERT_GRADES.has(reviewed.grade);
+      if (!isAlert && !COACH_PRAISE_GRADES.has(reviewed.grade)) {
+        coachSeenRef.current.add(seenKey);
+        if (!offCooldown) return;
+        const onceKey = (tag: string) => `${state.gameId}:${tag}`;
+        let text: string | null = null;
+        if (move.san.startsWith("O-O") && !coachSeenRef.current.has(onceKey("castle"))) {
+          coachSeenRef.current.add(onceKey("castle"));
+          text = "King's safe.";
+        } else if (move.promotion === "q") {
+          text = "A new queen.";
+        } else if (move.san.endsWith("+") && !coachSeenRef.current.has(onceKey("check"))) {
+          coachSeenRef.current.add(onceKey("check"));
+          text = "Keep the pressure on.";
+        }
+        if (!text) return;
+        lastNotePlyRef.current = ply;
+        pushNote(ply, move.san, text);
+        return;
+      }
       coachSeenRef.current.add(seenKey);
       // Never grade the coach's own suggestion against the player.
       const suggested = suggestionRef.current;
@@ -712,6 +769,60 @@ export function ChessRoom() {
         });
     });
   }, [analysis.moves, state, role]);
+
+  // Name the opening as it develops, then note the move the game left book.
+  useEffect(() => {
+    if (!state?.coach || !state.bot || role === "spectator" || state.result) return;
+    if (openingRef.current?.gameId !== state.gameId)
+      openingRef.current = { gameId: state.gameId, itemId: null, name: null, done: false };
+    const tracker = openingRef.current;
+    if (tracker.done || !state.history.length) return;
+    const replay = new Chess();
+    let name: string | null = null;
+    let leftBookPly: number | null = null;
+    for (const [index, move] of state.history.entries()) {
+      try {
+        replay.move({ from: move.from, to: move.to, promotion: move.promotion });
+      } catch {
+        return;
+      }
+      if (!isOpeningPosition(replay.fen())) {
+        leftBookPly = index + 1;
+        break;
+      }
+      name = openingName(replay.fen()) ?? name;
+    }
+    tracker.done = leftBookPly !== null;
+    if (name === tracker.name && !tracker.done) return;
+    tracker.name = name;
+    const san = name ?? "Opening";
+    const text =
+      leftBookPly === null
+        ? "Book so far."
+        : `Out of book on move ${Math.ceil(leftBookPly / 2)}.`;
+    if (tracker.itemId === null) {
+      const item: CoachItem = {
+        id: coachIdRef.current++,
+        ply: 0,
+        kind: "opening",
+        grade: null,
+        san,
+        bestSan: null,
+        text,
+        motif: null,
+        thinking: false,
+      };
+      tracker.itemId = item.id;
+      setCoachFeed((current) => [item, ...current].slice(0, 6));
+    } else {
+      const itemId = tracker.itemId;
+      setCoachFeed((current) =>
+        current.map((entry) =>
+          entry.id === itemId ? { ...entry, san, text } : entry,
+        ),
+      );
+    }
+  }, [state, role]);
 
   async function requestHint(tier: "maia" | "best") {
     const started = latestStateRef.current;
@@ -1666,12 +1777,17 @@ export function ChessRoom() {
                     >
                       <div className="coach-bubble-top">
                         <strong>
-                          {Math.floor((item.ply - 1) / 2) + 1}
-                          {(item.ply - 1) % 2 ? "…" : "."} {item.san}
+                          {item.kind === "opening"
+                            ? item.san
+                            : `${Math.floor((item.ply - 1) / 2) + 1}${
+                                (item.ply - 1) % 2 ? "…" : "."
+                              } ${item.san}`}
                         </strong>
-                        <span className={`move-grade move-grade--${item.grade}`}>
-                          {gradeLabel(item.grade)}
-                        </span>
+                        {item.grade && (
+                          <span className={`move-grade move-grade--${item.grade}`}>
+                            {gradeLabel(item.grade)}
+                          </span>
+                        )}
                         {item.motif && (
                           <span className="coach-motif">
                             {item.motif.replace(/_/g, " ")}

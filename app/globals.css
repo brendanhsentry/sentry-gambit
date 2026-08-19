@@ -202,6 +202,8 @@ button { color: inherit; }
 .coach-bubble p { margin: 0; }
 .coach-bubble--mistake { border-left: 3px solid #b8433c; }
 .coach-bubble--praise { border-left: 3px solid #168c8a; }
+.coach-bubble--opening { border-left: 3px solid var(--green); }
+.coach-bubble--note { border-left: 3px solid #71807a; }
 .coach-bubble-top { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
 .coach-bubble-top strong { font: 700 11px/1 var(--font-geist-mono), monospace; color: var(--green); }
 .coach-motif { padding: 3px 5px; border-radius: 2px; background: rgba(23, 63, 53, 0.08); color: var(--green); font: 650 7.5px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; }

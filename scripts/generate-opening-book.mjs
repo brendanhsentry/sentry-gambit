@@ -7,6 +7,7 @@ import { Chess } from "chess.js";
 const sourceDirectory = resolve(process.argv[2] || "");
 const outputPath = resolve(process.argv[3] || "app/opening-book.ts");
 const positions = new Set();
+const names = new Map();
 const sourceRevision = execFileSync("git", ["-C", sourceDirectory, "rev-parse", "--short=12", "HEAD"], {
   encoding: "utf8",
 }).trim();
@@ -18,7 +19,7 @@ function positionKey(fen) {
 for (const volume of ["a", "b", "c", "d", "e"]) {
   const rows = readFileSync(resolve(sourceDirectory, `${volume}.tsv`), "utf8").trim().split("\n");
   for (const [index, row] of rows.slice(1).entries()) {
-    const [, , pgn] = row.split("\t");
+    const [, name, pgn] = row.split("\t");
     const opening = new Chess();
 
     try {
@@ -32,11 +33,30 @@ for (const volume of ["a", "b", "c", "d", "e"]) {
       replay.move({ from: move.from, to: move.to, promotion: move.promotion });
       positions.add(positionKey(replay.fen()));
     }
+    if (!names.has(positionKey(replay.fen()))) names.set(positionKey(replay.fen()), name);
   }
 }
 
 const serialized = [...positions].sort().join("\n");
+const serializedNames = [...names.entries()]
+  .sort(([a], [b]) => (a < b ? -1 : 1))
+  .map(([key, name]) => `${key}\t${name}`)
+  .join("\n");
 writeFileSync(
   outputPath,
-  `// Generated from lichess-org/chess-openings@${sourceRevision} (CC0-1.0).\nconst OPENING_POSITION_KEYS = new Set(\`${serialized}\`.split("\\n"));\n\nexport function isOpeningPosition(fen: string) {\n  return OPENING_POSITION_KEYS.has(fen.split(" ").slice(0, 4).join(" "));\n}\n`,
+  `// Generated from lichess-org/chess-openings@${sourceRevision} (CC0-1.0).
+const OPENING_POSITION_KEYS = new Set(\`${serialized}\`.split("\\n"));
+
+const OPENING_NAMES = new Map(
+  \`${serializedNames}\`.split("\\n").map((row) => row.split("\\t") as [string, string]),
+);
+
+export function isOpeningPosition(fen: string) {
+  return OPENING_POSITION_KEYS.has(fen.split(" ").slice(0, 4).join(" "));
+}
+
+export function openingName(fen: string) {
+  return OPENING_NAMES.get(fen.split(" ").slice(0, 4).join(" ")) ?? null;
+}
+`,
 );
