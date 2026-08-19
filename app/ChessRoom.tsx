@@ -1439,6 +1439,7 @@ export function ChessRoom() {
               autoShapes={hintShapes}
               onMove={(from, to) => tryMove(from as Square, to as Square)}
               resetKey={promotion ? `${promotion.from}${promotion.to}` : ""}
+              layoutKey={inLobby ? "lobby" : "table"}
               ariaLabel={`Chess board, ${orientation === "w" ? "white" : "black"} orientation`}
             />
 

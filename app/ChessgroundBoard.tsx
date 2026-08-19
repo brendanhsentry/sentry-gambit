@@ -24,6 +24,7 @@ type ChessgroundBoardProps = {
   autoShapes?: DrawShape[];
   onMove?: (from: Key, to: Key) => void;
   resetKey?: string;
+  layoutKey?: string;
   viewOnly?: boolean;
   ariaLabel: string;
 };
@@ -41,12 +42,14 @@ export function ChessgroundBoard({
   autoShapes,
   onMove,
   resetKey,
+  layoutKey,
   viewOnly = false,
   ariaLabel,
 }: ChessgroundBoardProps) {
   const elementRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<Api | null>(null);
   const onMoveRef = useRef(onMove);
+  const layoutKeyRef = useRef(layoutKey);
 
   useLayoutEffect(() => {
     onMoveRef.current = onMove;
@@ -108,6 +111,12 @@ export function ChessgroundBoard({
     turnColor,
     viewOnly,
   ]);
+
+  useLayoutEffect(() => {
+    if (layoutKeyRef.current === layoutKey) return;
+    layoutKeyRef.current = layoutKey;
+    apiRef.current?.redrawAll();
+  }, [layoutKey]);
 
   return (
     <div
