@@ -125,11 +125,6 @@ export function ExploreView() {
         <div className="explore-intro">
           <span className="panel-kicker">YOUR GAME TELEMETRY</span>
           <h1>Ask Sentry about your games</h1>
-          <p>
-            Type a question in plain English. Pawn Patrol searches your game
-            logs, charts the matching history, and shows the events behind the
-            answer.
-          </p>
         </div>
 
         <form className="explore-form" onSubmit={ask}>

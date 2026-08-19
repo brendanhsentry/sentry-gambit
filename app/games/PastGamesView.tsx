@@ -307,7 +307,6 @@ export function PastGamesView() {
           <div>
             <span className="panel-kicker">YOUR ARCHIVE</span>
             <h1>Past games</h1>
-            <p>Every completed game and move saved from this browser.</p>
           </div>
           <div className="archive-count">
             <strong>{games.length}</strong>

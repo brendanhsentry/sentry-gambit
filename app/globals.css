@@ -441,7 +441,7 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 .puzzle-board-tools { display: inline-flex; align-items: center; gap: 12px; }
 .puzzle-board-wrap { box-shadow: 0 22px 50px rgba(23, 44, 36, 0.15), 0 2px 8px rgba(23, 44, 36, .16); }
 .puzzle-panel { border-top: 4px solid var(--green); }
-.puzzle-heading { padding: 24px 0 23px; border-bottom: 1px solid var(--line); }
+.puzzle-heading { padding: 24px 0 23px; }
 .puzzle-heading h2 { margin: 11px 0 8px; color: var(--green); font-size: 23px; line-height: 1.15; font-weight: 650; letter-spacing: -.01em; }
 .puzzle-heading p { margin: 0; color: #65736d; font-size: 12px; line-height: 1.55; }
 .puzzle-feedback { min-height: 112px; padding: 18px 17px; margin-bottom: 4px; border: 2px solid var(--btn-line); background: rgba(255,255,255,.22); box-shadow: 0 4px 0 0 var(--btn-line); }

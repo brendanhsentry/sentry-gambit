@@ -5,7 +5,7 @@ export type Puzzle = {
   difficulty: "Beginner" | "Intermediate" | "Advanced";
   fen: string;
   line: string[];
-  prompt: string;
+  prompt?: string;
   hint: string;
   explanation: string;
 };
@@ -18,7 +18,6 @@ export const PUZZLES: Puzzle[] = [
     difficulty: "Beginner",
     fen: "6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1",
     line: ["e1e8"],
-    prompt: "White to move. Ring the back rank.",
     hint: "The pawns around the king leave it no flight square.",
     explanation: "Re8# seals every escape along the boxed-in back rank.",
   },

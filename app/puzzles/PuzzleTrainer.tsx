@@ -230,7 +230,6 @@ export function PuzzleTrainer() {
           <div>
             <span className="panel-kicker">TACTICAL TRAINING</span>
             <h1>Find the move</h1>
-            <p>Calculate the forcing line, then play it on the board.</p>
           </div>
           <div
             className="puzzle-progress"
@@ -305,7 +304,7 @@ export function PuzzleTrainer() {
                 PUZZLE {puzzleIndex + 1} / {PUZZLES.length}
               </span>
               <h2>{puzzle.title}</h2>
-              <p>{puzzle.prompt}</p>
+              {puzzle.prompt && <p>{puzzle.prompt}</p>}
             </div>
 
             <div
