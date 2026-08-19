@@ -61,7 +61,16 @@ export function ChessgroundBoard({
       coordinates: true,
       coordinatesOnSquares: true,
       disableContextMenu: true,
-      drawable: { enabled: false, visible: true },
+      drawable: {
+        enabled: false,
+        visible: true,
+        brushes: {
+          green: { key: "g", color: "#3e3b46", opacity: 1, lineWidth: 10 },
+          red: { key: "r", color: "#882020", opacity: 1, lineWidth: 10 },
+          blue: { key: "b", color: "#3b6ecc", opacity: 1, lineWidth: 10 },
+          yellow: { key: "y", color: "#6c5fc7", opacity: 1, lineWidth: 10 },
+        },
+      },
       draggable: { showGhost: true },
       premovable: { enabled: false, showDests: true },
       animation: { enabled: true, duration: 180 },
