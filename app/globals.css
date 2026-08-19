@@ -79,10 +79,10 @@ button { color: inherit; }
 .user-menu-sheet button:hover { background: rgba(23, 63, 53, 0.07); }
 
 .game-layout {
-  width: min(1220px, calc(100% - 44px));
-  margin: clamp(20px, 3vw, 36px) auto 40px;
+  width: min(1320px, calc(100% - 44px));
+  margin: clamp(16px, 2vw, 24px) auto 24px;
   display: grid;
-  grid-template-columns: minmax(440px, min(768px, calc(100vh - 265px))) minmax(300px, 360px);
+  grid-template-columns: minmax(440px, min(900px, calc(100vh - 255px))) minmax(300px, 360px);
   gap: clamp(28px, 4vw, 56px);
   align-items: start;
   justify-content: center;
@@ -95,7 +95,7 @@ button { color: inherit; }
 }
 
 .board-column { min-width: 0; }
-.eyebrow-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; color: #65736d; font: 600 9px/1 var(--font-geist-mono), monospace; letter-spacing: .13em; }
+.eyebrow-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; color: #65736d; font: 600 9px/1 var(--font-geist-mono), monospace; letter-spacing: .13em; }
 .eyebrow-tools { display: flex; align-items: center; gap: 12px; }
 .sound-toggle { border: 0; background: transparent; padding: 0; cursor: pointer; color: inherit; display: inline-flex; }
 .sound-toggle:hover { color: var(--green); }
@@ -103,7 +103,7 @@ button { color: inherit; }
 .connection.online { color: #367f61; }
 .connection.connecting, .connection.offline { color: #7c6a8e; }
 
-.player-card { height: 62px; display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); }
+.player-card { height: 56px; display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); }
 .player-card--bottom { border-top: 0; border-bottom: 1px solid var(--line); }
 .player-avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font: 700 11px/1 var(--font-geist-mono), monospace; border: 1px solid rgba(23,63,53,.25); }
 .player-avatar--w { background: #fffdf8; color: var(--green); }
