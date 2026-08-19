@@ -398,46 +398,29 @@ export function PastGamesView() {
                   </div>
                 </div>
 
-                <dl className="record-facts">
+                <div className="record-facts">
                   <div className="record-fact--id">
-                    <dt>Game ID</dt>
-                    <dd>
-                      <code>{selectedGame.id}</code>
-                      <button onClick={copyGameReference}>
-                        {copied
-                          ? "Copied"
-                          : selectedGame.shareable
-                            ? "Copy replay link"
-                            : "Copy ID"}
-                      </button>
-                    </dd>
+                    <span>Game ID</span>
+                    <code>{selectedGame.id}</code>
+                    <button onClick={copyGameReference}>
+                      {copied
+                        ? "Copied"
+                        : selectedGame.shareable
+                          ? "Copy replay link"
+                          : "Copy ID"}
+                    </button>
                   </div>
-                  <div>
-                    <dt>Started</dt>
-                    <dd>{formatDate(selectedGame.startedAt)}</dd>
-                  </div>
-                  <div>
-                    <dt>Duration</dt>
-                    <dd>
-                      {formatDuration(
-                        selectedGame.startedAt,
-                        selectedGame.finishedAt,
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Moves</dt>
-                    <dd>{selectedGame.history.length} plies</dd>
-                  </div>
-                  <div>
-                    <dt>White clock</dt>
-                    <dd>{formatClock(selectedGame.clock.w)}</dd>
-                  </div>
-                  <div>
-                    <dt>Black clock</dt>
-                    <dd>{formatClock(selectedGame.clock.b)}</dd>
-                  </div>
-                </dl>
+                  <p>
+                    Started {formatDate(selectedGame.startedAt)} ·{" "}
+                    {formatDuration(
+                      selectedGame.startedAt,
+                      selectedGame.finishedAt,
+                    )}{" "}
+                    · {selectedGame.history.length} plies · White{" "}
+                    {formatClock(selectedGame.clock.w)} · Black{" "}
+                    {formatClock(selectedGame.clock.b)}
+                  </p>
+                </div>
 
                 <section className="record-seer" aria-labelledby="record-seer-title">
                   <div className="record-seer-head">

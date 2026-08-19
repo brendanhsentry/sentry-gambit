@@ -779,13 +779,12 @@ button.move-cell > span {
 .record-room span { display: block; color: #89948f; font: 650 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
 .record-room strong { display: block; margin-top: 8px; color: var(--green); font: 700 16px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
 
-.record-facts { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 0 34px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
-.record-facts > div { min-width: 0; min-height: 75px; padding: 13px 14px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.record-facts .record-fact--id { grid-column: 1 / -1; }
-.record-facts dt { margin-bottom: 9px; color: #89948f; font: 650 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .09em; text-transform: uppercase; }
-.record-facts dd { margin: 0; color: #354a42; font-size: 12px; }
-.record-facts dd code { font: 550 11px/1.3 var(--font-geist-mono), monospace; overflow-wrap: anywhere; }
-.record-facts dd button { float: right; border: 0; border-bottom: 2px solid var(--green); background: transparent; padding: 2px 0; cursor: pointer; color: var(--green); font: 700 9.5px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }
+.record-facts { margin: 0 0 34px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.record-fact--id { display: flex; align-items: baseline; gap: 11px; padding: 13px 14px; border-bottom: 1px solid var(--line); }
+.record-fact--id span { color: #89948f; font: 650 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .09em; text-transform: uppercase; white-space: nowrap; }
+.record-fact--id code { min-width: 0; font: 550 11px/1.3 var(--font-geist-mono), monospace; overflow-wrap: anywhere; }
+.record-fact--id button { margin-left: auto; border: 0; border-bottom: 2px solid var(--green); background: transparent; padding: 2px 0; cursor: pointer; color: var(--green); font: 700 9.5px/1 var(--font-geist-mono), monospace; text-transform: uppercase; white-space: nowrap; }
+.record-facts p { margin: 0; padding: 12px 14px; color: #354a42; font-size: 12px; line-height: 1.6; }
 
 .record-seer { margin: 0 0 34px; border: 2px solid var(--line); border-top: 3px solid var(--green); background: rgba(255,255,255,.3); }
 .record-seer-head { min-height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 14px; }
@@ -849,7 +848,6 @@ button.move-cell > span {
   .game-record-detail { padding: 28px 14px 34px; }
   .record-heading { display: block; }
   .record-room { margin-top: 18px; text-align: left; }
-  .record-facts { grid-template-columns: repeat(2, 1fr); }
   .record-seer-head { align-items: stretch; flex-direction: column; }
   .record-seer-button { align-self: start; }
   .record-move-row > div, .record-move-row > button { align-items: start; flex-direction: column; justify-content: center; gap: 4px; }
@@ -897,7 +895,6 @@ button.move-cell > span {
 .lobby-card input, .auth-card input, .archive-tools input { border-radius: 10px; }
 .move-grade, .coach-motif, .result-chip { border-radius: 6px; }
 .board-wrap, .chessboard, .puzzle-board-wrap, .record-board { border-radius: 12px; }
-.record-facts { border-radius: 12px; overflow: hidden; }
 
 /* Hover motion pass */
 .topbar-cta, .time-control button, .primary-button, .join-row button, .bot-card,
@@ -912,7 +909,7 @@ button.move-cell > span {
 }
 .sound-toggle, .user-menu-trigger, .user-menu-sheet button, .lobby-tabs button,
 .coach-toggle, .seer-icon-btn, .live-coach-off, .mini-seer-close, .seer-more,
-.invite-card button, .promotion-cancel, .auth-cancel, .record-facts dd button {
+.invite-card button, .promotion-cancel, .auth-cancel, .record-fact--id button {
   transition: color 140ms ease, background-color 140ms ease;
 }
 .puzzle-list button, button.move-cell, .record-move-row > button {

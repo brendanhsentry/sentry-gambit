@@ -266,34 +266,18 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                 </div>
               </div>
 
-              <dl className="record-facts">
+              <div className="record-facts">
                 <div className="record-fact--id">
-                  <dt>Game ID</dt>
-                  <dd>
-                    <code>{game.id}</code>
-                  </dd>
+                  <span>Game ID</span>
+                  <code>{game.id}</code>
                 </div>
-                <div>
-                  <dt>Started</dt>
-                  <dd>{formatDate(game.startedAt)}</dd>
-                </div>
-                <div>
-                  <dt>Duration</dt>
-                  <dd>{formatDuration(game.startedAt, game.finishedAt)}</dd>
-                </div>
-                <div>
-                  <dt>Moves</dt>
-                  <dd>{game.history.length} plies</dd>
-                </div>
-                <div>
-                  <dt>White clock</dt>
-                  <dd>{formatClock(game.clock.w)}</dd>
-                </div>
-                <div>
-                  <dt>Black clock</dt>
-                  <dd>{formatClock(game.clock.b)}</dd>
-                </div>
-              </dl>
+                <p>
+                  Started {formatDate(game.startedAt)} ·{" "}
+                  {formatDuration(game.startedAt, game.finishedAt)} ·{" "}
+                  {game.history.length} plies · White {formatClock(game.clock.w)}{" "}
+                  · Black {formatClock(game.clock.b)}
+                </p>
+              </div>
 
               <section className="record-replay">
                 <div className="record-section-title">
