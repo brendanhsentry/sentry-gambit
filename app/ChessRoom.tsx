@@ -1255,6 +1255,9 @@ export function ChessRoom() {
           <Link className="text-button" href="/games">
             Past games
           </Link>
+          <Link className="text-button" href="/explore">
+            Explore
+          </Link>
           <button
             className="text-button"
             onClick={() => {

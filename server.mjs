@@ -15,6 +15,7 @@ import { WebSocketServer } from "ws";
 import { Chess } from "chess.js";
 import { openGameStore } from "./game-store.mjs";
 import { openFirestoreGameStore } from "./firestore-game-store.mjs";
+import { classifyOpening, findOpeningMention } from "./app/opening-book.mjs";
 
 const dev = process.env.NODE_ENV !== "production";
 if (dev) {
@@ -84,6 +85,82 @@ function logGameEvent(table, name, attributes) {
   });
 }
 
+function tableOpening(table) {
+  const moves = table.chess
+    .history({ verbose: true })
+    .map((move) => `${move.from}${move.to}${move.promotion ?? ""}`);
+  return classifyOpening(moves);
+}
+
+function openingAttributes(opening) {
+  if (!opening) return {};
+  return {
+    "chess.opening.eco": opening.eco,
+    "chess.opening.name": opening.name,
+    "chess.opening.family": opening.family,
+    "chess.opening.side": opening.side,
+    "chess.opening.ply_depth": opening.ply,
+  };
+}
+
+function telemetryPlayerId(kind, value) {
+  return createHash("sha256")
+    .update(`pawn-patrol:${kind}:${value}`)
+    .digest("hex");
+}
+
+function tablePlayerIds(table, color) {
+  const userId = table.seatUsers[color];
+  if (userId) return [telemetryPlayerId("user", userId)];
+  return [
+    ...new Set(
+      [...table.playerColors]
+        .filter(([, playerColor]) => playerColor === color)
+        .map(([playerKey]) => telemetryPlayerId("player", playerKey)),
+    ),
+  ];
+}
+
+function logCompletedGameSummaries(table) {
+  if (table.summaryLogsSent) return;
+  table.summaryLogsSent = true;
+  const whiteScore = resultScore(table.result ?? "");
+  if (whiteScore === null) return;
+  const opening = tableOpening(table);
+  for (const color of ["w", "b"]) {
+    if (table.bot?.color === color) continue;
+    const grades = [...table.moveGrades.entries()]
+      .filter(([ply]) => (ply % 2 === 1 ? "w" : "b") === color)
+      .map(([, grade]) => grade);
+    const losses = grades
+      .map(({ expectedPointsLoss }) => expectedPointsLoss)
+      .filter((loss) => loss !== null);
+    const score = color === "w" ? whiteScore : 1 - whiteScore;
+    const gradeCount = (name) => grades.filter(({ grade }) => grade === name).length;
+    for (const playerId of tablePlayerIds(table, color)) {
+      logGameEvent(table, "chess.player.game.completed", {
+        "chess.player.id": playerId,
+        "chess.player.color": color === "w" ? "white" : "black",
+        "chess.player.outcome": score === 1 ? "win" : score === 0 ? "loss" : "draw",
+        "chess.player.score": score,
+        "chess.player.blunders": gradeCount("blunder"),
+        "chess.player.mistakes": gradeCount("mistake"),
+        "chess.player.inaccuracies": gradeCount("inaccuracy"),
+        "chess.player.misses": gradeCount("miss"),
+        "chess.player.expected_points_loss": losses.length
+          ? losses.reduce((sum, loss) => sum + loss, 0) / losses.length
+          : 0,
+        "chess.game.id": table.gameId,
+        "chess.game.result": table.result,
+        "chess.game.ply_count": table.chess.history().length,
+        "chess.game.time_control_ms": table.initialTimeMs,
+        "chess.game.opponent": table.bot ? "bot" : "human",
+        ...openingAttributes(opening),
+      });
+    }
+  }
+}
+
 function endGameTraceWhenReady(table) {
   if (
     table.sentryTraceEnded ||
@@ -91,6 +168,7 @@ function endGameTraceWhenReady(table) {
     table.gradedPlies.size < table.chess.history().length
   )
     return;
+  logCompletedGameSummaries(table);
   table.sentryTraceEnded = true;
   table.sentrySpan.end();
 }
@@ -153,9 +231,11 @@ function captureFinishedGame(table) {
   });
 
   const plyCount = table.chess.history().length;
+  const opening = tableOpening(table);
   table.sentrySpan.setAttributes({
     "chess.game.result": table.result,
     "chess.game.ply_count": plyCount,
+    ...openingAttributes(opening),
   });
 
   Sentry.withActiveSpan(table.sentrySpan, (scope) => {
@@ -168,6 +248,8 @@ function captureFinishedGame(table) {
       result: table.result,
       ply_count: plyCount,
       final_fen: table.chess.fen(),
+      opening: opening?.name ?? null,
+      opening_eco: opening?.eco ?? null,
     });
     // One issue per game (not one shared issue), so Seer can review a single
     // game when asked about its short ID.
@@ -195,11 +277,13 @@ function createTable(id, initialTimeMs = DEFAULT_STARTING_TIME) {
     initialTimeMs,
     clock: { w: initialTimeMs, b: initialTimeMs, running: null, since: null },
     gradedPlies: new Set(),
+    moveGrades: new Map(),
     playerColors: new Map(),
     seatUsers: { w: null, b: null },
     sentrySpan: createGameTrace(id, gameId),
     sentryTraceEnded: false,
     finishedIssueSent: false,
+    summaryLogsSent: false,
     touchedAt: Date.now(),
   };
   gameStore.createGame({
@@ -235,6 +319,7 @@ function restoreTable(id, saved) {
     initialTimeMs: saved.initialTimeMs ?? DEFAULT_STARTING_TIME,
     clock: { w: saved.clock.w, b: saved.clock.b, running: null, since: null },
     gradedPlies: new Set(),
+    moveGrades: new Map(),
     playerColors: new Map(Object.entries(saved.playerColors ?? {})),
     seatUsers: {
       w: saved.seatUsers?.w ?? null,
@@ -243,6 +328,7 @@ function restoreTable(id, saved) {
     sentrySpan: createGameTrace(id, saved.id),
     sentryTraceEnded: false,
     finishedIssueSent: false,
+    summaryLogsSent: false,
     touchedAt: Date.now(),
   };
   if (saved.bot && BOTS[saved.bot.key]) {
@@ -419,7 +505,10 @@ function applyUndo(table, color) {
   for (let i = 0; i < plies; i++) table.chess.undo();
   const newLength = table.chess.history().length;
   for (const ply of [...table.gradedPlies]) {
-    if (ply > newLength) table.gradedPlies.delete(ply);
+    if (ply > newLength) {
+      table.gradedPlies.delete(ply);
+      table.moveGrades.delete(ply);
+    }
   }
   gameStore.undoMoves(
     table.gameId,
@@ -508,6 +597,7 @@ function handleTableMessage(table, client, raw) {
       "chess.move.by_bot": movedByBot,
       "chess.game.finished": Boolean(table.result),
       "chess.game.result": table.result ?? "in_progress",
+      ...openingAttributes(tableOpening(table)),
     });
     captureFinishedGame(table);
     broadcast(table);
@@ -539,6 +629,7 @@ function handleTableMessage(table, client, raw) {
     if (!acceptedMove) return;
 
     table.gradedPlies.add(ply);
+    table.moveGrades.set(ply, { grade, expectedPointsLoss: loss });
     const attributes = {
       "chess.room.id": table.id,
       "chess.game.id": table.gameId,
@@ -553,6 +644,7 @@ function handleTableMessage(table, client, raw) {
       "chess.move.grade": grade,
       "chess.analysis.engine": "stockfish-18-lite-single",
       "chess.analysis.search_depth": 12,
+      ...openingAttributes(tableOpening(table)),
     };
     if (loss !== null) attributes["chess.move.expected_points_loss"] = loss;
     logGameEvent(table, "chess.move.graded", attributes);
@@ -655,6 +747,7 @@ function handleTableMessage(table, client, raw) {
     table.sentrySpan = createGameTrace(table.id, table.gameId);
     table.sentryTraceEnded = false;
     table.finishedIssueSent = false;
+    table.summaryLogsSent = false;
     table.chess.reset();
     table.result = null;
     table.undoRequest = null;
@@ -666,6 +759,7 @@ function handleTableMessage(table, client, raw) {
       since: null,
     };
     table.gradedPlies.clear();
+    table.moveGrades.clear();
     gameStore.createGame({
       id: table.gameId,
       room: table.id,
@@ -1714,6 +1808,235 @@ async function sentryApi(path, options = {}) {
   return response.json();
 }
 
+const exploreRateLimits = new Map();
+const EXPLORE_FIELDS = {
+  count: "count()",
+  outcome: "tag[chess.player.outcome,string]",
+  opening: "tag[chess.opening.family,string]",
+  score: "avg(tag[chess.player.score,number])",
+  blunders: "avg(tag[chess.player.blunders,number])",
+  mistakes: "avg(tag[chess.player.mistakes,number])",
+  inaccuracies: "avg(tag[chess.player.inaccuracies,number])",
+  expectedPointsLoss:
+    "avg(tag[chess.player.expected_points_loss,number])",
+};
+
+function consumeExploreRateLimit(req) {
+  const key = clientAddress(req);
+  const now = Date.now();
+  const existing = exploreRateLimits.get(key);
+  if (!existing || now - existing.startedAt >= 10 * 60 * 1000) {
+    exploreRateLimits.set(key, { startedAt: now, count: 1 });
+    return true;
+  }
+  existing.count += 1;
+  return existing.count <= 20;
+}
+
+function quoteSentrySearch(value) {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function explorePlan(question) {
+  const normalized = question.toLowerCase();
+  const opening = findOpeningMention(question);
+  const against = /\bagainst\b/.test(normalized);
+  let color = null;
+  if (/\b(as|with|playing)\s+white\b/.test(normalized)) color = "white";
+  if (/\b(as|with|playing)\s+black\b/.test(normalized)) color = "black";
+  if (!color && opening && against) {
+    color = opening.side === "white" ? "black" : "white";
+  }
+  return { opening, color, against };
+}
+
+function numericField(row, field) {
+  const value = Number(row?.[field]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function summarizeExploreRows(rows) {
+  const groups = new Map();
+  let total = 0;
+  let wins = 0;
+  let losses = 0;
+  let draws = 0;
+  let score = 0;
+  let blunders = 0;
+  let mistakes = 0;
+  let inaccuracies = 0;
+  let expectedPointsLoss = 0;
+  for (const row of rows) {
+    const games = numericField(row, EXPLORE_FIELDS.count);
+    if (!games) continue;
+    const outcome = row[EXPLORE_FIELDS.outcome];
+    const family = row[EXPLORE_FIELDS.opening] || "Unknown opening";
+    const values = {
+      score: numericField(row, EXPLORE_FIELDS.score),
+      blunders: numericField(row, EXPLORE_FIELDS.blunders),
+      mistakes: numericField(row, EXPLORE_FIELDS.mistakes),
+      inaccuracies: numericField(row, EXPLORE_FIELDS.inaccuracies),
+      expectedPointsLoss: numericField(row, EXPLORE_FIELDS.expectedPointsLoss),
+    };
+    total += games;
+    if (outcome === "win") wins += games;
+    else if (outcome === "loss") losses += games;
+    else if (outcome === "draw") draws += games;
+    score += values.score * games;
+    blunders += values.blunders * games;
+    mistakes += values.mistakes * games;
+    inaccuracies += values.inaccuracies * games;
+    expectedPointsLoss += values.expectedPointsLoss * games;
+    const group = groups.get(family) ?? {
+      opening: family,
+      games: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      score: 0,
+      blunders: 0,
+    };
+    group.games += games;
+    group.wins += outcome === "win" ? games : 0;
+    group.losses += outcome === "loss" ? games : 0;
+    group.draws += outcome === "draw" ? games : 0;
+    group.score += values.score * games;
+    group.blunders += values.blunders * games;
+    groups.set(family, group);
+  }
+  const average = (value) => (total ? value / total : 0);
+  const breakdown = [...groups.values()]
+    .map((group) => ({
+      opening: group.opening,
+      games: group.games,
+      wins: group.wins,
+      losses: group.losses,
+      draws: group.draws,
+      scorePercent: group.games ? (group.score / group.games) * 100 : 0,
+      avgBlunders: group.games ? group.blunders / group.games : 0,
+    }))
+    .sort((left, right) => right.games - left.games)
+    .slice(0, 20);
+  return {
+    total,
+    wins,
+    losses,
+    draws,
+    scorePercent: average(score) * 100,
+    avgBlunders: average(blunders),
+    avgMistakes: average(mistakes),
+    avgInaccuracies: average(inaccuracies),
+    avgExpectedPointsLoss: average(expectedPointsLoss),
+    breakdown,
+  };
+}
+
+function exploreAnswer(summary, plan) {
+  if (!summary.total) {
+    return "I couldn't find any fully analyzed games matching that question yet. Finish a game and allow its Stockfish review to complete, then try again after Sentry has indexed the logs.";
+  }
+  const subject = plan.opening
+    ? `${plan.against ? "against " : "in "}${plan.opening.family}${plan.color ? ` as ${plan.color === "white" ? "White" : "Black"}` : ""}`
+    : plan.color
+      ? `as ${plan.color === "white" ? "White" : "Black"}`
+      : "across all openings";
+  const record = `${summary.wins}–${summary.losses}–${summary.draws}`;
+  let answer = `Over the last 90 days, you scored ${summary.scorePercent.toFixed(0)}% ${subject} across ${summary.total} game${summary.total === 1 ? "" : "s"} (${record}). You averaged ${summary.avgBlunders.toFixed(1)} blunders and ${summary.avgMistakes.toFixed(1)} mistakes per game.`;
+  if (!plan.opening && summary.breakdown.length > 1) {
+    const eligible = summary.breakdown.filter((item) => item.games >= 2);
+    const candidates = eligible.length ? eligible : summary.breakdown;
+    const weakest = [...candidates].sort(
+      (left, right) => left.scorePercent - right.scorePercent,
+    )[0];
+    answer += ` Your lowest-scoring opening family is ${weakest.opening} at ${weakest.scorePercent.toFixed(0)}% across ${weakest.games} game${weakest.games === 1 ? "" : "s"}.`;
+  }
+  return answer;
+}
+
+async function handleExploreRequest(req, res, url) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+  if (!SEER_TOKEN) {
+    sendJson(res, 503, { error: "Sentry Explore is not configured." });
+    return;
+  }
+  if (!consumeExploreRateLimit(req)) {
+    sendJson(res, 429, { error: "Too many questions. Try again shortly." });
+    return;
+  }
+  try {
+    const body = await readJsonBody(req);
+    const question =
+      typeof body?.question === "string" ? body.question.trim().slice(0, 240) : "";
+    if (question.length < 3) {
+      sendJson(res, 400, { error: "Ask a question about your games." });
+      return;
+    }
+    const token = bearerToken(req, url);
+    const user = token ? await gameStore.getSessionUser(token) : null;
+    const playerKey =
+      typeof body?.playerKey === "string"
+        ? body.playerKey.replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64)
+        : "";
+    if (!user && !playerKey) {
+      sendJson(res, 401, {
+        error: "Play a game on this device or sign in before exploring your history.",
+      });
+      return;
+    }
+    const playerId = user
+      ? telemetryPlayerId("user", user.id)
+      : telemetryPlayerId("player", playerKey);
+    const plan = explorePlan(question);
+    const filters = [
+      `message:${quoteSentrySearch("chess.player.game.completed")}`,
+      `chess.player.id:${quoteSentrySearch(playerId)}`,
+    ];
+    if (plan.opening) {
+      filters.push(
+        `chess.opening.family:${quoteSentrySearch(plan.opening.family)}`,
+      );
+    }
+    if (plan.color) {
+      filters.push(`chess.player.color:${quoteSentrySearch(plan.color)}`);
+    }
+    const query = filters.join(" ");
+    const params = new URLSearchParams({
+      dataset: "logs",
+      project: SENTRY_PROJECT_ID,
+      statsPeriod: "90d",
+      query,
+      per_page: "100",
+      referrer: "pawn-patrol-explore",
+    });
+    for (const field of Object.values(EXPLORE_FIELDS)) {
+      params.append("field", field);
+    }
+    const result = await sentryApi(
+      `/organizations/${SENTRY_ORG}/events/?${params}`,
+    );
+    const summary = summarizeExploreRows(
+      Array.isArray(result?.data) ? result.data : [],
+    );
+    sendJson(res, 200, {
+      question,
+      answer: exploreAnswer(summary, plan),
+      summary,
+      query: query.replace(playerId, "<your-player-id>"),
+      period: "90d",
+    });
+  } catch (error) {
+    if (error instanceof RequestError) {
+      sendJson(res, error.status, { error: error.message });
+      return;
+    }
+    console.error("Sentry Explore request failed:", error.message);
+    sendJson(res, 502, { error: "Sentry Explore could not answer right now." });
+  }
+}
+
 const SEER_STEP_LABELS = {
   get_issue_details: "Opening the game report",
   get_event_details: "Reading the game event",
@@ -1862,6 +2185,10 @@ const server = createServer((req, res) => {
   }
   if (url.pathname === "/api/leaderboard") {
     void handleLeaderboardRequest(req, res, url);
+    return;
+  }
+  if (url.pathname === "/api/explore") {
+    void handleExploreRequest(req, res, url);
     return;
   }
   if (url.pathname === "/api/move-explanation") {

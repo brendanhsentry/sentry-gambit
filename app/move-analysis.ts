@@ -3,7 +3,7 @@
 import { Chess, type Color, type Move, type PieceSymbol, type Square } from "chess.js";
 import { useEffect, useState } from "react";
 
-import { isOpeningPosition } from "./opening-book";
+import { isOpeningPosition } from "./opening-book.mjs";
 
 export type ReviewMove = Pick<Move, "from" | "to" | "san" | "color"> & {
   promotion?: PieceSymbol;
