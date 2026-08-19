@@ -139,7 +139,7 @@ export function ExploreView() {
               rows={3}
             />
             <div className="explore-prompt-actions">
-              <span>Natural-language query · Last 90 days</span>
+              <span>Natural-language query · Last 30 days</span>
               <button type="submit" disabled={loading || !question.trim()}>
                 {loading ? "Searching logs…" : "Search my games"}
               </button>
@@ -163,7 +163,7 @@ export function ExploreView() {
         {result && (
           <div className="explore-results" aria-live="polite">
             <article className="explore-answer">
-              <span className="panel-kicker">ANSWER · LAST 90 DAYS</span>
+              <span className="panel-kicker">ANSWER · LAST 30 DAYS</span>
               <p>{result.answer}</p>
             </article>
 

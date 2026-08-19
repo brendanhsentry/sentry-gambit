@@ -1839,67 +1839,41 @@ async function sentryApi(
   return (await sentryApiResponse(path, options, baseUrl)).body;
 }
 
-function nextSentryCursor(linkHeader) {
-  if (!linkHeader) return null;
-  for (const match of linkHeader.matchAll(/<([^>]+)>\s*;([^,]*)/g)) {
-    if (!/\brel="next"/.test(match[2]) || !/\bresults="true"/.test(match[2]))
-      continue;
-    try {
-      return new URL(match[1]).searchParams.get("cursor");
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-async function sentryDataApiRows(path, options) {
-  const rows = [];
-  const seenCursors = new Set();
-  let cursor = null;
-  do {
-    const separator = path.includes("?") ? "&" : "?";
-    const pagePath = cursor
-      ? `${path}${separator}cursor=${encodeURIComponent(cursor)}`
-      : path;
-    const result = await sentryApiResponse(
-      pagePath,
-      options,
-      SENTRY_DATA_API_BASE,
-    );
-    if (Array.isArray(result.body?.data)) rows.push(...result.body.data);
-    const nextCursor = nextSentryCursor(result.headers.get("link"));
-    if (!nextCursor || seenCursors.has(nextCursor)) break;
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
-  } while (cursor);
-  return rows;
+function sentryDataApi(path, options) {
+  return sentryApi(path, options, SENTRY_DATA_API_BASE);
 }
 
 const exploreRateLimits = new Map();
 const EXPLORE_GAME_FIELDS = {
   timestamp: "timestamp",
-  gameId: "tag[chess.game.id,string]",
-  opening: "tag[chess.opening.name,string]",
-  family: "tag[chess.opening.family,string]",
-  color: "tag[chess.player.color,string]",
-  outcome: "tag[chess.player.outcome,string]",
-  score: "tag[chess.player.score,number]",
-  blunders: "tag[chess.player.blunders,number]",
-  mistakes: "tag[chess.player.mistakes,number]",
-  inaccuracies: "tag[chess.player.inaccuracies,number]",
-  expectedPointsLoss: "tag[chess.player.expected_points_loss,number]",
+  gameId: "chess.game.id",
+  opening: "chess.opening.name",
+  family: "chess.opening.family",
+  color: "chess.player.color",
+  outcome: "chess.player.outcome",
+  score: "chess.player.score",
+  blunders: "chess.player.blunders",
+  mistakes: "chess.player.mistakes",
+  inaccuracies: "chess.player.inaccuracies",
+  expectedPointsLoss: "chess.player.expected_points_loss",
 };
 const EXPLORE_GRADE_FIELDS = {
   timestamp: "timestamp",
-  gameId: "tag[chess.game.id,string]",
-  opening: "tag[chess.opening.name,string]",
-  family: "tag[chess.opening.family,string]",
-  color: "tag[chess.move.color,string]",
-  ply: "tag[chess.move.ply,number]",
-  san: "tag[chess.move.san,string]",
-  grade: "tag[chess.move.grade,string]",
-  expectedPointsLoss: "tag[chess.move.expected_points_loss,number]",
+  gameId: "chess.game.id",
+  opening: "chess.opening.name",
+  family: "chess.opening.family",
+  color: "chess.move.color",
+  ply: "tags[chess.move.ply,number]",
+  san: "chess.move.san",
+  grade: "chess.move.grade",
+  expectedPointsLoss: "tags[chess.move.expected_points_loss,number]",
+};
+
+const EXPLORE_COUNT_FIELDS = {
+  gameId: "chess.game.id",
+  grade: "chess.move.grade",
+  count: "count()",
+  avgLoss: "avg(tags[chess.move.expected_points_loss,number])",
 };
 
 function consumeExploreRateLimit(req) {
@@ -1918,24 +1892,6 @@ function quoteSentrySearch(value) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-function sentryField(row, field) {
-  if (!row) return undefined;
-  if (Object.hasOwn(row, field)) return row[field];
-  const match = /^tag\[(.+),\s*(string|number|boolean)\]$/.exec(field);
-  if (!match) return undefined;
-  const [, name, type] = match;
-  for (const alias of [
-    name,
-    `tag[${name}]`,
-    `tag[${name}, ${type}]`,
-    `tags[${name},${type}]`,
-    `tags[${name}, ${type}]`,
-  ]) {
-    if (Object.hasOwn(row, alias)) return row[alias];
-  }
-  return undefined;
-}
-
 function explorePlan(question) {
   const normalized = question.toLowerCase();
   const opening = findOpeningMention(question);
@@ -1950,7 +1906,7 @@ function explorePlan(question) {
 }
 
 function numericField(row, field) {
-  const value = Number(sentryField(row, field));
+  const value = Number(row?.[field]);
   return Number.isFinite(value) ? value : 0;
 }
 
@@ -1969,9 +1925,8 @@ function summarizeExploreRows(rows) {
   for (const row of rows) {
     const games = 1;
     const hasGradeData = row.__hasGradeData !== false;
-    const outcome = sentryField(row, EXPLORE_GAME_FIELDS.outcome);
-    const family =
-      sentryField(row, EXPLORE_GAME_FIELDS.family) || "Unknown opening";
+    const outcome = row[EXPLORE_GAME_FIELDS.outcome];
+    const family = row[EXPLORE_GAME_FIELDS.family] || "Unknown opening";
     const values = {
       score: numericField(row, EXPLORE_GAME_FIELDS.score),
       blunders: numericField(row, EXPLORE_GAME_FIELDS.blunders),
@@ -2049,18 +2004,17 @@ function summarizeExploreRows(rows) {
 
 function exploreLogRows(rows, gamesById = new Map()) {
   return rows.map((row) => ({
-    timestamp: sentryField(row, EXPLORE_GRADE_FIELDS.timestamp) ?? null,
-    gameId: sentryField(row, EXPLORE_GRADE_FIELDS.gameId) ?? null,
+    timestamp: row[EXPLORE_GRADE_FIELDS.timestamp] ?? null,
+    gameId: row[EXPLORE_GRADE_FIELDS.gameId] ?? null,
     opening:
-      sentryField(row, EXPLORE_GRADE_FIELDS.opening) ??
-      sentryField(row, EXPLORE_GRADE_FIELDS.family) ??
-      gamesById.get(sentryField(row, EXPLORE_GRADE_FIELDS.gameId))?.opening
-        ?.name ??
+      row[EXPLORE_GRADE_FIELDS.opening] ??
+      row[EXPLORE_GRADE_FIELDS.family] ??
+      gamesById.get(row[EXPLORE_GRADE_FIELDS.gameId])?.opening?.name ??
       "Unknown opening",
-    color: sentryField(row, EXPLORE_GRADE_FIELDS.color) ?? null,
+    color: row[EXPLORE_GRADE_FIELDS.color] ?? null,
     ply: numericField(row, EXPLORE_GRADE_FIELDS.ply),
-    san: sentryField(row, EXPLORE_GRADE_FIELDS.san) ?? null,
-    grade: sentryField(row, EXPLORE_GRADE_FIELDS.grade) ?? null,
+    san: row[EXPLORE_GRADE_FIELDS.san] ?? null,
+    grade: row[EXPLORE_GRADE_FIELDS.grade] ?? null,
     expectedPointsLoss: numericField(
       row,
       EXPLORE_GRADE_FIELDS.expectedPointsLoss,
@@ -2068,33 +2022,33 @@ function exploreLogRows(rows, gamesById = new Map()) {
   }));
 }
 
-function storedExploreRows(games, gradeRows) {
-  const gradesByGame = new Map();
-  const gamesById = new Map(games.map((game) => [game.id, game]));
-  for (const row of gradeRows) {
-    const gameId = sentryField(row, EXPLORE_GRADE_FIELDS.gameId);
-    const game = gamesById.get(gameId);
-    if (!game) continue;
-    const playerColor = game.playerColor === "w" ? "white" : "black";
-    if (sentryField(row, EXPLORE_GRADE_FIELDS.color) !== playerColor) continue;
-    const grades = gradesByGame.get(gameId) ?? [];
-    grades.push({
-      grade: sentryField(row, EXPLORE_GRADE_FIELDS.grade),
-      expectedPointsLoss: numericField(
-        row,
-        EXPLORE_GRADE_FIELDS.expectedPointsLoss,
-      ),
+function storedExploreRows(games, gradeCountRows) {
+  const countsByGame = new Map();
+  for (const row of gradeCountRows) {
+    const gameId = row[EXPLORE_COUNT_FIELDS.gameId];
+    if (!gameId) continue;
+    const buckets = countsByGame.get(gameId) ?? [];
+    buckets.push({
+      grade: row[EXPLORE_COUNT_FIELDS.grade],
+      count: numericField(row, EXPLORE_COUNT_FIELDS.count),
+      avgLoss: numericField(row, EXPLORE_COUNT_FIELDS.avgLoss),
     });
-    gradesByGame.set(gameId, grades);
+    countsByGame.set(gameId, buckets);
   }
   return games.flatMap((game) => {
     const whiteScore = resultScore(game.result ?? "");
     if (whiteScore === null || !["w", "b"].includes(game.playerColor)) return [];
     const score = game.playerColor === "w" ? whiteScore : 1 - whiteScore;
-    const grades = gradesByGame.get(game.id) ?? [];
+    const buckets = countsByGame.get(game.id) ?? [];
     const gradeCount = (name) =>
-      grades.filter((item) => item.grade === name).length;
-    const losses = grades.map((item) => item.expectedPointsLoss);
+      buckets
+        .filter((bucket) => bucket.grade === name)
+        .reduce((sum, bucket) => sum + bucket.count, 0);
+    const gradedMoves = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+    const lossSum = buckets.reduce(
+      (sum, bucket) => sum + bucket.avgLoss * bucket.count,
+      0,
+    );
     return [
       {
         [EXPLORE_GAME_FIELDS.timestamp]: game.finishedAt
@@ -2112,10 +2066,10 @@ function storedExploreRows(games, gradeRows) {
         [EXPLORE_GAME_FIELDS.blunders]: gradeCount("blunder"),
         [EXPLORE_GAME_FIELDS.mistakes]: gradeCount("mistake"),
         [EXPLORE_GAME_FIELDS.inaccuracies]: gradeCount("inaccuracy"),
-        [EXPLORE_GAME_FIELDS.expectedPointsLoss]: losses.length
-          ? losses.reduce((sum, loss) => sum + loss, 0) / losses.length
+        [EXPLORE_GAME_FIELDS.expectedPointsLoss]: gradedMoves
+          ? lossSum / gradedMoves
           : 0,
-        __hasGradeData: grades.length > 0,
+        __hasGradeData: buckets.length > 0,
       },
     ];
   });
@@ -2131,7 +2085,7 @@ function exploreAnswer(summary, plan) {
       ? `as ${plan.color === "white" ? "White" : "Black"}`
       : "across all openings";
   const record = `${summary.wins}–${summary.losses}–${summary.draws}`;
-  let answer = `Over the last 90 days, you scored ${summary.scorePercent.toFixed(0)}% ${subject} across ${summary.total} game${summary.total === 1 ? "" : "s"} (${record}).`;
+  let answer = `Over the last 30 days, you scored ${summary.scorePercent.toFixed(0)}% ${subject} across ${summary.total} game${summary.total === 1 ? "" : "s"} (${record}).`;
   if (summary.gradedGames) {
     answer += ` Across ${summary.gradedGames} game${summary.gradedGames === 1 ? "" : "s"} with matching Sentry grade logs, you averaged ${summary.avgBlunders.toFixed(1)} blunders and ${summary.avgMistakes.toFixed(1)} mistakes.`;
   }
@@ -2180,7 +2134,7 @@ async function handleExploreRequest(req, res, url) {
       return;
     }
     const plan = explorePlan(question);
-    const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const storedGames = playerKey
       ? (await gameStore.listGames(playerKey, 100)).filter(
           (game) => !game.finishedAt || game.finishedAt >= cutoff,
@@ -2211,41 +2165,58 @@ async function handleExploreRequest(req, res, url) {
       return true;
     });
     const gameIds = matchingGames.map((game) => game.id);
-    const gradeQueries = [];
-    for (let index = 0; index < gameIds.length; index += 20) {
-      gradeQueries.push(
-        `message:${quoteSentrySearch("chess.move.graded")} chess.game.id:[${gameIds.slice(index, index + 20).join(",")}]`,
+    const gradedMessage = `message:${quoteSentrySearch("chess.move.graded")}`;
+    const queryLogs = async (query, fields, extra = {}) => {
+      const params = new URLSearchParams({
+        dataset: "logs",
+        project: SENTRY_PROJECT_ID,
+        statsPeriod: "30d",
+        query,
+        per_page: "100",
+        ...extra,
+      });
+      for (const field of fields) params.append("field", field);
+      const result = await sentryDataApi(
+        `/organizations/${SENTRY_ORG}/events/?${params}`,
       );
+      return Array.isArray(result?.data) ? result.data : [];
+    };
+    const idsByColor = { white: [], black: [] };
+    for (const game of matchingGames) {
+      idsByColor[game.playerColor === "w" ? "white" : "black"].push(game.id);
     }
-    const gradeResults = await Promise.all(
-      gradeQueries.map(async (gradeQuery) => {
-        const gradeParams = new URLSearchParams({
-          dataset: "logs",
-          project: SENTRY_PROJECT_ID,
-          statsPeriod: "90d",
-          query: gradeQuery,
-          per_page: "100",
-          sort: "-timestamp",
-        });
-        for (const field of Object.values(EXPLORE_GRADE_FIELDS)) {
-          gradeParams.append("field", field);
-        }
-        return sentryDataApiRows(
-          `/organizations/${SENTRY_ORG}/events/?${gradeParams}`,
+    const countQueries = [];
+    for (const [color, ids] of Object.entries(idsByColor)) {
+      for (let index = 0; index < ids.length; index += 8) {
+        countQueries.push(
+          `${gradedMessage} chess.move.color:${color} chess.game.id:[${ids.slice(index, index + 8).join(",")}]`,
         );
-      }),
-    );
-    const gradeRows = gradeResults.flat();
+      }
+    }
+    const [gradeCountRows, gradeRows] = await Promise.all([
+      Promise.all(
+        countQueries.map((query) =>
+          queryLogs(query, Object.values(EXPLORE_COUNT_FIELDS)),
+        ),
+      ).then((results) => results.flat()),
+      gameIds.length
+        ? queryLogs(
+            `${gradedMessage} chess.game.id:[${gameIds.slice(0, 20).join(",")}]`,
+            Object.values(EXPLORE_GRADE_FIELDS),
+            { sort: "-timestamp" },
+          )
+        : [],
+    ]);
     const gamesById = new Map(matchingGames.map((game) => [game.id, game]));
-    const gameRows = storedExploreRows(matchingGames, gradeRows);
+    const gameRows = storedExploreRows(matchingGames, gradeCountRows);
     const summary = summarizeExploreRows(gameRows);
     sendJson(res, 200, {
       question,
       answer: exploreAnswer(summary, plan),
       summary,
       logs: exploreLogRows(gradeRows.slice(0, 25), gamesById),
-      query: `message:${quoteSentrySearch("chess.move.graded")} chess.game.id:[<matching-game-ids>]`,
-      period: "90d",
+      query: `${gradedMessage} chess.move.color:<your-color> chess.game.id:[<matching-game-ids>]`,
+      period: "30d",
     });
   } catch (error) {
     if (error instanceof RequestError) {
