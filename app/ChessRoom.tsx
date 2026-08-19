@@ -383,7 +383,6 @@ export function ChessRoom() {
   const lastNotePlyRef = useRef(-Infinity);
   const openingRef = useRef<{
     gameId: string;
-    itemId: number | null;
     name: string | null;
     done: boolean;
   } | null>(null);
@@ -657,7 +656,7 @@ export function ChessRoom() {
         motif: null,
         thinking: false,
       };
-      setCoachFeed((current) => [item, ...current].slice(0, 6));
+      setCoachFeed([item]);
     };
     analysis.moves.forEach((reviewed, index) => {
       const ply = index + 1;
@@ -677,7 +676,15 @@ export function ChessRoom() {
       const isAlert = COACH_ALERT_GRADES.has(reviewed.grade);
       if (!isAlert && !COACH_PRAISE_GRADES.has(reviewed.grade)) {
         coachSeenRef.current.add(seenKey);
-        if (!offCooldown) return;
+        // The player moved on, so any remark about an earlier move goes away.
+        const clearStale = () =>
+          setCoachFeed((current) =>
+            current.length && current[0].ply < ply ? [] : current,
+          );
+        if (!offCooldown) {
+          clearStale();
+          return;
+        }
         const onceKey = (tag: string) => `${state.gameId}:${tag}`;
         let text: string | null = null;
         if (move.san.startsWith("O-O") && !coachSeenRef.current.has(onceKey("castle"))) {
@@ -689,7 +696,10 @@ export function ChessRoom() {
           coachSeenRef.current.add(onceKey("check"));
           text = "Keep the pressure on.";
         }
-        if (!text) return;
+        if (!text) {
+          clearStale();
+          return;
+        }
         lastNotePlyRef.current = ply;
         pushNote(ply, move.san, text);
         return;
@@ -735,7 +745,7 @@ export function ChessRoom() {
             motif: null,
             thinking: false,
           };
-      setCoachFeed((current) => [item, ...current].slice(0, 6));
+      setCoachFeed([item]);
       if (!isAlert || !reviewed.evidence) return;
       void fetch("/api/move-explanation", {
         method: "POST",
@@ -775,7 +785,7 @@ export function ChessRoom() {
   useEffect(() => {
     if (!state?.coach || !state.bot || role === "spectator" || state.result) return;
     if (openingRef.current?.gameId !== state.gameId)
-      openingRef.current = { gameId: state.gameId, itemId: null, name: null, done: false };
+      openingRef.current = { gameId: state.gameId, name: null, done: false };
     const tracker = openingRef.current;
     if (tracker.done || !state.history.length) return;
     const replay = new Chess();
@@ -801,28 +811,18 @@ export function ChessRoom() {
       leftBookPly === null
         ? "Book so far."
         : `Out of book on move ${Math.ceil(leftBookPly / 2)}.`;
-    if (tracker.itemId === null) {
-      const item: CoachItem = {
-        id: coachIdRef.current++,
-        ply: 0,
-        kind: "opening",
-        grade: null,
-        san,
-        bestSan: null,
-        text,
-        motif: null,
-        thinking: false,
-      };
-      tracker.itemId = item.id;
-      setCoachFeed((current) => [item, ...current].slice(0, 6));
-    } else {
-      const itemId = tracker.itemId;
-      setCoachFeed((current) =>
-        current.map((entry) =>
-          entry.id === itemId ? { ...entry, san, text } : entry,
-        ),
-      );
-    }
+    const item: CoachItem = {
+      id: coachIdRef.current++,
+      ply: state.history.length,
+      kind: "opening",
+      grade: null,
+      san,
+      bestSan: null,
+      text,
+      motif: null,
+      thinking: false,
+    };
+    setCoachFeed([item]);
   }, [state, role]);
 
   async function requestHint(tier: "maia" | "best") {

@@ -990,15 +990,16 @@ const MOVE_COACH_AGENT_NAME = "Pawn Patrol Move Coach";
 const MOVE_COACH_SPAN_ORIGIN = "manual.ai.openrouter";
 const SENTRY_SPAN_STATUS_ERROR = 2;
 const MOVE_COACH_SYSTEM_INSTRUCTIONS = [
+  "You are a chess coach talking to your student right after their move.",
   "Explain this chess error using only the supplied Stockfish evidence.",
   "Do not invent moves, evaluations, threats, or tactical motifs.",
   "The played line shows the punishment; the best line shows the alternative.",
   "If the exact motif is not demonstrated, choose unclear.",
-  "Write in plain English for a club chess player using no more than five short sentences.",
+  "Write at most three short sentences, and prefer one or two — say only what the student needs to hear.",
+  "Speak like a coach: direct, warm, and focused on the lesson in this move.",
   "Always name pieces, for example 'the white knight on f3' or 'the black queen moves to d5'.",
   "Board coordinates are allowed, but never use algebraic chess notation such as Nf3, e4, Qxd5, O-O, or move-number notation.",
   "Turn the supplied move descriptions into natural prose instead of copying their sentence structure verbatim.",
-  "The tone may be playful, tongue-in-cheek, and gently roasting, but keep the joke about the move rather than the player.",
 ].join(" ");
 
 const REVIEW_PROMPT = [
@@ -1351,7 +1352,7 @@ async function callOpenRouter(facts, requestId) {
             explanation: {
               type: "string",
               description:
-                "At most two short sentences supported by the engine lines.",
+                "At most three short sentences supported by the engine lines; shorter is better.",
             },
           },
           required: ["motif", "explanation"],
