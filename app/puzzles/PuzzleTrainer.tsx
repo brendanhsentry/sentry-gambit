@@ -3,10 +3,9 @@
 import type { Color, Dests, Key } from "@lichess-org/chessground/types";
 import type { DrawShape } from "@lichess-org/chessground/draw";
 import { Chess } from "chess.js";
-import Image from "next/image";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChessgroundBoard } from "../ChessgroundBoard";
+import { TopBar } from "../TopBar";
 import { PUZZLES } from "./puzzles";
 
 type Phase = "playing" | "replying" | "solved";
@@ -180,32 +179,7 @@ export function PuzzleTrainer() {
 
   return (
     <main className="app-shell puzzle-shell">
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Pawn Patrol home">
-          <span className="brand-mark">
-            <Image
-              src="/pawn-patrol-sentry-correct.png"
-              alt=""
-              width={30}
-              height={30}
-              priority
-              unoptimized
-            />
-          </span>
-          <span>
-            PAWN <em>PATROL</em>
-          </span>
-        </Link>
-        <div className="topbar-note">TACTICS ROOM</div>
-        <div className="topbar-actions">
-          <Link className="text-button" href="/games">
-            Past games
-          </Link>
-          <Link className="text-button" href="/">
-            Back to tables
-          </Link>
-        </div>
-      </header>
+      <TopBar />
 
       <section className="puzzle-page">
         <div className="puzzle-title-row">
