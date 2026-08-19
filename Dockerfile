@@ -2,9 +2,8 @@ FROM node:22-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY scripts/fetch-maia-assets.mjs scripts/
-RUN node scripts/fetch-maia-assets.mjs
 COPY . .
+RUN node scripts/fetch-maia-assets.mjs
 RUN npm run build
 
 FROM node:22-slim
