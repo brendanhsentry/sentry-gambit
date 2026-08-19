@@ -230,8 +230,8 @@ button { color: inherit; }
 .promotion-cancel { border: 0; background: transparent; cursor: pointer; text-decoration: underline; color: #6e7b75; font-size: 10px; }
 
 .match-panel { min-height: 660px; padding-top: 26px; border-top: 4px solid var(--green); display: flex; flex-direction: column; }
-.match-panel--live { padding-top: 27px; border-top: none; align-self: stretch; }
-.match-panel--live .moves-panel { display: flex; flex-direction: column; }
+.match-panel--live { height: 0; min-height: 100%; padding-top: 27px; border-top: none; overflow: hidden; }
+.match-panel--live .moves-panel { min-height: 0; display: flex; flex-direction: column; }
 .match-panel--live .moves-table { max-height: none; min-height: 0; flex: 1; }
 .match-heading h2 { margin: 14px 0 4px; font-family: Georgia, serif; color: var(--green); font-size: clamp(30px, 3vw, 43px); line-height: 1.02; font-weight: 500; letter-spacing: -.035em; }
 .match-heading p { margin: 0 0 26px; color: #718078; font-size: 11px; }
@@ -329,7 +329,8 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 @media (max-width: 920px) {
   .game-layout { grid-template-columns: minmax(0, 700px); justify-content: center; }
   .match-panel { min-height: auto; }
-  .match-panel--live { padding-top: 0; }
+  .match-panel--live { height: auto; padding-top: 0; overflow: visible; }
+  .match-panel--live .moves-table { max-height: 298px; }
   .topbar { grid-template-columns: 1fr auto; }
   .topbar-note { display: none; }
 }
