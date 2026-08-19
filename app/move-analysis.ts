@@ -271,11 +271,12 @@ function classifyMove(
   const secondEp = review.second?.expectedPoints ?? review.best.expectedPoints;
   const criticalGap = review.best.expectedPoints - secondEp;
   const sacrifice = detectsSacrifice(fen, playedMove, review.played.pv, move.color);
+  // The coach endpoint rejects engine lines longer than 16 moves.
   const evidence: MoveAnalysisEvidence = {
     fenBefore: fen,
     playedMove,
-    playedLine: review.played.pv,
-    bestLine: review.best.pv,
+    playedLine: review.played.pv.slice(0, 16),
+    bestLine: review.best.pv.slice(0, 16),
     bestExpectedPoints: review.best.expectedPoints,
     playedExpectedPoints: review.played.expectedPoints,
   };
