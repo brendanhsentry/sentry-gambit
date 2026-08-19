@@ -3,7 +3,15 @@
 import type { Color, Dests, Key } from "@lichess-org/chessground/types";
 import type { DrawShape } from "@lichess-org/chessground/draw";
 import { Chess } from "chess.js";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  playCapture,
+  playCheck,
+  playGameEnd,
+  playMove,
+  setSoundsMuted,
+  soundsMuted,
+} from "../board-sounds";
 import { ChessgroundBoard } from "../ChessgroundBoard";
 import { TopBar } from "../TopBar";
 import { PUZZLES } from "./puzzles";
@@ -27,6 +35,12 @@ function groundColor(color: "w" | "b"): Color {
   return color === "w" ? "white" : "black";
 }
 
+function playMoveSound(san: string) {
+  if (san.includes("+") || san.includes("#")) playCheck();
+  else if (san.includes("x")) playCapture();
+  else playMove();
+}
+
 export function PuzzleTrainer() {
   const [puzzleIndex, setPuzzleIndex] = useState(0);
   const [fen, setFen] = useState(PUZZLES[0].fen);
@@ -38,7 +52,20 @@ export function PuzzleTrainer() {
   const [wrongMove, setWrongMove] = useState<Key[] | null>(null);
   const [resetToken, setResetToken] = useState(0);
   const [solvedIds, setSolvedIds] = useState<Set<string>>(new Set());
+  const [muted, setMuted] = useState(false);
   const replyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // The stored preference is only readable after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMuted(soundsMuted());
+  }, []);
+
+  function toggleMute() {
+    const next = !muted;
+    setSoundsMuted(next);
+    setMuted(next);
+  }
 
   const puzzle = PUZZLES[puzzleIndex];
   const chess = useMemo(() => new Chess(fen), [fen]);
@@ -86,6 +113,7 @@ export function PuzzleTrainer() {
 
   const markSolved = useCallback((id: string) => {
     setPhase("solved");
+    playGameEnd();
     setSolvedIds((current) => {
       const next = new Set(current).add(id);
       window.localStorage.setItem(
@@ -136,6 +164,7 @@ export function PuzzleTrainer() {
 
     setWrongMove(null);
     const afterPlayer = movePosition(fen, expectedMove);
+    playMoveSound(afterPlayer.move.san);
     setFen(afterPlayer.chess.fen());
     setLastMove([from, to]);
     const replyIndex = lineIndex + 1;
@@ -149,6 +178,7 @@ export function PuzzleTrainer() {
     replyTimerRef.current = window.setTimeout(() => {
       const reply = puzzle.line[replyIndex];
       const afterReply = movePosition(afterPlayer.chess.fen(), reply);
+      playMoveSound(afterReply.move.san);
       const nextIndex = replyIndex + 1;
       setFen(afterReply.chess.fen());
       setLastMove([
@@ -177,6 +207,20 @@ export function PuzzleTrainer() {
   const turnColor = groundColor(chess.turn());
   const playerColor = groundColor(new Chess(puzzle.fen).turn());
 
+  const solutionSan = useMemo(() => {
+    const replay = new Chess(puzzle.fen);
+    return puzzle.line
+      .map(
+        (uci) =>
+          replay.move({
+            from: uci.slice(0, 2),
+            to: uci.slice(2, 4),
+            ...(uci[4] ? { promotion: uci[4] as "q" | "r" | "b" | "n" } : {}),
+          }).san,
+      )
+      .join(" ");
+  }, [puzzle]);
+
   return (
     <main className="app-shell puzzle-shell">
       <TopBar />
@@ -192,8 +236,17 @@ export function PuzzleTrainer() {
             className="puzzle-progress"
             aria-label={`${solvedIds.size} puzzles solved`}
           >
-            <strong>{solvedIds.size}</strong>
-            <span>of {PUZZLES.length} solved</span>
+            <div className="puzzle-progress-count">
+              <strong>{solvedIds.size}</strong>
+              <span>of {PUZZLES.length} solved</span>
+            </div>
+            <div className="puzzle-progress-track">
+              <i
+                style={{
+                  width: `${(solvedIds.size / PUZZLES.length) * 100}%`,
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -201,7 +254,33 @@ export function PuzzleTrainer() {
           <section className="puzzle-board-panel" aria-label="Current puzzle">
             <div className="puzzle-board-meta">
               <span>{puzzle.difficulty}</span>
-              <strong>{puzzle.theme}</strong>
+              <span className="puzzle-board-tools">
+                <strong>{puzzle.theme}</strong>
+                <button
+                  className="sound-toggle"
+                  onClick={toggleMute}
+                  aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+                  title={muted ? "Unmute sounds" : "Mute sounds"}
+                >
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M8 3 4.5 6H2v4h2.5L8 13V3Z" />
+                    {muted ? (
+                      <path d="m10.5 6.5 4 3m0-3-4 3" />
+                    ) : (
+                      <path d="M10.5 6a3.2 3.2 0 0 1 0 4M12.5 4.5a5.6 5.6 0 0 1 0 7" />
+                    )}
+                  </svg>
+                </button>
+              </span>
             </div>
             <div className="puzzle-board-wrap">
               <ChessgroundBoard
@@ -237,6 +316,7 @@ export function PuzzleTrainer() {
                 <>
                   <strong>✓ Tactic found</strong>
                   <p>{puzzle.explanation}</p>
+                  <span className="puzzle-solution">{solutionSan}</span>
                   <small>
                     {mistakes
                       ? `${mistakes} ${mistakes === 1 ? "retry" : "retries"}`
@@ -291,16 +371,21 @@ export function PuzzleTrainer() {
 
             <div className="puzzle-list" aria-label="Puzzle list">
               {PUZZLES.map((item, index) => (
-                <button
-                  key={item.id}
-                  className={index === puzzleIndex ? "is-active" : ""}
-                  onClick={() => selectPuzzle(index)}
-                  aria-current={index === puzzleIndex ? "true" : undefined}
-                >
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <strong>{item.title}</strong>
-                  <small>{solvedIds.has(item.id) ? "✓" : item.difficulty}</small>
-                </button>
+                <Fragment key={item.id}>
+                  {(index === 0 ||
+                    PUZZLES[index - 1].difficulty !== item.difficulty) && (
+                    <span className="puzzle-list-label">{item.difficulty}</span>
+                  )}
+                  <button
+                    className={index === puzzleIndex ? "is-active" : ""}
+                    onClick={() => selectPuzzle(index)}
+                    aria-current={index === puzzleIndex ? "true" : undefined}
+                  >
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <strong>{item.title}</strong>
+                    <small>{solvedIds.has(item.id) ? "✓" : item.theme}</small>
+                  </button>
+                </Fragment>
               ))}
             </div>
           </aside>
