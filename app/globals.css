@@ -385,10 +385,12 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 .puzzle-feedback small { display: block; margin-top: 10px; color: #7d8983; font: 650 8px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }
 .puzzle-feedback--solved { border-left: 4px solid #3d8a52; background: rgba(61,138,82,.09); }
 .puzzle-feedback--wrong { border-left: 4px solid #ae372b; background: rgba(174,55,43,.07); }
-.puzzle-hint { min-height: 100px; padding: 17px 0; border-bottom: 1px solid var(--line); }
-.puzzle-hint > span { color: #8f6a2d; font: 700 8px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; }
-.puzzle-hint p { margin: 10px 0 0; color: #5d6a64; font-size: 10px; line-height: 1.5; }
-.puzzle-hint button { margin-top: 12px; border: 0; border-bottom: 1px solid var(--green); background: transparent; padding: 3px 0; cursor: pointer; color: var(--green); font: 700 9px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }
+.puzzle-hint { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 17px 0; border-bottom: 1px solid var(--line); }
+.puzzle-hint > div { min-width: 0; }
+.puzzle-hint span { display: block; color: #8f6a2d; font: 700 8px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; }
+.puzzle-hint p { margin: 9px 0 0; color: #5d6a64; font-size: 10px; line-height: 1.5; }
+.puzzle-hint button { flex: none; border: 1px solid var(--green); background: transparent; padding: 8px 11px; cursor: pointer; color: var(--green); font: 700 8px/1 var(--font-geist-mono), monospace; letter-spacing: .05em; text-transform: uppercase; }
+.puzzle-hint button:hover:not(:disabled) { background: var(--green); color: white; }
 .puzzle-hint button:disabled { cursor: default; opacity: .45; }
 .puzzle-actions { display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px; padding: 14px 0; }
 .puzzle-actions button { height: 40px; border: 1px solid var(--line); background: transparent; cursor: pointer; font: 700 9px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; }

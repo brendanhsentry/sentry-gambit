@@ -289,8 +289,10 @@ export function PuzzleTrainer() {
 
             {phase !== "solved" && (
               <div className="puzzle-hint">
-                <span>NEED A NUDGE?</span>
-                {hintLevel > 0 && <p>{puzzle.hint}</p>}
+                <div>
+                  <span>NEED A NUDGE?</span>
+                  {hintLevel > 0 && <p>{puzzle.hint}</p>}
+                </div>
                 <button
                   onClick={() => setHintLevel((level) => Math.min(2, level + 1))}
                   disabled={hintLevel === 2 || phase === "replying"}
