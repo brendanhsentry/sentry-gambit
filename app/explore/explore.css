@@ -160,7 +160,6 @@
   border-radius: var(--explore-card-radius) var(--explore-card-radius) 0 0;
   background: var(--green);
   color: white;
-  box-shadow: inset 6px 0 var(--amber);
 }
 
 .explore-answer::after {
