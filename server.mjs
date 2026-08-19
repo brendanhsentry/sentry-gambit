@@ -1798,7 +1798,7 @@ function handleGamesRequest(req, res, url) {
   return true;
 }
 
-async function sentryApi(
+async function sentryApiResponse(
   path,
   options = {},
   baseUrl = "https://sentry.io/api/0",
@@ -1825,11 +1825,55 @@ async function sentryApi(
     error.statusCode = response.status;
     throw error;
   }
-  return responseText ? JSON.parse(responseText) : null;
+  return {
+    body: responseText ? JSON.parse(responseText) : null,
+    headers: response.headers,
+  };
 }
 
-function sentryDataApi(path, options) {
-  return sentryApi(path, options, SENTRY_DATA_API_BASE);
+async function sentryApi(
+  path,
+  options = {},
+  baseUrl = "https://sentry.io/api/0",
+) {
+  return (await sentryApiResponse(path, options, baseUrl)).body;
+}
+
+function nextSentryCursor(linkHeader) {
+  if (!linkHeader) return null;
+  for (const match of linkHeader.matchAll(/<([^>]+)>\s*;([^,]*)/g)) {
+    if (!/\brel="next"/.test(match[2]) || !/\bresults="true"/.test(match[2]))
+      continue;
+    try {
+      return new URL(match[1]).searchParams.get("cursor");
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function sentryDataApiRows(path, options) {
+  const rows = [];
+  const seenCursors = new Set();
+  let cursor = null;
+  do {
+    const separator = path.includes("?") ? "&" : "?";
+    const pagePath = cursor
+      ? `${path}${separator}cursor=${encodeURIComponent(cursor)}`
+      : path;
+    const result = await sentryApiResponse(
+      pagePath,
+      options,
+      SENTRY_DATA_API_BASE,
+    );
+    if (Array.isArray(result.body?.data)) rows.push(...result.body.data);
+    const nextCursor = nextSentryCursor(result.headers.get("link"));
+    if (!nextCursor || seenCursors.has(nextCursor)) break;
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  } while (cursor);
+  return rows;
 }
 
 const exploreRateLimits = new Map();
@@ -1874,6 +1918,24 @@ function quoteSentrySearch(value) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+function sentryField(row, field) {
+  if (!row) return undefined;
+  if (Object.hasOwn(row, field)) return row[field];
+  const match = /^tag\[(.+),\s*(string|number|boolean)\]$/.exec(field);
+  if (!match) return undefined;
+  const [, name, type] = match;
+  for (const alias of [
+    name,
+    `tag[${name}]`,
+    `tag[${name}, ${type}]`,
+    `tags[${name},${type}]`,
+    `tags[${name}, ${type}]`,
+  ]) {
+    if (Object.hasOwn(row, alias)) return row[alias];
+  }
+  return undefined;
+}
+
 function explorePlan(question) {
   const normalized = question.toLowerCase();
   const opening = findOpeningMention(question);
@@ -1888,7 +1950,7 @@ function explorePlan(question) {
 }
 
 function numericField(row, field) {
-  const value = Number(row?.[field]);
+  const value = Number(sentryField(row, field));
   return Number.isFinite(value) ? value : 0;
 }
 
@@ -1907,8 +1969,9 @@ function summarizeExploreRows(rows) {
   for (const row of rows) {
     const games = 1;
     const hasGradeData = row.__hasGradeData !== false;
-    const outcome = row[EXPLORE_GAME_FIELDS.outcome];
-    const family = row[EXPLORE_GAME_FIELDS.family] || "Unknown opening";
+    const outcome = sentryField(row, EXPLORE_GAME_FIELDS.outcome);
+    const family =
+      sentryField(row, EXPLORE_GAME_FIELDS.family) || "Unknown opening";
     const values = {
       score: numericField(row, EXPLORE_GAME_FIELDS.score),
       blunders: numericField(row, EXPLORE_GAME_FIELDS.blunders),
@@ -1986,17 +2049,18 @@ function summarizeExploreRows(rows) {
 
 function exploreLogRows(rows, gamesById = new Map()) {
   return rows.map((row) => ({
-    timestamp: row[EXPLORE_GRADE_FIELDS.timestamp] ?? null,
-    gameId: row[EXPLORE_GRADE_FIELDS.gameId] ?? null,
+    timestamp: sentryField(row, EXPLORE_GRADE_FIELDS.timestamp) ?? null,
+    gameId: sentryField(row, EXPLORE_GRADE_FIELDS.gameId) ?? null,
     opening:
-      row[EXPLORE_GRADE_FIELDS.opening] ??
-      row[EXPLORE_GRADE_FIELDS.family] ??
-      gamesById.get(row[EXPLORE_GRADE_FIELDS.gameId])?.opening?.name ??
+      sentryField(row, EXPLORE_GRADE_FIELDS.opening) ??
+      sentryField(row, EXPLORE_GRADE_FIELDS.family) ??
+      gamesById.get(sentryField(row, EXPLORE_GRADE_FIELDS.gameId))?.opening
+        ?.name ??
       "Unknown opening",
-    color: row[EXPLORE_GRADE_FIELDS.color] ?? null,
+    color: sentryField(row, EXPLORE_GRADE_FIELDS.color) ?? null,
     ply: numericField(row, EXPLORE_GRADE_FIELDS.ply),
-    san: row[EXPLORE_GRADE_FIELDS.san] ?? null,
-    grade: row[EXPLORE_GRADE_FIELDS.grade] ?? null,
+    san: sentryField(row, EXPLORE_GRADE_FIELDS.san) ?? null,
+    grade: sentryField(row, EXPLORE_GRADE_FIELDS.grade) ?? null,
     expectedPointsLoss: numericField(
       row,
       EXPLORE_GRADE_FIELDS.expectedPointsLoss,
@@ -2008,14 +2072,14 @@ function storedExploreRows(games, gradeRows) {
   const gradesByGame = new Map();
   const gamesById = new Map(games.map((game) => [game.id, game]));
   for (const row of gradeRows) {
-    const gameId = row[EXPLORE_GRADE_FIELDS.gameId];
+    const gameId = sentryField(row, EXPLORE_GRADE_FIELDS.gameId);
     const game = gamesById.get(gameId);
     if (!game) continue;
     const playerColor = game.playerColor === "w" ? "white" : "black";
-    if (row[EXPLORE_GRADE_FIELDS.color] !== playerColor) continue;
+    if (sentryField(row, EXPLORE_GRADE_FIELDS.color) !== playerColor) continue;
     const grades = gradesByGame.get(gameId) ?? [];
     grades.push({
-      grade: row[EXPLORE_GRADE_FIELDS.grade],
+      grade: sentryField(row, EXPLORE_GRADE_FIELDS.grade),
       expectedPointsLoss: numericField(
         row,
         EXPLORE_GRADE_FIELDS.expectedPointsLoss,
@@ -2166,10 +2230,9 @@ async function handleExploreRequest(req, res, url) {
         for (const field of Object.values(EXPLORE_GRADE_FIELDS)) {
           gradeParams.append("field", field);
         }
-        const gradeResult = await sentryDataApi(
+        return sentryDataApiRows(
           `/organizations/${SENTRY_ORG}/events/?${gradeParams}`,
         );
-        return Array.isArray(gradeResult?.data) ? gradeResult.data : [];
       }),
     );
     const gradeRows = gradeResults.flat();
