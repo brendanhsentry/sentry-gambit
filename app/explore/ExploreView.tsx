@@ -103,7 +103,9 @@ export function ExploreView() {
         | ExploreResult
         | { error?: string };
       if (!response.ok || !("answer" in data)) {
-        throw new Error("error" in data ? data.error : "Explore is unavailable.");
+        throw new Error(
+          "error" in data ? data.error : "Explore is unavailable.",
+        );
       }
       setResult(data);
     } catch (requestError) {
@@ -147,9 +149,9 @@ export function ExploreView() {
           <span className="panel-kicker">YOUR GAME TELEMETRY</span>
           <h1>Ask Sentry about your games.</h1>
           <p>
-            Type a question in plain English. Pawn Patrol searches your private
-            game logs, charts the matching history, and shows the events behind
-            the answer.
+            Type a question in plain English. Pawn Patrol searches your game
+            logs, charts the matching history, and shows the events behind the
+            answer.
           </p>
         </div>
 
@@ -251,8 +253,12 @@ export function ExploreView() {
                     </div>
                     <div className="explore-chart-legend">
                       <span className="is-win">{result.summary.wins} wins</span>
-                      <span className="is-draw">{result.summary.draws} draws</span>
-                      <span className="is-loss">{result.summary.losses} losses</span>
+                      <span className="is-draw">
+                        {result.summary.draws} draws
+                      </span>
+                      <span className="is-loss">
+                        {result.summary.losses} losses
+                      </span>
                     </div>
                   </article>
 
@@ -327,18 +333,35 @@ export function ExploreView() {
                             <div>
                               <strong>{log.opening}</strong>
                               <span>
-                                {log.color ?? "unknown color"} · game {log.gameId?.slice(0, 8) ?? "unknown"}
+                                {log.color ?? "unknown color"} · game{" "}
+                                {log.gameId?.slice(0, 8) ?? "unknown"}
                               </span>
                             </div>
-                            <span className={`explore-outcome is-${log.outcome ?? "unknown"}`}>
+                            <span
+                              className={`explore-outcome is-${log.outcome ?? "unknown"}`}
+                            >
                               {log.outcome ?? "unknown"}
                             </span>
                           </div>
                           <dl>
-                            <div><dt>blunders</dt><dd>{log.blunders}</dd></div>
-                            <div><dt>mistakes</dt><dd>{log.mistakes}</dd></div>
-                            <div><dt>inaccuracies</dt><dd>{log.inaccuracies}</dd></div>
-                            <div><dt>avg EP loss</dt><dd>{(log.expectedPointsLoss * 100).toFixed(1)}%</dd></div>
+                            <div>
+                              <dt>blunders</dt>
+                              <dd>{log.blunders}</dd>
+                            </div>
+                            <div>
+                              <dt>mistakes</dt>
+                              <dd>{log.mistakes}</dd>
+                            </div>
+                            <div>
+                              <dt>inaccuracies</dt>
+                              <dd>{log.inaccuracies}</dd>
+                            </div>
+                            <div>
+                              <dt>avg EP loss</dt>
+                              <dd>
+                                {(log.expectedPointsLoss * 100).toFixed(1)}%
+                              </dd>
+                            </div>
                           </dl>
                         </article>
                       ))}
