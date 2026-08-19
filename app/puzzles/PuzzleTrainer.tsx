@@ -185,7 +185,7 @@ export function PuzzleTrainer() {
         <div className="puzzle-title-row">
           <div>
             <span className="panel-kicker">TACTICAL TRAINING</span>
-            <h1>Find the move.</h1>
+            <h1>Find the move</h1>
             <p>Calculate the forcing line, then play it on the board.</p>
           </div>
           <div

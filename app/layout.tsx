@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Rubik } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import "@lichess-org/chessground/assets/chessground.base.css";
 import "@lichess-org/chessground/assets/chessground.cburnett.css";
@@ -12,12 +12,6 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-// Sentry's product font, used only inside the Seer review widget.
-const rubik = Rubik({
-  variable: "--font-rubik",
   subsets: ["latin"],
 });
 
@@ -56,7 +50,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} ${rubik.variable}`}>{children}</body>
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>{children}</body>
     </html>
   );
 }

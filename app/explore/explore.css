@@ -1,47 +1,45 @@
 .explore-shell {
   background:
-    linear-gradient(rgba(23, 63, 53, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(23, 63, 53, 0.035) 1px, transparent 1px),
-    radial-gradient(circle at 74% 18%, rgba(217, 154, 66, 0.13), transparent 25rem),
+    radial-gradient(circle at 14% 5%, rgba(255, 255, 255, 0.78), transparent 32rem),
     var(--ivory);
-  background-size: 42px 42px, 42px 42px, auto, auto;
 }
 
 .explore-page {
   width: min(1040px, calc(100% - 44px));
-  margin: clamp(52px, 7vw, 92px) auto 72px;
+  margin: clamp(36px, 5vw, 72px) auto 64px;
   flex: 1;
 }
 
 .explore-intro {
   position: relative;
   max-width: 780px;
-  padding-left: clamp(18px, 3vw, 32px);
-  border-left: 5px solid var(--amber);
 }
 
 .explore-intro h1 {
   max-width: 720px;
-  margin: 16px 0 18px;
+  margin: 12px 0 12px;
   color: var(--green);
-  font: 500 clamp(48px, 7.2vw, 84px)/0.9 Georgia, serif;
-  letter-spacing: -0.055em;
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .explore-intro p {
   max-width: 640px;
   margin: 0;
   color: #596a63;
-  font-size: 13px;
-  line-height: 1.75;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .explore-form {
-  margin-top: 42px;
+  margin-top: 30px;
   padding: clamp(20px, 3vw, 30px);
-  border: 1px solid rgba(23, 63, 53, 0.22);
+  border: 1px solid var(--line);
+  border-radius: 12px;
   background: rgba(250, 247, 239, 0.92);
-  box-shadow: 0 22px 55px rgba(23, 44, 36, 0.12);
+  box-shadow: 0 2px 6px rgba(23, 44, 36, 0.07), 0 18px 34px -22px rgba(23, 44, 36, 0.3);
 }
 
 .explore-form > label {
@@ -54,26 +52,28 @@
 }
 
 .explore-prompt-box {
-  border: 1px solid rgba(23, 63, 53, 0.35);
+  overflow: hidden;
+  border: 1px solid rgba(23, 63, 53, 0.3);
+  border-radius: 8px;
   background: #fffdf8;
 }
 
 .explore-prompt-box textarea {
   display: block;
   width: 100%;
-  min-height: 108px;
+  min-height: 96px;
   resize: vertical;
   border: 0;
   background: transparent;
-  padding: 18px;
+  padding: 14px 16px;
   outline: 0;
   color: var(--green);
-  font: 500 16px/1.55 var(--font-geist-sans), Arial, sans-serif;
+  font: 500 13px/1.6 var(--font-geist-sans), Arial, sans-serif;
 }
 
 .explore-prompt-box:focus-within {
   border-color: var(--green);
-  box-shadow: inset 4px 0 var(--amber);
+  box-shadow: 0 0 0 2px rgba(23, 63, 53, 0.08);
 }
 
 .explore-prompt-actions {
@@ -98,16 +98,19 @@
   min-width: 164px;
   height: 38px;
   border: 0;
-  background: var(--green);
+  border-radius: 6px;
+  background: var(--blurple);
   color: white;
   padding: 0 20px;
   cursor: pointer;
   font: 700 10px/1 var(--font-geist-mono), monospace;
   letter-spacing: 0.09em;
   text-transform: uppercase;
+  box-shadow: 0 3px 0 0 var(--blurple-deep);
 }
 
-.explore-prompt-actions button:hover:not(:disabled) { background: var(--green-deep); }
+.explore-prompt-actions button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--blurple-deep); }
+.explore-prompt-actions button:active:not(:disabled) { transform: translateY(3px); box-shadow: none; }
 .explore-prompt-actions button:disabled { opacity: 0.55; cursor: default; }
 
 .explore-examples {
@@ -118,13 +121,13 @@
 }
 
 .explore-examples button {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--btn-line);
+  border-radius: 6px;
+  background: var(--btn-bg);
   padding: 8px 11px;
   color: #65736d;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.2;
 }
 
@@ -137,6 +140,7 @@
 .explore-error {
   margin-top: 18px;
   border-left: 3px solid #ae372b;
+  border-radius: 8px;
   background: rgba(174, 55, 43, 0.07);
   padding: 13px 15px;
   color: #8b3028;
@@ -149,6 +153,7 @@
   position: relative;
   overflow: hidden;
   padding: clamp(24px, 4vw, 38px);
+  border-radius: 12px 12px 0 0;
   background: var(--green);
   color: white;
   box-shadow: inset 6px 0 var(--amber);
@@ -171,14 +176,18 @@
   z-index: 1;
   max-width: 820px;
   margin: 16px 0 0;
-  font: 400 clamp(20px, 3vw, 29px)/1.38 Georgia, serif;
+  font-size: clamp(15px, 2vw, 18px);
+  line-height: 1.55;
+  font-weight: 450;
 }
 
 .explore-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  overflow: hidden;
   border: 1px solid var(--line);
   border-top: 0;
+  border-radius: 0 0 12px 12px;
   background: rgba(250, 247, 239, 0.88);
 }
 
@@ -193,7 +202,9 @@
 
 .explore-stats strong {
   color: var(--green);
-  font: 500 28px/1 Georgia, serif;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
@@ -214,6 +225,7 @@
 .explore-chart-card,
 .explore-logs {
   border: 1px solid var(--line);
+  border-radius: 10px;
   background: rgba(250, 247, 239, 0.88);
   padding: 22px;
 }
@@ -228,7 +240,10 @@
 .explore-section-heading h2 {
   margin: 8px 0 0;
   color: var(--green);
-  font: 500 24px/1 Georgia, serif;
+  font-size: 16px;
+  line-height: 1.1;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .explore-section-heading > strong {
@@ -244,6 +259,7 @@
   overflow: hidden;
   height: 22px;
   margin-top: 31px;
+  border-radius: 6px;
   background: rgba(23, 63, 53, 0.08);
 }
 
@@ -299,6 +315,7 @@
 .explore-opening-chart div > div {
   overflow: hidden;
   height: 8px;
+  border-radius: 4px;
   background: rgba(23, 63, 53, 0.09);
 }
 
@@ -316,8 +333,8 @@
 }
 
 .explore-breakdown { margin-top: 34px; }
-.explore-breakdown h2 { margin: 0 0 13px; color: var(--green); font: 500 29px/1 Georgia, serif; }
-.explore-table-wrap { overflow-x: auto; border: 1px solid var(--line); background: rgba(250, 247, 239, 0.82); }
+.explore-breakdown h2 { margin: 0 0 13px; color: var(--green); font-size: 16px; line-height: 1.1; font-weight: 650; letter-spacing: -0.01em; }
+.explore-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: rgba(250, 247, 239, 0.82); }
 .explore-breakdown table { width: 100%; border-collapse: collapse; }
 .explore-breakdown th, .explore-breakdown td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
 .explore-breakdown th { color: #7d8983; font: 650 8px/1 var(--font-geist-mono), monospace; letter-spacing: 0.11em; text-transform: uppercase; }
@@ -335,7 +352,9 @@
 }
 
 .explore-log-list article {
+  overflow: hidden;
   border: 1px solid rgba(23, 63, 53, 0.14);
+  border-radius: 8px;
   background: #fffdf8;
 }
 
@@ -370,6 +389,7 @@
   flex: none;
   min-width: 52px;
   padding: 6px 8px;
+  border-radius: 4px;
   color: white;
   font: 700 8px/1 var(--font-geist-mono), monospace;
   text-align: center;
@@ -412,17 +432,17 @@
   margin-top: 26px;
   padding: 17px 18px;
   border: 1px solid var(--line);
+  border-radius: 10px;
   background: rgba(250, 247, 239, 0.65);
   color: #65736d;
 }
 
 .explore-query summary { cursor: pointer; font: 700 9px/1 var(--font-geist-mono), monospace; letter-spacing: 0.1em; text-transform: uppercase; }
-.explore-query code { display: block; margin-top: 12px; overflow-wrap: anywhere; background: rgba(23, 63, 53, 0.07); padding: 13px; color: var(--green); font: 500 10px/1.6 var(--font-geist-mono), monospace; }
+.explore-query code { display: block; margin-top: 12px; overflow-wrap: anywhere; border-radius: 6px; background: rgba(23, 63, 53, 0.07); padding: 13px; color: var(--green); font: 500 10px/1.6 var(--font-geist-mono), monospace; }
 .explore-query p { margin: 10px 0 0; font-size: 10px; line-height: 1.6; }
 
 @media (max-width: 700px) {
   .explore-page { width: calc(100% - 28px); margin-top: 36px; }
-  .explore-intro { padding-left: 16px; border-left-width: 4px; }
   .explore-prompt-actions { align-items: stretch; flex-direction: column; padding: 10px; }
   .explore-prompt-actions button { width: 100%; height: 44px; }
   .explore-stats { grid-template-columns: repeat(2, 1fr); }

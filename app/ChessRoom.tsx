@@ -1448,7 +1448,7 @@ export function ChessRoom() {
                 {invitedRoom ? (
                   <>
                     <span className="lobby-kicker">YOU&apos;RE INVITED</span>
-                    <h1>Take your seat.</h1>
+                    <h1>Take your seat</h1>
                     <p>
                       You&apos;ve been invited to table {invitedRoom}. Enter a
                       name and join the game.
@@ -1478,15 +1478,7 @@ export function ChessRoom() {
                   </>
                 ) : (
                   <>
-                    <h1>
-                      Your board.
-                      <br />
-                      Your move.
-                    </h1>
-                    <p>
-                      No account needed — sign in if you want rated games on
-                      the leaderboard.
-                    </p>
+                    <h1>New table</h1>
                     {user ? (
                       <p className="lobby-signed-in">
                         PLAYING AS <strong>{user.username}</strong> · RATING{" "}
@@ -1699,7 +1691,9 @@ export function ChessRoom() {
                 {replayPly !== null
                   ? `Position ${viewedPly} of ${lastPly}`
                   : state
-                    ? relativeStatus(state, role)
+                    ? state.result
+                      ? relativeStatus(state, role)
+                      : "Waiting for opponent"
                     : "Ready when you are"}
               </h2>
               <p>
@@ -1831,12 +1825,13 @@ export function ChessRoom() {
               </button>
             )}
 
+          {state && (matchUnderway || state.result) && (
           <div className="moves-panel">
             <div className="moves-header">
               <span>MOVE SHEET</span>
               <span>
                 {!state?.result
-                  ? "REVIEW AFTER GAME"
+                  ? `${state.history.length} ${state.history.length === 1 ? "PLY" : "PLIES"}`
                   : analysis.status === "loading" ||
                       analysis.status === "analyzing"
                     ? `REVIEWING ${analysis.completed}/${state.history.length}`
@@ -1905,6 +1900,7 @@ export function ChessRoom() {
               )}
             </div>
           </div>
+          )}
 
           {state?.result && (
           <section className="ai-coach" aria-labelledby="ai-coach-title">
@@ -2077,7 +2073,7 @@ export function ChessRoom() {
                 </div>
               </div>
             )}
-          {state && (
+          {state && (matchUnderway || state.result) && (
             <div className="match-actions">
               <button onClick={() => send({ type: "reset" })}>↻ Rematch</button>
               <button
