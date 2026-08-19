@@ -1656,7 +1656,7 @@ export function ChessRoom() {
                     className={lobbyTab === "patrol" ? "selected" : ""}
                     onClick={() => setLobbyTab("patrol")}
                   >
-                    Challenge the patrol
+                    bot
                   </button>
                 </div>
                 {lobbyTab === "friend" ? (
