@@ -136,21 +136,22 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       SELECT games.id, games.room, games.white_name, games.black_name, games.result,
         games.started_at, games.finished_at, games.final_fen,
         games.white_time_ms, games.black_time_ms, games.shareable,
+        game_players.color AS player_color,
         COUNT(moves.ply) AS ply_count
-      FROM games LEFT JOIN moves ON moves.game_id = games.id
-      WHERE games.status = 'completed' AND EXISTS (
-        SELECT 1 FROM game_players
-        WHERE game_players.game_id = games.id AND game_players.player_key = ?
-      )
+      FROM games
+      JOIN game_players ON game_players.game_id = games.id
+        AND game_players.player_key = ?
+      LEFT JOIN moves ON moves.game_id = games.id
+      WHERE games.status = 'completed'
       GROUP BY games.id ORDER BY games.finished_at DESC LIMIT ?
     `),
     selectGame: database.prepare(`
       SELECT id, room, white_name, black_name, result, started_at, finished_at,
-        final_fen, white_time_ms, black_time_ms, shareable
-      FROM games WHERE id = ? AND status = 'completed' AND EXISTS (
-        SELECT 1 FROM game_players
-        WHERE game_players.game_id = games.id AND game_players.player_key = ?
-      )
+        final_fen, white_time_ms, black_time_ms, shareable,
+        game_players.color AS player_color
+      FROM games
+      JOIN game_players ON game_players.game_id = games.id
+      WHERE id = ? AND status = 'completed' AND game_players.player_key = ?
     `),
     selectSharedGame: database.prepare(`
       SELECT id, room, white_name, black_name, result, started_at, finished_at,
@@ -240,6 +241,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       clock: { w: row.white_time_ms, b: row.black_time_ms },
       plyCount: Number(row.ply_count ?? 0),
       shareable: Boolean(row.shareable),
+      playerColor: row.player_color ?? null,
     };
   }
 

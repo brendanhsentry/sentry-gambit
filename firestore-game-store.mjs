@@ -47,7 +47,7 @@ export function openFirestoreGameStore() {
     };
   }
 
-  function summary(doc) {
+  function summary(doc, playerKey = null) {
     const data = doc.data();
     return {
       id: doc.id,
@@ -60,6 +60,7 @@ export function openFirestoreGameStore() {
       clock: { w: data.whiteTimeMs, b: data.blackTimeMs },
       plyCount: data.plyCount ?? 0,
       shareable: data.shareable === true,
+      playerColor: playerKey ? (data.playerColors?.[playerKey] ?? null) : null,
     };
   }
 
@@ -184,7 +185,7 @@ export function openFirestoreGameStore() {
         .orderBy("finishedAt", "desc")
         .limit(safeLimit)
         .get();
-      return snapshot.docs.map(summary);
+      return snapshot.docs.map((doc) => summary(doc, playerKey));
     },
     async getGame(gameId, playerKey) {
       if (!playerKey) return null;
@@ -195,7 +196,7 @@ export function openFirestoreGameStore() {
       if (!(data.playerKeys ?? []).includes(playerKey)) return null;
       const moves = await games.doc(gameId).collection("moves").orderBy("ply").get();
       return {
-        ...summary(doc),
+        ...summary(doc, playerKey),
         history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),
       };
     },
