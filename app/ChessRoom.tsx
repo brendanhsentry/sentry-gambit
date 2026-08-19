@@ -1443,167 +1443,6 @@ export function ChessRoom() {
               ariaLabel={`Chess board, ${orientation === "w" ? "white" : "black"} orientation`}
             />
 
-            {connection === "idle" && (
-              <div className="lobby-card">
-                {invitedRoom ? (
-                  <>
-                    <span className="lobby-kicker">YOU&apos;RE INVITED</span>
-                    <h1>Take your seat</h1>
-                    <p>
-                      You&apos;ve been invited to table {invitedRoom}. Enter a
-                      name and join the game.
-                    </p>
-                    {user ? (
-                      <p className="lobby-signed-in">
-                        PLAYING AS <strong>{user.username}</strong> · RATING{" "}
-                        {user.rating}
-                      </p>
-                    ) : (
-                      <label>
-                        <span>Your name</span>
-                        <input
-                          value={name}
-                          onChange={(event) => setName(event.target.value)}
-                          placeholder="e.g. Magnus"
-                          maxLength={24}
-                        />
-                      </label>
-                    )}
-                    <button
-                      className="primary-button"
-                      onClick={() => connect(invitedRoom, name)}
-                    >
-                      Join table {invitedRoom} <span>→</span>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <h1>New table</h1>
-                    {user ? (
-                      <p className="lobby-signed-in">
-                        PLAYING AS <strong>{user.username}</strong> · RATING{" "}
-                        {user.rating}
-                      </p>
-                    ) : (
-                      <label>
-                        <span>Your name</span>
-                        <input
-                          value={name}
-                          onChange={(event) => setName(event.target.value)}
-                          placeholder="e.g. Magnus"
-                          maxLength={24}
-                        />
-                      </label>
-                    )}
-                    <fieldset className="time-control">
-                      <legend>Time control</legend>
-                      <div>
-                        {TIME_CONTROLS.map((minutes) => (
-                          <button
-                            key={minutes}
-                            type="button"
-                            className={
-                              timeControl === minutes ? "selected" : ""
-                            }
-                            onClick={() => setTimeControl(minutes)}
-                            aria-pressed={timeControl === minutes}
-                          >
-                            <strong>{minutes === 15 ? "15 | 10" : `${minutes} min`}</strong>
-                            <small>{TIME_CONTROL_NAMES[minutes]}</small>
-                          </button>
-                        ))}
-                      </div>
-                    </fieldset>
-                    <div className="lobby-tabs" role="tablist">
-                      <button
-                        role="tab"
-                        aria-selected={lobbyTab === "friend"}
-                        className={lobbyTab === "friend" ? "selected" : ""}
-                        onClick={() => setLobbyTab("friend")}
-                      >
-                        Play a friend
-                      </button>
-                      <button
-                        role="tab"
-                        aria-selected={lobbyTab === "patrol"}
-                        className={lobbyTab === "patrol" ? "selected" : ""}
-                        onClick={() => setLobbyTab("patrol")}
-                      >
-                        Challenge the patrol
-                      </button>
-                    </div>
-                    {lobbyTab === "friend" ? (
-                    <>
-                    <button className="primary-button" onClick={startTable}>
-                      Create a table <span>→</span>
-                    </button>
-                    <div className="join-row">
-                      <input
-                        value={roomInput}
-                        onChange={(event) =>
-                          setRoomInput(
-                            event.target.value
-                              .toUpperCase()
-                              .replace(/[^A-Z0-9]/g, ""),
-                          )
-                        }
-                        placeholder="ROOM CODE"
-                        maxLength={8}
-                        aria-label="Room code"
-                      />
-                      <button
-                        onClick={() => connect(roomInput, name)}
-                        disabled={!roomInput}
-                      >
-                        Join
-                      </button>
-                    </div>
-                    </>
-                    ) : (
-                    <div className="bot-row">
-                      <button
-                        type="button"
-                        className={`coach-toggle ${coachEnabled ? "coach-toggle--on" : ""}`}
-                        onClick={() => setCoachEnabled((value) => !value)}
-                        aria-pressed={coachEnabled}
-                      >
-                        <span className="coach-toggle-box" aria-hidden>
-                          {coachEnabled ? "✓" : ""}
-                        </span>
-                        <span className="coach-toggle-copy">
-                          <strong>Coach watches your game</strong>
-                          <small>
-                            Live tips after mistakes, hints, and takebacks
-                          </small>
-                        </span>
-                      </button>
-                      <div className="bot-cards">
-                        {(Object.keys(BOTS) as BotKey[]).map((key) => (
-                          <button
-                            key={key}
-                            className={`bot-card bot-card--${key}`}
-                            onClick={() => void startBotGame(key)}
-                            disabled={pendingBot !== null}
-                          >
-                            <strong>{BOTS[key].name}</strong>
-                            <small>ELO {BOTS[key].elo}</small>
-                            {pendingBot === key && (
-                              <em>
-                                {maiaStatus === "loading"
-                                  ? `LOADING ${maiaProgress}%`
-                                  : "STARTING…"}
-                              </em>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
             {state?.result &&
               replayPly === null &&
               resultDismissedFor !== state.gameId && (
@@ -1679,6 +1518,167 @@ export function ChessRoom() {
             />
           )}
         </div>
+
+        {inLobby && (
+          <aside className="lobby-card">
+            {invitedRoom ? (
+              <>
+                <span className="lobby-kicker">YOU&apos;RE INVITED</span>
+                <h1>Take your seat</h1>
+                <p>
+                  You&apos;ve been invited to table {invitedRoom}. Enter a
+                  name and join the game.
+                </p>
+                {user ? (
+                  <p className="lobby-signed-in">
+                    PLAYING AS <strong>{user.username}</strong> · RATING{" "}
+                    {user.rating}
+                  </p>
+                ) : (
+                  <label>
+                    <span>Your name</span>
+                    <input
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder="e.g. Magnus"
+                      maxLength={24}
+                    />
+                  </label>
+                )}
+                <button
+                  className="primary-button"
+                  onClick={() => connect(invitedRoom, name)}
+                >
+                  Join table {invitedRoom} <span>→</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <h1>New table</h1>
+                {user ? (
+                  <p className="lobby-signed-in">
+                    PLAYING AS <strong>{user.username}</strong> · RATING{" "}
+                    {user.rating}
+                  </p>
+                ) : (
+                  <label>
+                    <span>Your name</span>
+                    <input
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder="e.g. Magnus"
+                      maxLength={24}
+                    />
+                  </label>
+                )}
+                <fieldset className="time-control">
+                  <legend>Time control</legend>
+                  <div>
+                    {TIME_CONTROLS.map((minutes) => (
+                      <button
+                        key={minutes}
+                        type="button"
+                        className={
+                          timeControl === minutes ? "selected" : ""
+                        }
+                        onClick={() => setTimeControl(minutes)}
+                        aria-pressed={timeControl === minutes}
+                      >
+                        <strong>{minutes === 15 ? "15 | 10" : `${minutes} min`}</strong>
+                        <small>{TIME_CONTROL_NAMES[minutes]}</small>
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                <div className="lobby-tabs" role="tablist">
+                  <button
+                    role="tab"
+                    aria-selected={lobbyTab === "friend"}
+                    className={lobbyTab === "friend" ? "selected" : ""}
+                    onClick={() => setLobbyTab("friend")}
+                  >
+                    Play a friend
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={lobbyTab === "patrol"}
+                    className={lobbyTab === "patrol" ? "selected" : ""}
+                    onClick={() => setLobbyTab("patrol")}
+                  >
+                    Challenge the patrol
+                  </button>
+                </div>
+                {lobbyTab === "friend" ? (
+                <>
+                <button className="primary-button" onClick={startTable}>
+                  Create a table <span>→</span>
+                </button>
+                <div className="join-row">
+                  <input
+                    value={roomInput}
+                    onChange={(event) =>
+                      setRoomInput(
+                        event.target.value
+                          .toUpperCase()
+                          .replace(/[^A-Z0-9]/g, ""),
+                      )
+                    }
+                    placeholder="ROOM CODE"
+                    maxLength={8}
+                    aria-label="Room code"
+                  />
+                  <button
+                    onClick={() => connect(roomInput, name)}
+                    disabled={!roomInput}
+                  >
+                    Join
+                  </button>
+                </div>
+                </>
+                ) : (
+                <div className="bot-row">
+                  <button
+                    type="button"
+                    className={`coach-toggle ${coachEnabled ? "coach-toggle--on" : ""}`}
+                    onClick={() => setCoachEnabled((value) => !value)}
+                    aria-pressed={coachEnabled}
+                  >
+                    <span className="coach-toggle-box" aria-hidden>
+                      {coachEnabled ? "✓" : ""}
+                    </span>
+                    <span className="coach-toggle-copy">
+                      <strong>Coach watches your game</strong>
+                      <small>
+                        Live tips after mistakes, hints, and takebacks
+                      </small>
+                    </span>
+                  </button>
+                  <div className="bot-cards">
+                    {(Object.keys(BOTS) as BotKey[]).map((key) => (
+                      <button
+                        key={key}
+                        className={`bot-card bot-card--${key}`}
+                        onClick={() => void startBotGame(key)}
+                        disabled={pendingBot !== null}
+                      >
+                        <strong>{BOTS[key].name}</strong>
+                        <small>ELO {BOTS[key].elo}</small>
+                        {pendingBot === key && (
+                          <em>
+                            {maiaStatus === "loading"
+                              ? `LOADING ${maiaProgress}%`
+                              : "STARTING…"}
+                          </em>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                )}
+              </>
+            )}
+          </aside>
+        )}
 
         {!inLobby && (
         <aside

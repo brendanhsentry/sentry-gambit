@@ -90,7 +90,8 @@ button { color: inherit; }
 }
 
 .game-layout--lobby {
-  grid-template-columns: minmax(0, min(816px, calc(100vh - 130px)));
+  grid-template-columns: minmax(420px, min(720px, calc(100vh - 220px))) minmax(320px, 400px);
+  align-items: center;
 }
 
 .board-column { min-width: 0; }
@@ -147,16 +148,12 @@ button { color: inherit; }
 .chessboard cg-board square.king-badge--resign::after { content: "⚑"; background: #ae372b; }
 
 .lobby-card {
-  position: absolute;
-  z-index: 10;
-  left: 50%;
-  top: 50%;
-  width: min(410px, calc(100% - 56px));
-  transform: translate(-50%, -50%);
-  background: rgba(250, 247, 239, .97);
+  min-width: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
   border-top: 4px solid var(--amber);
-  padding: clamp(24px, 4.5vw, 42px);
-  box-shadow: 0 22px 65px rgba(9,38,32,.35);
+  padding: clamp(24px, 3vw, 38px);
+  box-shadow: 0 22px 50px rgba(23, 44, 36, 0.15), 0 2px 8px rgba(23, 44, 36, 0.16);
 }
 .lobby-kicker, .panel-kicker { font: 650 9px/1 var(--font-geist-mono), monospace; letter-spacing: .16em; color: #8f6a2d; }
 .lobby-card h1 { margin: 0 0 16px; color: var(--green); font-size: 22px; line-height: 1.1; font-weight: 650; letter-spacing: -.01em; }
@@ -372,6 +369,8 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 
 @media (max-width: 920px) {
   .game-layout { grid-template-columns: minmax(0, 700px); justify-content: center; }
+  .game-layout--lobby { align-items: start; }
+  .lobby-card { order: -1; }
   .match-panel { min-height: auto; }
   .match-panel--live { height: auto; padding-top: 0; overflow: visible; }
   .match-panel--live .moves-table { max-height: 298px; }
@@ -395,7 +394,7 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .piece { font-size: 10vw; }
   .chessboard coords { font-size: 6px; }
   .clock { min-width: 76px; font-size: 15px; }
-  .lobby-card { width: calc(100% - 30px); padding: 22px; }
+  .lobby-card { margin: 0 14px; padding: 22px; }
   .lobby-card h1 { font-size: 20px; }
   .lobby-card > p { font-size: 11px; margin-bottom: 15px; }
   .lobby-card input { height: 40px; }
