@@ -940,7 +940,7 @@ const handleRequest = app.getRequestHandler();
 const handleNextUpgrade =
   typeof app.getUpgradeHandler === "function" ? app.getUpgradeHandler() : null;
 
-const SENTRY_ORG = "sentry-gambit";
+const SENTRY_ORG = "pawn-patrol";
 const SENTRY_PROJECT_ID = "4511927685939200";
 const SENTRY_DATA_API_BASE =
   process.env.SENTRY_DATA_API_BASE || "https://us.sentry.io/api/0";
