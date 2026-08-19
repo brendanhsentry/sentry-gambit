@@ -1,9 +1,8 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { authToken } from "../auth";
+import { TopBar } from "../TopBar";
 
 type Breakdown = {
   opening: string;
@@ -120,27 +119,7 @@ export function ExploreView() {
 
   return (
     <main className="app-shell explore-shell">
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Pawn Patrol home">
-          <span className="brand-mark">
-            <Image
-              src="/pawn-patrol-sentry-correct.png"
-              alt=""
-              width={30}
-              height={30}
-              priority
-              unoptimized
-            />
-          </span>
-          <span>
-            PAWN <em>PATROL</em>
-          </span>
-        </Link>
-        <div className="topbar-note">SENTRY EXPLORE</div>
-        <Link className="text-button" href="/">
-          Back to tables
-        </Link>
-      </header>
+      <TopBar />
 
       <section className="explore-page">
         <div className="explore-intro">
