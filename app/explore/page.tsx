@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ExploreView } from "./ExploreView";
+import "./explore.css";
 
 export const metadata: Metadata = {
   title: "Explore your games — Pawn Patrol",

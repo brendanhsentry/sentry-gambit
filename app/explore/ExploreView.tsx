@@ -15,8 +15,22 @@ type Breakdown = {
   avgBlunders: number;
 };
 
+type ExploreLog = {
+  timestamp: string | null;
+  gameId: string | null;
+  opening: string;
+  color: string | null;
+  outcome: string | null;
+  score: number;
+  blunders: number;
+  mistakes: number;
+  inaccuracies: number;
+  expectedPointsLoss: number;
+};
+
 type ExploreResult = {
   answer: string;
+  logs: ExploreLog[];
   query: string;
   period: string;
   summary: {
@@ -38,6 +52,18 @@ const EXAMPLES = [
   "Which openings do I struggle with?",
   "How do I score as Black?",
 ];
+
+function logTime(value: string | null) {
+  if (!value) return "Time unavailable";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
 
 function browserPlayerKey() {
   const storageKey = "pawn-patrol-player-key";
@@ -119,26 +145,31 @@ export function ExploreView() {
       <section className="explore-page">
         <div className="explore-intro">
           <span className="panel-kicker">YOUR GAME TELEMETRY</span>
-          <h1>Ask your chess history.</h1>
+          <h1>Ask Sentry about your games.</h1>
           <p>
-            Pawn Patrol turns your completed Stockfish reviews into structured
-            Sentry logs, then searches them for patterns only you can see.
+            Type a question in plain English. Pawn Patrol searches your private
+            game logs, charts the matching history, and shows the events behind
+            the answer.
           </p>
         </div>
 
         <form className="explore-form" onSubmit={ask}>
           <label htmlFor="explore-question">Question</label>
-          <div className="explore-input-row">
-            <input
+          <div className="explore-prompt-box">
+            <textarea
               id="explore-question"
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               maxLength={240}
               placeholder="How do I play against the Sicilian?"
+              rows={3}
             />
-            <button type="submit" disabled={loading || !question.trim()}>
-              {loading ? "Searching…" : "Ask Sentry"}
-            </button>
+            <div className="explore-prompt-actions">
+              <span>Natural-language query · Last 90 days</span>
+              <button type="submit" disabled={loading || !question.trim()}>
+                {loading ? "Searching logs…" : "Search my games"}
+              </button>
+            </div>
           </div>
           <div className="explore-examples" aria-label="Example questions">
             {EXAMPLES.map((example) => (
@@ -186,6 +217,66 @@ export function ExploreView() {
                   </div>
                 </div>
 
+                <div className="explore-charts">
+                  <article className="explore-chart-card">
+                    <div className="explore-section-heading">
+                      <div>
+                        <span className="panel-kicker">RESULTS</span>
+                        <h2>Match outcomes</h2>
+                      </div>
+                      <strong>{result.summary.total} games</strong>
+                    </div>
+                    <div
+                      className="explore-result-bar"
+                      aria-label={`${result.summary.wins} wins, ${result.summary.draws} draws, ${result.summary.losses} losses`}
+                    >
+                      <span
+                        className="is-win"
+                        style={{
+                          width: `${(result.summary.wins / result.summary.total) * 100}%`,
+                        }}
+                      />
+                      <span
+                        className="is-draw"
+                        style={{
+                          width: `${(result.summary.draws / result.summary.total) * 100}%`,
+                        }}
+                      />
+                      <span
+                        className="is-loss"
+                        style={{
+                          width: `${(result.summary.losses / result.summary.total) * 100}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="explore-chart-legend">
+                      <span className="is-win">{result.summary.wins} wins</span>
+                      <span className="is-draw">{result.summary.draws} draws</span>
+                      <span className="is-loss">{result.summary.losses} losses</span>
+                    </div>
+                  </article>
+
+                  <article className="explore-chart-card">
+                    <div className="explore-section-heading">
+                      <div>
+                        <span className="panel-kicker">PERFORMANCE</span>
+                        <h2>Score by opening</h2>
+                      </div>
+                    </div>
+                    <div className="explore-opening-chart">
+                      {result.summary.breakdown.slice(0, 6).map((row) => (
+                        <div key={row.opening}>
+                          <span title={row.opening}>{row.opening}</span>
+                          <div>
+                            <i style={{ width: `${row.scorePercent}%` }} />
+                          </div>
+                          <strong>{row.scorePercent.toFixed(0)}%</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                </div>
+
                 <div className="explore-breakdown">
                   <h2>Opening breakdown</h2>
                   <div className="explore-table-wrap">
@@ -215,6 +306,49 @@ export function ExploreView() {
                     </table>
                   </div>
                 </div>
+
+                <section className="explore-logs">
+                  <div className="explore-section-heading">
+                    <div>
+                      <span className="panel-kicker">RELATED SENTRY LOGS</span>
+                      <h2>Events behind this answer</h2>
+                    </div>
+                    <strong>{result.logs.length} shown</strong>
+                  </div>
+                  {result.logs.length ? (
+                    <div className="explore-log-list">
+                      {result.logs.map((log, index) => (
+                        <article key={`${log.gameId ?? "game"}-${index}`}>
+                          <div className="explore-log-head">
+                            <code>chess.player.game.completed</code>
+                            <time>{logTime(log.timestamp)}</time>
+                          </div>
+                          <div className="explore-log-main">
+                            <div>
+                              <strong>{log.opening}</strong>
+                              <span>
+                                {log.color ?? "unknown color"} · game {log.gameId?.slice(0, 8) ?? "unknown"}
+                              </span>
+                            </div>
+                            <span className={`explore-outcome is-${log.outcome ?? "unknown"}`}>
+                              {log.outcome ?? "unknown"}
+                            </span>
+                          </div>
+                          <dl>
+                            <div><dt>blunders</dt><dd>{log.blunders}</dd></div>
+                            <div><dt>mistakes</dt><dd>{log.mistakes}</dd></div>
+                            <div><dt>inaccuracies</dt><dd>{log.inaccuracies}</dd></div>
+                            <div><dt>avg EP loss</dt><dd>{(log.expectedPointsLoss * 100).toFixed(1)}%</dd></div>
+                          </dl>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="explore-logs-empty">
+                      No individual log rows were returned for this query.
+                    </p>
+                  )}
+                </section>
               </>
             )}
 

@@ -1820,6 +1820,19 @@ const EXPLORE_FIELDS = {
   expectedPointsLoss:
     "avg(tag[chess.player.expected_points_loss,number])",
 };
+const EXPLORE_LOG_FIELDS = {
+  timestamp: "timestamp",
+  gameId: "tag[chess.game.id,string]",
+  opening: "tag[chess.opening.name,string]",
+  family: "tag[chess.opening.family,string]",
+  color: "tag[chess.player.color,string]",
+  outcome: "tag[chess.player.outcome,string]",
+  score: "tag[chess.player.score,number]",
+  blunders: "tag[chess.player.blunders,number]",
+  mistakes: "tag[chess.player.mistakes,number]",
+  inaccuracies: "tag[chess.player.inaccuracies,number]",
+  expectedPointsLoss: "tag[chess.player.expected_points_loss,number]",
+};
 
 function consumeExploreRateLimit(req) {
   const key = clientAddress(req);
@@ -1931,6 +1944,27 @@ function summarizeExploreRows(rows) {
   };
 }
 
+function exploreLogRows(rows) {
+  return rows.map((row) => ({
+    timestamp: row[EXPLORE_LOG_FIELDS.timestamp] ?? null,
+    gameId: row[EXPLORE_LOG_FIELDS.gameId] ?? null,
+    opening:
+      row[EXPLORE_LOG_FIELDS.opening] ??
+      row[EXPLORE_LOG_FIELDS.family] ??
+      "Unknown opening",
+    color: row[EXPLORE_LOG_FIELDS.color] ?? null,
+    outcome: row[EXPLORE_LOG_FIELDS.outcome] ?? null,
+    score: numericField(row, EXPLORE_LOG_FIELDS.score),
+    blunders: numericField(row, EXPLORE_LOG_FIELDS.blunders),
+    mistakes: numericField(row, EXPLORE_LOG_FIELDS.mistakes),
+    inaccuracies: numericField(row, EXPLORE_LOG_FIELDS.inaccuracies),
+    expectedPointsLoss: numericField(
+      row,
+      EXPLORE_LOG_FIELDS.expectedPointsLoss,
+    ),
+  }));
+}
+
 function exploreAnswer(summary, plan) {
   if (!summary.total) {
     return "I couldn't find any fully analyzed games matching that question yet. Finish a game and allow its Stockfish review to complete, then try again after Sentry has indexed the logs.";
@@ -2014,9 +2048,22 @@ async function handleExploreRequest(req, res, url) {
     for (const field of Object.values(EXPLORE_FIELDS)) {
       params.append("field", field);
     }
-    const result = await sentryApi(
-      `/organizations/${SENTRY_ORG}/events/?${params}`,
-    );
+    const logParams = new URLSearchParams({
+      dataset: "logs",
+      project: SENTRY_PROJECT_ID,
+      statsPeriod: "90d",
+      query,
+      per_page: "25",
+      sort: "-timestamp",
+      referrer: "pawn-patrol-explore-logs",
+    });
+    for (const field of Object.values(EXPLORE_LOG_FIELDS)) {
+      logParams.append("field", field);
+    }
+    const [result, logResult] = await Promise.all([
+      sentryApi(`/organizations/${SENTRY_ORG}/events/?${params}`),
+      sentryApi(`/organizations/${SENTRY_ORG}/events/?${logParams}`),
+    ]);
     const summary = summarizeExploreRows(
       Array.isArray(result?.data) ? result.data : [],
     );
@@ -2024,6 +2071,9 @@ async function handleExploreRequest(req, res, url) {
       question,
       answer: exploreAnswer(summary, plan),
       summary,
+      logs: exploreLogRows(
+        Array.isArray(logResult?.data) ? logResult.data : [],
+      ),
       query: query.replace(playerId, "<your-player-id>"),
       period: "90d",
     });
