@@ -1803,23 +1803,25 @@ async function sentryApi(path, options = {}) {
       "Content-Type": "application/json",
     },
   });
-  if (!response.ok)
-    throw new Error(`Sentry API ${response.status} for ${path}`);
-  return response.json();
+  const responseText = await response.text();
+  if (!response.ok) {
+    let detail = responseText;
+    try {
+      const payload = JSON.parse(responseText);
+      detail = payload.detail ?? payload.error ?? responseText;
+    } catch {
+      detail = responseText;
+    }
+    const error = new Error(
+      `Sentry API ${response.status}: ${String(detail).slice(0, 500)}`,
+    );
+    error.statusCode = response.status;
+    throw error;
+  }
+  return responseText ? JSON.parse(responseText) : null;
 }
 
 const exploreRateLimits = new Map();
-const EXPLORE_FIELDS = {
-  count: "count()",
-  outcome: "tag[chess.player.outcome,string]",
-  opening: "tag[chess.opening.family,string]",
-  score: "avg(tag[chess.player.score,number])",
-  blunders: "avg(tag[chess.player.blunders,number])",
-  mistakes: "avg(tag[chess.player.mistakes,number])",
-  inaccuracies: "avg(tag[chess.player.inaccuracies,number])",
-  expectedPointsLoss:
-    "avg(tag[chess.player.expected_points_loss,number])",
-};
 const EXPLORE_LOG_FIELDS = {
   timestamp: "timestamp",
   gameId: "tag[chess.game.id,string]",
@@ -1880,16 +1882,18 @@ function summarizeExploreRows(rows) {
   let inaccuracies = 0;
   let expectedPointsLoss = 0;
   for (const row of rows) {
-    const games = numericField(row, EXPLORE_FIELDS.count);
-    if (!games) continue;
-    const outcome = row[EXPLORE_FIELDS.outcome];
-    const family = row[EXPLORE_FIELDS.opening] || "Unknown opening";
+    const games = 1;
+    const outcome = row[EXPLORE_LOG_FIELDS.outcome];
+    const family = row[EXPLORE_LOG_FIELDS.family] || "Unknown opening";
     const values = {
-      score: numericField(row, EXPLORE_FIELDS.score),
-      blunders: numericField(row, EXPLORE_FIELDS.blunders),
-      mistakes: numericField(row, EXPLORE_FIELDS.mistakes),
-      inaccuracies: numericField(row, EXPLORE_FIELDS.inaccuracies),
-      expectedPointsLoss: numericField(row, EXPLORE_FIELDS.expectedPointsLoss),
+      score: numericField(row, EXPLORE_LOG_FIELDS.score),
+      blunders: numericField(row, EXPLORE_LOG_FIELDS.blunders),
+      mistakes: numericField(row, EXPLORE_LOG_FIELDS.mistakes),
+      inaccuracies: numericField(row, EXPLORE_LOG_FIELDS.inaccuracies),
+      expectedPointsLoss: numericField(
+        row,
+        EXPLORE_LOG_FIELDS.expectedPointsLoss,
+      ),
     };
     total += games;
     if (outcome === "win") wins += games;
@@ -2037,43 +2041,27 @@ async function handleExploreRequest(req, res, url) {
       filters.push(`chess.player.color:${quoteSentrySearch(plan.color)}`);
     }
     const query = filters.join(" ");
-    const params = new URLSearchParams({
-      dataset: "logs",
-      project: SENTRY_PROJECT_ID,
-      statsPeriod: "90d",
-      query,
-      per_page: "100",
-      referrer: "pawn-patrol-explore",
-    });
-    for (const field of Object.values(EXPLORE_FIELDS)) {
-      params.append("field", field);
-    }
     const logParams = new URLSearchParams({
       dataset: "logs",
       project: SENTRY_PROJECT_ID,
       statsPeriod: "90d",
       query,
-      per_page: "25",
+      per_page: "100",
       sort: "-timestamp",
-      referrer: "pawn-patrol-explore-logs",
     });
     for (const field of Object.values(EXPLORE_LOG_FIELDS)) {
       logParams.append("field", field);
     }
-    const [result, logResult] = await Promise.all([
-      sentryApi(`/organizations/${SENTRY_ORG}/events/?${params}`),
-      sentryApi(`/organizations/${SENTRY_ORG}/events/?${logParams}`),
-    ]);
-    const summary = summarizeExploreRows(
-      Array.isArray(result?.data) ? result.data : [],
+    const logResult = await sentryApi(
+      `/organizations/${SENTRY_ORG}/events/?${logParams}`,
     );
+    const rows = Array.isArray(logResult?.data) ? logResult.data : [];
+    const summary = summarizeExploreRows(rows);
     sendJson(res, 200, {
       question,
       answer: exploreAnswer(summary, plan),
       summary,
-      logs: exploreLogRows(
-        Array.isArray(logResult?.data) ? logResult.data : [],
-      ),
+      logs: exploreLogRows(rows.slice(0, 25)),
       query: query.replace(playerId, "<your-player-id>"),
       period: "90d",
     });
@@ -2083,7 +2071,13 @@ async function handleExploreRequest(req, res, url) {
       return;
     }
     console.error("Sentry Explore request failed:", error.message);
-    sendJson(res, 502, { error: "Sentry Explore could not answer right now." });
+    const errorMessage =
+      error?.statusCode === 401 || error?.statusCode === 403
+        ? "Sentry Explore is missing org:read access."
+        : error?.statusCode === 400
+          ? "Sentry rejected the generated Logs query."
+          : "Sentry Explore could not answer right now.";
+    sendJson(res, 502, { error: errorMessage });
   }
 }
 
