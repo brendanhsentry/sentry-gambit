@@ -604,10 +604,24 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 .seer-drawer-body .seer-md h1, .seer-drawer-body .seer-md h2 { font-size: 15px; }
 .seer-drawer-body .seer-md h3, .seer-drawer-body .seer-md h4 { font-size: 14px; }
 
+.mini-seer { position: fixed; top: 84px; left: 18px; z-index: 40; display: grid; gap: 8px; min-width: 128px; padding: 10px 11px; background: var(--paper); border: 1px solid var(--line); border-top: 3px solid var(--amber); border-radius: 8px; box-shadow: 0 14px 34px rgba(9, 38, 32, 0.22); transform-origin: top left; animation: mini-seer-pop 260ms cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+@keyframes mini-seer-pop { from { transform: scale(0.4) translateY(-10px); opacity: 0; } }
+.mini-seer-head { display: flex; align-items: center; gap: 7px; }
+.mini-seer-title { color: var(--green); font: 700 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .13em; }
+.mini-seer-close { margin-left: auto; padding: 0 2px; border: 0; background: none; color: #8a958f; font-size: 15px; line-height: 1; cursor: pointer; }
+.mini-seer-close:hover { color: var(--green); }
+.mini-seer-cta { padding: 7px 12px; border: 0; border-radius: 6px; background: var(--amber); color: #2c1e07; font: 700 10px/1 var(--font-geist-mono), monospace; letter-spacing: .08em; cursor: pointer; box-shadow: 0 2px 0 0 #a8742c; }
+.mini-seer-cta:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 3px 0 0 #a8742c; }
+.mini-seer-cta:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+.mini-seer-cta:disabled { opacity: .5; cursor: default; }
+.mini-seer-hint { padding: 7px 10px; border: 1px dashed rgba(23, 63, 53, 0.35); border-radius: 6px; background: rgba(255, 253, 248, 0.85); text-align: center; }
+.mini-seer-hint strong { font: 700 13px/1 var(--font-geist-mono), monospace; color: var(--green); }
+
 @media (prefers-reduced-motion: reduce) {
   .seer-pupil-loading { animation: none; }
   .seer-scan-log div { animation: none; opacity: 1; transform: none; }
   .seer-drawer { animation: none; }
+  .mini-seer { animation: none; }
 }
 
 /* Saved-game replay controls extend the original theme. */

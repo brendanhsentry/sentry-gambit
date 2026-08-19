@@ -387,6 +387,8 @@ export function ChessRoom() {
     done: boolean;
   } | null>(null);
   const suggestionRef = useRef<{ fen: string; san: string } | null>(null);
+  const [miniSeerOpen, setMiniSeerOpen] = useState(false);
+  const brandClicksRef = useRef({ count: 0, last: 0 });
 
   const send = useCallback((payload: object) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -827,12 +829,12 @@ export function ChessRoom() {
 
   async function requestHint(tier: "maia" | "best") {
     const started = latestStateRef.current;
-    if (!started?.bot || started.result) return;
+    if (!started || started.result) return;
     const fen = started.fen;
     setHint({ phase: "loading", tier });
     try {
       let uci: string;
-      if (tier === "best") {
+      if (tier === "best" || !started.bot) {
         uci = (await engineBestMove(fen)).move;
       } else {
         const picked = await pickMove(fen, started.bot.elo);
@@ -1164,6 +1166,23 @@ export function ChessRoom() {
     state?.coach && state.bot && !state.result && role !== "spectator",
   );
 
+  // Easter egg: mashing the logo mid-PvP-game summons a mini seer with hints.
+  const pvpLive = Boolean(
+    state && !state.bot && !state.result && role !== "spectator",
+  );
+  function handleBrandClick(event: React.MouseEvent) {
+    if (!pvpLive) return;
+    event.preventDefault();
+    const clicks = brandClicksRef.current;
+    const now = Date.now();
+    clicks.count = now - clicks.last < 1200 ? clicks.count + 1 : 1;
+    clicks.last = now;
+    if (clicks.count >= 5) {
+      clicks.count = 0;
+      setMiniSeerOpen(true);
+    }
+  }
+
   // A hint is tied to the position it was computed for; it vanishes on the next move.
   const hintVisible =
     hint?.phase === "shown" && hint.fen === state?.fen;
@@ -1348,7 +1367,39 @@ export function ChessRoom() {
             </button>
           ) : null
         }
+        onBrandClick={handleBrandClick}
       />
+
+      {miniSeerOpen && pvpLive && (
+        <aside className="mini-seer" role="dialog" aria-label="Mini seer">
+          <div className="mini-seer-head">
+            <span className="seer-eye">
+              <IconSeer size={14} />
+            </span>
+            <span className="mini-seer-title">MINI SEER</span>
+            <button
+              className="mini-seer-close"
+              onClick={() => setMiniSeerOpen(false)}
+              aria-label="Dismiss the mini seer"
+            >
+              ×
+            </button>
+          </div>
+          <button
+            className="mini-seer-cta"
+            onClick={() => void requestHint("best")}
+            disabled={!canInteract || hint?.phase === "loading"}
+            title={canInteract ? undefined : "Hints are available on your turn"}
+          >
+            {hint?.phase === "loading" ? "Peering…" : "◈ Hint"}
+          </button>
+          {hintVisible && hint.phase === "shown" && (
+            <div className="mini-seer-hint">
+              <strong>{hint.san}</strong>
+            </div>
+          )}
+        </aside>
+      )}
 
       <section className={`game-layout ${inLobby ? "game-layout--lobby" : ""}`}>
         <div className="board-column">

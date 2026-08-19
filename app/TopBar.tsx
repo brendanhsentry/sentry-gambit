@@ -18,9 +18,11 @@ const NAV = [
 export function TopBar({
   auth,
   action,
+  onBrandClick,
 }: {
   auth?: ReturnType<typeof useAuth>;
   action?: ReactNode;
+  onBrandClick?: (event: React.MouseEvent) => void;
 }) {
   const fallbackAuth = useAuth();
   const { user, signIn, register, signOut } = auth ?? fallbackAuth;
@@ -47,7 +49,12 @@ export function TopBar({
 
   return (
     <header className="topbar">
-      <Link className="brand" href="/" aria-label="Pawn Patrol home">
+      <Link
+        className="brand"
+        href="/"
+        aria-label="Pawn Patrol home"
+        onClick={onBrandClick}
+      >
         <span className="brand-mark">
           <Image
             src="/pawn-patrol-sentry-correct.png"
