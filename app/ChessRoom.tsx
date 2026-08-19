@@ -1249,6 +1249,9 @@ export function ChessRoom() {
           <Link className="text-button" href="/leaderboard">
             Leaderboard
           </Link>
+          <Link className="text-button" href="/puzzles">
+            Puzzles
+          </Link>
           <Link className="text-button" href="/games">
             Past games
           </Link>

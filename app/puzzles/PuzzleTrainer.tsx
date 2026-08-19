@@ -1,0 +1,340 @@
+"use client";
+
+import type { Color, Dests, Key } from "@lichess-org/chessground/types";
+import type { DrawShape } from "@lichess-org/chessground/draw";
+import { Chess } from "chess.js";
+import Image from "next/image";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChessgroundBoard } from "../ChessgroundBoard";
+import { PUZZLES } from "./puzzles";
+
+type Phase = "playing" | "replying" | "solved";
+
+function movePosition(fen: string, uci: string) {
+  const chess = new Chess(fen);
+  const move = chess.move({
+    from: uci.slice(0, 2),
+    to: uci.slice(2, 4),
+    ...(uci[4]
+      ? { promotion: uci[4] as "q" | "r" | "b" | "n" }
+      : {}),
+  });
+  if (!move) throw new Error(`Invalid puzzle move: ${uci}`);
+  return { chess, move };
+}
+
+function groundColor(color: "w" | "b"): Color {
+  return color === "w" ? "white" : "black";
+}
+
+export function PuzzleTrainer() {
+  const [puzzleIndex, setPuzzleIndex] = useState(0);
+  const [fen, setFen] = useState(PUZZLES[0].fen);
+  const [lineIndex, setLineIndex] = useState(0);
+  const [phase, setPhase] = useState<Phase>("playing");
+  const [lastMove, setLastMove] = useState<Key[] | undefined>();
+  const [hintLevel, setHintLevel] = useState(0);
+  const [mistakes, setMistakes] = useState(0);
+  const [wrongMove, setWrongMove] = useState<Key[] | null>(null);
+  const [resetToken, setResetToken] = useState(0);
+  const [solvedIds, setSolvedIds] = useState<Set<string>>(new Set());
+  const replyTimerRef = useRef<number | null>(null);
+
+  const puzzle = PUZZLES[puzzleIndex];
+  const chess = useMemo(() => new Chess(fen), [fen]);
+  const orientation = useMemo(
+    () => groundColor(new Chess(puzzle.fen).turn()),
+    [puzzle.fen],
+  );
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("pawn-patrol-solved-puzzles");
+    if (!saved) return;
+    try {
+      const ids = JSON.parse(saved) as string[];
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSolvedIds(new Set(ids.filter((id) => PUZZLES.some((p) => p.id === id))));
+    } catch {
+      window.localStorage.removeItem("pawn-patrol-solved-puzzles");
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (replyTimerRef.current !== null)
+        window.clearTimeout(replyTimerRef.current);
+    },
+    [],
+  );
+
+  const selectPuzzle = useCallback((index: number) => {
+    if (replyTimerRef.current !== null) {
+      window.clearTimeout(replyTimerRef.current);
+      replyTimerRef.current = null;
+    }
+    const next = PUZZLES[index];
+    setPuzzleIndex(index);
+    setFen(next.fen);
+    setLineIndex(0);
+    setPhase("playing");
+    setLastMove(undefined);
+    setHintLevel(0);
+    setMistakes(0);
+    setWrongMove(null);
+    setResetToken((value) => value + 1);
+  }, []);
+
+  const markSolved = useCallback((id: string) => {
+    setPhase("solved");
+    setSolvedIds((current) => {
+      const next = new Set(current).add(id);
+      window.localStorage.setItem(
+        "pawn-patrol-solved-puzzles",
+        JSON.stringify([...next]),
+      );
+      return next;
+    });
+  }, []);
+
+  const legalDests = useMemo(() => {
+    const dests: Dests = new Map();
+    if (phase !== "playing") return dests;
+    for (const move of chess.moves({ verbose: true })) {
+      const from = move.from as Key;
+      const destinations = dests.get(from);
+      if (destinations) destinations.push(move.to as Key);
+      else dests.set(from, [move.to as Key]);
+    }
+    return dests;
+  }, [chess, phase]);
+
+  const expectedMove = puzzle.line[lineIndex];
+  const hintShapes = useMemo((): DrawShape[] => {
+    if (!expectedMove || phase !== "playing") return [];
+    const shapes: DrawShape[] = [];
+    if (hintLevel > 0)
+      shapes.push({ orig: expectedMove.slice(0, 2) as Key, brush: "yellow" });
+    if (hintLevel > 1)
+      shapes.push({
+        orig: expectedMove.slice(0, 2) as Key,
+        dest: expectedMove.slice(2, 4) as Key,
+        brush: "yellow",
+      });
+    if (wrongMove)
+      shapes.push({ orig: wrongMove[0], dest: wrongMove[1], brush: "red" });
+    return shapes;
+  }, [expectedMove, hintLevel, phase, wrongMove]);
+
+  function handleMove(from: Key, to: Key) {
+    if (phase !== "playing" || !expectedMove) return;
+    if (`${from}${to}` !== expectedMove.slice(0, 4)) {
+      setMistakes((value) => value + 1);
+      setWrongMove([from, to]);
+      setResetToken((value) => value + 1);
+      return;
+    }
+
+    setWrongMove(null);
+    const afterPlayer = movePosition(fen, expectedMove);
+    setFen(afterPlayer.chess.fen());
+    setLastMove([from, to]);
+    const replyIndex = lineIndex + 1;
+    setLineIndex(replyIndex);
+    if (replyIndex >= puzzle.line.length) {
+      markSolved(puzzle.id);
+      return;
+    }
+
+    setPhase("replying");
+    replyTimerRef.current = window.setTimeout(() => {
+      const reply = puzzle.line[replyIndex];
+      const afterReply = movePosition(afterPlayer.chess.fen(), reply);
+      const nextIndex = replyIndex + 1;
+      setFen(afterReply.chess.fen());
+      setLastMove([
+        reply.slice(0, 2) as Key,
+        reply.slice(2, 4) as Key,
+      ]);
+      setLineIndex(nextIndex);
+      setHintLevel(0);
+      setPhase(nextIndex >= puzzle.line.length ? "solved" : "playing");
+      if (nextIndex >= puzzle.line.length) markSolved(puzzle.id);
+      replyTimerRef.current = null;
+    }, 520);
+  }
+
+  function nextPuzzle() {
+    for (let offset = 1; offset <= PUZZLES.length; offset += 1) {
+      const index = (puzzleIndex + offset) % PUZZLES.length;
+      if (!solvedIds.has(PUZZLES[index].id)) {
+        selectPuzzle(index);
+        return;
+      }
+    }
+    selectPuzzle((puzzleIndex + 1) % PUZZLES.length);
+  }
+
+  const turnColor = groundColor(chess.turn());
+  const playerColor = groundColor(new Chess(puzzle.fen).turn());
+
+  return (
+    <main className="app-shell puzzle-shell">
+      <header className="topbar">
+        <Link className="brand" href="/" aria-label="Pawn Patrol home">
+          <span className="brand-mark">
+            <Image
+              src="/pawn-patrol-sentry-correct.png"
+              alt=""
+              width={30}
+              height={30}
+              priority
+              unoptimized
+            />
+          </span>
+          <span>
+            PAWN <em>PATROL</em>
+          </span>
+        </Link>
+        <div className="topbar-note">TACTICS ROOM</div>
+        <div className="topbar-actions">
+          <Link className="text-button" href="/games">
+            Past games
+          </Link>
+          <Link className="text-button" href="/">
+            Back to tables
+          </Link>
+        </div>
+      </header>
+
+      <section className="puzzle-page">
+        <div className="puzzle-title-row">
+          <div>
+            <span className="panel-kicker">TACTICAL TRAINING</span>
+            <h1>Find the move.</h1>
+            <p>Calculate the forcing line, then play it on the board.</p>
+          </div>
+          <div
+            className="puzzle-progress"
+            aria-label={`${solvedIds.size} puzzles solved`}
+          >
+            <strong>{solvedIds.size}</strong>
+            <span>of {PUZZLES.length} solved</span>
+          </div>
+        </div>
+
+        <div className="puzzle-layout">
+          <section className="puzzle-board-panel" aria-label="Current puzzle">
+            <div className="puzzle-board-meta">
+              <span>{puzzle.difficulty}</span>
+              <strong>{puzzle.theme}</strong>
+            </div>
+            <div className="puzzle-board-wrap">
+              <ChessgroundBoard
+                fen={fen}
+                orientation={orientation}
+                turnColor={turnColor}
+                check={chess.isCheck() ? turnColor : false}
+                lastMove={lastMove}
+                movableColor={phase === "playing" ? playerColor : undefined}
+                dests={legalDests}
+                autoShapes={hintShapes}
+                onMove={handleMove}
+                resetKey={`${puzzle.id}-${resetToken}`}
+                ariaLabel={`${puzzle.title}, ${orientation} orientation`}
+              />
+            </div>
+          </section>
+
+          <aside className="puzzle-panel">
+            <div className="puzzle-heading">
+              <span className="panel-kicker">
+                PUZZLE {puzzleIndex + 1} / {PUZZLES.length}
+              </span>
+              <h2>{puzzle.title}</h2>
+              <p>{puzzle.prompt}</p>
+            </div>
+
+            <div
+              className={`puzzle-feedback puzzle-feedback--${phase}${wrongMove ? " puzzle-feedback--wrong" : ""}`}
+              aria-live="polite"
+            >
+              {phase === "solved" ? (
+                <>
+                  <strong>✓ Tactic found</strong>
+                  <p>{puzzle.explanation}</p>
+                  <small>
+                    {mistakes
+                      ? `${mistakes} ${mistakes === 1 ? "retry" : "retries"}`
+                      : "Clean solve"}
+                  </small>
+                </>
+              ) : phase === "replying" ? (
+                <>
+                  <strong>Correct move</strong>
+                  <p>Opponent is replying…</p>
+                </>
+              ) : wrongMove ? (
+                <>
+                  <strong>Not the tactic</strong>
+                  <p>The move is legal, but there is a stronger continuation.</p>
+                </>
+              ) : (
+                <>
+                  <strong>Your move</strong>
+                  <p>{orientation === "white" ? "White" : "Black"} to play.</p>
+                </>
+              )}
+            </div>
+
+            {phase !== "solved" && (
+              <div className="puzzle-hint">
+                <span>NEED A NUDGE?</span>
+                {hintLevel > 0 && <p>{puzzle.hint}</p>}
+                <button
+                  onClick={() => setHintLevel((level) => Math.min(2, level + 1))}
+                  disabled={hintLevel === 2 || phase === "replying"}
+                >
+                  {hintLevel === 0
+                    ? "Show hint"
+                    : hintLevel === 1
+                      ? "Show move"
+                      : "Move shown"}
+                </button>
+              </div>
+            )}
+
+            <div className="puzzle-actions">
+              <button onClick={() => selectPuzzle(puzzleIndex)}>Reset</button>
+              {phase === "solved" && (
+                <button className="puzzle-next" onClick={nextPuzzle}>
+                  Next puzzle →
+                </button>
+              )}
+            </div>
+
+            <div className="puzzle-list" aria-label="Puzzle list">
+              {PUZZLES.map((item, index) => (
+                <button
+                  key={item.id}
+                  className={index === puzzleIndex ? "is-active" : ""}
+                  onClick={() => selectPuzzle(index)}
+                  aria-current={index === puzzleIndex ? "true" : undefined}
+                >
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <strong>{item.title}</strong>
+                  <small>{solvedIds.has(item.id) ? "✓" : item.difficulty}</small>
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <footer>
+        <span>PAWN PATROL · EST. 2026</span>
+        <span>CALCULATE · COMMIT · CONVERT</span>
+      </footer>
+    </main>
+  );
+}
