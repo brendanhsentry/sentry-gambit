@@ -56,11 +56,23 @@ button { color: inherit; }
 .brand em { color: var(--amber); font-family: Georgia, serif; font-size: 1.25em; }
 .brand-mark { width: 42px; height: 38px; display: grid; place-items: center; border-right: 1px solid var(--line); padding-right: 12px; }
 .brand-mark img { width: 30px; height: 30px; object-fit: contain; }
-.topbar-note { font: 600 10px/1 var(--font-geist-mono), monospace; letter-spacing: 0.13em; color: #52665e; }
 .text-button { justify-self: end; border: 0; border-bottom: 1px solid var(--green); background: transparent; padding: 6px 0; cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; }
-.topbar > .text-button { justify-self: end; text-decoration: none; }
+.topbar-nav { display: flex; align-items: center; gap: clamp(18px, 3vw, 34px); }
+.topbar-nav a { color: #5f6d66; text-decoration: none; padding: 6px 0; font-size: 11px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; border-bottom: 1px solid transparent; transition: color 140ms ease; }
+.topbar-nav a:hover { color: var(--green); }
+.topbar-nav a.is-current { color: var(--green); border-bottom-color: var(--amber); }
 .topbar-actions { grid-column: -2 / -1; justify-self: end; display: flex; align-items: center; gap: 20px; }
 .topbar-actions .text-button { text-decoration: none; }
+.topbar-cta { border: 1px solid var(--green); background: transparent; padding: 8px 14px; cursor: pointer; color: var(--green); font-size: 10px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; transition: background 140ms ease, color 140ms ease; }
+.topbar-cta:hover { background: var(--green); color: var(--ivory); }
+.user-menu { position: relative; }
+.user-menu-trigger { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; padding: 6px 0; cursor: pointer; color: var(--green); font: 650 10px/1 var(--font-geist-mono), monospace; letter-spacing: .08em; text-transform: uppercase; }
+.user-menu-trigger svg { color: #7b8781; transition: transform 140ms ease; }
+.user-menu-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+.user-menu-sheet { position: absolute; top: calc(100% + 12px); right: 0; z-index: 30; min-width: 170px; background: var(--paper); border: 1px solid var(--line); border-top: 3px solid var(--amber); box-shadow: 0 18px 44px rgba(9, 38, 32, 0.18); }
+.user-menu-record { padding: 12px 14px; border-bottom: 1px solid var(--line); color: #57655f; font: 600 9px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
+.user-menu-sheet button { display: block; width: 100%; border: 0; background: transparent; padding: 11px 14px; cursor: pointer; text-align: left; color: var(--green); font-size: 10px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; }
+.user-menu-sheet button:hover { background: rgba(23, 63, 53, 0.07); }
 
 .game-layout {
   width: min(1220px, calc(100% - 44px));
@@ -331,8 +343,8 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .match-panel { min-height: auto; }
   .match-panel--live { height: auto; padding-top: 0; overflow: visible; }
   .match-panel--live .moves-table { max-height: 298px; }
-  .topbar { grid-template-columns: 1fr auto; }
-  .topbar-note { display: none; }
+  .topbar { grid-template-columns: auto 1fr auto; }
+  .topbar-nav { justify-self: center; gap: 16px; }
 }
 
 @media (max-width: 600px) {
@@ -341,6 +353,10 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .brand-mark { width: 32px; padding-right: 8px; }
   .brand-mark img { width: 24px; height: 24px; }
   .text-button { font-size: 9px; }
+  .topbar-nav { gap: 12px; }
+  .topbar-nav a { font-size: 9px; }
+  .topbar-cta { padding: 6px 9px; font-size: 9px; }
+  .user-menu-trigger { font-size: 9px; }
   .game-layout { width: 100%; margin: 16px auto 32px; gap: 28px; }
   .eyebrow-row, .player-card, .match-panel { margin-left: 14px; margin-right: 14px; }
   .chessboard { --board-border: 5px; }
@@ -360,6 +376,8 @@ footer { min-height: 48px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .topbar .brand > span:last-child { display: none; }
   .topbar-actions { gap: 8px; }
   .topbar-actions .text-button { font-size: 8px; }
+  .topbar-nav { gap: 9px; }
+  .topbar-nav a { font-size: 8px; }
 }
 
 /* Interactive tactics trainer. */
@@ -762,7 +780,6 @@ button.move-cell > span {
 }
 
 /* Optional accounts and the rated leaderboard. */
-.topbar-user { color: var(--green); font: 650 10px/1 var(--font-geist-mono), monospace; letter-spacing: .08em; text-transform: uppercase; }
 .lobby-signed-in { margin: 0; padding: 11px 13px; border: 1px solid var(--line); background: #fffdf8; color: #57655f; font: 600 9px/1.5 var(--font-geist-mono), monospace; letter-spacing: .1em; }
 .lobby-signed-in strong { color: var(--green); }
 

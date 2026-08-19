@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChessgroundBoard } from "../../ChessgroundBoard";
+import { TopBar } from "../../TopBar";
 import { gradeLabel, useMoveAnalysis } from "../../move-analysis";
 import {
   formatClock,
@@ -221,27 +221,7 @@ export function SharedGameView({ gameId }: { gameId: string }) {
 
   return (
     <main className="app-shell archive-shell">
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Pawn Patrol home">
-          <span className="brand-mark">
-            <Image
-              src="/pawn-patrol-sentry-correct.png"
-              alt=""
-              width={30}
-              height={30}
-              priority
-              unoptimized
-            />
-          </span>
-          <span>
-            PAWN <em>PATROL</em>
-          </span>
-        </Link>
-        <div className="topbar-note">SHARED GAME</div>
-        <Link className="text-button" href="/">
-          Start a game
-        </Link>
-      </header>
+      <TopBar />
 
       <section className="archive-page shared-replay-page">
         <div className="archive-title-row">

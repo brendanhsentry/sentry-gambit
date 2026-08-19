@@ -1,13 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PIECE_GLYPHS } from "../chess-pieces";
 import { ChessgroundBoard } from "../ChessgroundBoard";
 import { IconSeer } from "../IconSeer";
+import { TopBar } from "../TopBar";
 import {
   gradeLabel,
   useMoveAnalysis,
@@ -301,27 +300,7 @@ export function PastGamesView() {
 
   return (
     <main className="app-shell archive-shell">
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Pawn Patrol home">
-          <span className="brand-mark">
-            <Image
-              src="/pawn-patrol-sentry-correct.png"
-              alt=""
-              width={30}
-              height={30}
-              priority
-              unoptimized
-            />
-          </span>
-          <span>
-            PAWN <em>PATROL</em>
-          </span>
-        </Link>
-        <div className="topbar-note">GAME RECORDS</div>
-        <Link className="text-button" href="/">
-          Back to tables
-        </Link>
-      </header>
+      <TopBar />
 
       <section className="archive-page">
         <div className="archive-title-row">

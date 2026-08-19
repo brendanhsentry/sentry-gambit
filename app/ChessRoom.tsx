@@ -1,8 +1,6 @@
 "use client";
 
 import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
-import Image from "next/image";
-import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -39,7 +37,7 @@ import {
 } from "./move-analysis";
 import { BOTS, useMaiaEngine, type BotKey } from "./maia-bot";
 import { authToken, useAuth } from "./auth";
-import { AuthDialog } from "./AuthDialog";
+import { TopBar } from "./TopBar";
 
 // The captured trays reuse chessground's <piece> element and its piece SVGs.
 declare module "react" {
@@ -370,8 +368,8 @@ export function ChessRoom() {
   const [pendingBot, setPendingBot] = useState<BotKey | null>(null);
   const botMoveKeyRef = useRef("");
   const latestStateRef = useRef<GameState | null>(null);
-  const { user, signIn, register, signOut } = useAuth();
-  const [authOpen, setAuthOpen] = useState(false);
+  const auth = useAuth();
+  const { user } = auth;
   const [coachEnabled, setCoachEnabled] = useState(true);
   const [coachFeed, setCoachFeed] = useState<CoachItem[]>([]);
   const [hint, setHint] = useState<CoachHint | null>(null);
@@ -1215,64 +1213,29 @@ export function ChessRoom() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Pawn Patrol home">
-          <span className="brand-mark">
-            <Image
-              src="/pawn-patrol-sentry-correct.png"
-              alt=""
-              width={30}
-              height={30}
-              priority
-              unoptimized
-            />
-          </span>
-          <span>
-            PAWN <em>PATROL</em>
-          </span>
-        </Link>
-        <div className="topbar-actions">
-          {user ? (
-            <>
-              <span className="topbar-user" title="Signed in">
-                {user.username} · {user.rating}
-              </span>
-              <button className="text-button" onClick={signOut}>
-                Sign out
-              </button>
-            </>
-          ) : (
-            <button className="text-button" onClick={() => setAuthOpen(true)}>
-              Sign in
+      <TopBar
+        auth={auth}
+        action={
+          room || invitedRoom ? (
+            <button
+              className="topbar-cta"
+              onClick={() => {
+                socketRef.current?.close();
+                socketRef.current = null;
+                setConnection("idle");
+                setRoom("");
+                setState(null);
+                setReplayPly(null);
+                setInvitedRoom(null);
+                setRoomInput("");
+                window.history.replaceState({}, "", "/");
+              }}
+            >
+              New table
             </button>
-          )}
-          <Link className="text-button" href="/leaderboard">
-            Leaderboard
-          </Link>
-          <Link className="text-button" href="/puzzles">
-            Puzzles
-          </Link>
-          <Link className="text-button" href="/games">
-            Past games
-          </Link>
-          <button
-            className="text-button"
-            onClick={() => {
-              socketRef.current?.close();
-              socketRef.current = null;
-              setConnection("idle");
-              setRoom("");
-              setState(null);
-              setReplayPly(null);
-              setInvitedRoom(null);
-              setRoomInput("");
-              window.history.replaceState({}, "", "/");
-            }}
-          >
-            New table
-          </button>
-        </div>
-      </header>
+          ) : null
+        }
+      />
 
       <section className="game-layout">
         <div className="board-column">
@@ -2311,14 +2274,6 @@ export function ChessRoom() {
             </div>
           </aside>
         </>
-      )}
-
-      {authOpen && (
-        <AuthDialog
-          onClose={() => setAuthOpen(false)}
-          signIn={signIn}
-          register={register}
-        />
       )}
 
       <footer>

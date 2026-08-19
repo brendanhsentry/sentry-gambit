@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import { type AuthUser } from "../auth";
+import { TopBar } from "../TopBar";
 
 export function LeaderboardView() {
   const [players, setPlayers] = useState<AuthUser[]>([]);
@@ -31,27 +30,7 @@ export function LeaderboardView() {
 
   return (
     <main className="app-shell archive-shell">
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Pawn Patrol home">
-          <span className="brand-mark">
-            <Image
-              src="/pawn-patrol-sentry-correct.png"
-              alt=""
-              width={30}
-              height={30}
-              priority
-              unoptimized
-            />
-          </span>
-          <span>
-            PAWN <em>PATROL</em>
-          </span>
-        </Link>
-        <div className="topbar-note">CLUB STANDINGS</div>
-        <Link className="text-button" href="/">
-          Back to tables
-        </Link>
-      </header>
+      <TopBar />
 
       <section className="leaderboard-page">
         <span className="panel-kicker">RATED PLAY</span>
