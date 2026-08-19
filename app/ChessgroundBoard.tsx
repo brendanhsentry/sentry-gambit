@@ -65,10 +65,10 @@ export function ChessgroundBoard({
         enabled: false,
         visible: true,
         brushes: {
-          green: { key: "g", color: "#3e3b46", opacity: 1, lineWidth: 10 },
+          green: { key: "g", color: "#15781b", opacity: 1, lineWidth: 10 },
           red: { key: "r", color: "#882020", opacity: 1, lineWidth: 10 },
-          blue: { key: "b", color: "#3b6ecc", opacity: 1, lineWidth: 10 },
-          yellow: { key: "y", color: "#6c5fc7", opacity: 1, lineWidth: 10 },
+          blue: { key: "b", color: "#003088", opacity: 1, lineWidth: 10 },
+          yellow: { key: "y", color: "#968ba0", opacity: 1, lineWidth: 10 },
         },
       },
       draggable: { showGhost: true },
