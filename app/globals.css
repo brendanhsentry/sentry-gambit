@@ -207,7 +207,7 @@ button { color: inherit; }
 .coach-toggle-copy strong { font: 700 11.5px/1.2 var(--font-geist-mono), monospace; letter-spacing: .05em; text-transform: uppercase; color: var(--green); }
 .coach-toggle-copy small { font-size: 11px; line-height: 1.3; color: #7d8983; }
 
-.live-coach { margin-bottom: 16px; padding: 13px 14px 14px; border: 2px solid rgba(201, 192, 209, 0.45); border-left: 4px solid var(--amber); background: linear-gradient(160deg, rgba(201, 192, 209, 0.12), rgba(250, 247, 239, 0.6) 55%); }
+.live-coach { margin-bottom: 16px; padding: 13px 14px 14px; border: 2px solid var(--amber); background: linear-gradient(160deg, rgba(201, 192, 209, 0.12), rgba(250, 247, 239, 0.6) 55%); box-shadow: 0 4px 0 0 var(--amber); }
 .live-coach-head { display: flex; align-items: center; gap: 8px; }
 .live-coach-title { color: var(--green); font: 700 11px/1 var(--font-geist-mono), monospace; letter-spacing: .13em; }
 .live-coach-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #2e9e5b; box-shadow: 0 0 0 3px rgba(46, 158, 91, 0.18); animation: live-coach-pulse 1.8s ease-in-out infinite; }
@@ -355,10 +355,11 @@ button { color: inherit; }
 
 .move-explanation {
   margin-top: 14px;
-  border: 2px solid var(--line);
-  border-top: 3px solid var(--amber);
+  margin-bottom: 4px;
+  border: 2px solid var(--btn-line);
   background: rgba(255, 255, 255, 0.3);
   padding: 14px;
+  box-shadow: 0 4px 0 0 var(--btn-line);
 }
 .move-explanation-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .move-explanation-head strong { color: var(--green); font: 700 13px/1 var(--font-geist-mono), monospace; }
@@ -440,13 +441,13 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 .puzzle-heading { padding: 24px 0 23px; border-bottom: 1px solid var(--line); }
 .puzzle-heading h2 { margin: 11px 0 8px; color: var(--green); font-size: 23px; line-height: 1.15; font-weight: 650; letter-spacing: -.01em; }
 .puzzle-heading p { margin: 0; color: #65736d; font-size: 12px; line-height: 1.55; }
-.puzzle-feedback { min-height: 112px; padding: 18px 17px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.22); }
+.puzzle-feedback { min-height: 112px; padding: 18px 17px; margin-bottom: 4px; border: 2px solid var(--btn-line); background: rgba(255,255,255,.22); box-shadow: 0 4px 0 0 var(--btn-line); }
 .puzzle-feedback strong { color: var(--green); font: 700 11px/1 var(--font-geist-mono), monospace; letter-spacing: .08em; text-transform: uppercase; }
 .puzzle-feedback p { margin: 10px 0 0; color: #5d6a64; font-size: 12px; line-height: 1.55; }
 .puzzle-feedback small { display: block; margin-top: 10px; color: #7d8983; font: 650 9.5px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }
 .puzzle-solution { display: block; margin-top: 10px; color: var(--green); font: 650 11px/1.5 var(--font-geist-mono), monospace; }
-.puzzle-feedback--solved { border-left: 4px solid #3d8a52; background: rgba(61,138,82,.09); }
-.puzzle-feedback--wrong { border-left: 4px solid #ae372b; background: rgba(174,55,43,.07); }
+.puzzle-feedback--solved { border-color: #3d8a52; background: rgba(61,138,82,.09); box-shadow: 0 4px 0 0 #3d8a52; }
+.puzzle-feedback--wrong { border-color: #ae372b; background: rgba(174,55,43,.07); box-shadow: 0 4px 0 0 #ae372b; }
 .puzzle-hint { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 17px 0; border-bottom: 1px solid var(--line); }
 .puzzle-hint > div { min-width: 0; }
 .puzzle-hint span { display: block; color: #7c6a8e; font: 700 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; }
