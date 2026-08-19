@@ -20,11 +20,9 @@ type ExploreLog = {
   gameId: string | null;
   opening: string;
   color: string | null;
-  outcome: string | null;
-  score: number;
-  blunders: number;
-  mistakes: number;
-  inaccuracies: number;
+  ply: number;
+  san: string | null;
+  grade: string | null;
   expectedPointsLoss: number;
 };
 
@@ -326,38 +324,38 @@ export function ExploreView() {
                       {result.logs.map((log, index) => (
                         <article key={`${log.gameId ?? "game"}-${index}`}>
                           <div className="explore-log-head">
-                            <code>chess.player.game.completed</code>
+                            <code>chess.move.graded</code>
                             <time>{logTime(log.timestamp)}</time>
                           </div>
                           <div className="explore-log-main">
                             <div>
                               <strong>{log.opening}</strong>
                               <span>
-                                {log.color ?? "unknown color"} · game{" "}
+                                {log.san ?? "unknown move"} · {log.color ?? "unknown color"} · game{" "}
                                 {log.gameId?.slice(0, 8) ?? "unknown"}
                               </span>
                             </div>
                             <span
-                              className={`explore-outcome is-${log.outcome ?? "unknown"}`}
+                              className={`explore-grade is-${log.grade ?? "unknown"}`}
                             >
-                              {log.outcome ?? "unknown"}
+                              {log.grade ?? "unknown"}
                             </span>
                           </div>
                           <dl>
                             <div>
-                              <dt>blunders</dt>
-                              <dd>{log.blunders}</dd>
+                              <dt>ply</dt>
+                              <dd>{log.ply || "—"}</dd>
                             </div>
                             <div>
-                              <dt>mistakes</dt>
-                              <dd>{log.mistakes}</dd>
+                              <dt>move</dt>
+                              <dd>{log.san ?? "—"}</dd>
                             </div>
                             <div>
-                              <dt>inaccuracies</dt>
-                              <dd>{log.inaccuracies}</dd>
+                              <dt>grade</dt>
+                              <dd>{log.grade ?? "—"}</dd>
                             </div>
                             <div>
-                              <dt>avg EP loss</dt>
+                              <dt>EP loss</dt>
                               <dd>
                                 {(log.expectedPointsLoss * 100).toFixed(1)}%
                               </dd>

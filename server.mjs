@@ -1822,7 +1822,7 @@ async function sentryApi(path, options = {}) {
 }
 
 const exploreRateLimits = new Map();
-const EXPLORE_LOG_FIELDS = {
+const EXPLORE_GAME_FIELDS = {
   timestamp: "timestamp",
   gameId: "tag[chess.game.id,string]",
   opening: "tag[chess.opening.name,string]",
@@ -1834,6 +1834,17 @@ const EXPLORE_LOG_FIELDS = {
   mistakes: "tag[chess.player.mistakes,number]",
   inaccuracies: "tag[chess.player.inaccuracies,number]",
   expectedPointsLoss: "tag[chess.player.expected_points_loss,number]",
+};
+const EXPLORE_GRADE_FIELDS = {
+  timestamp: "timestamp",
+  gameId: "tag[chess.game.id,string]",
+  opening: "tag[chess.opening.name,string]",
+  family: "tag[chess.opening.family,string]",
+  color: "tag[chess.move.color,string]",
+  ply: "tag[chess.move.ply,number]",
+  san: "tag[chess.move.san,string]",
+  grade: "tag[chess.move.grade,string]",
+  expectedPointsLoss: "tag[chess.move.expected_points_loss,number]",
 };
 
 function consumeExploreRateLimit(req) {
@@ -1883,16 +1894,16 @@ function summarizeExploreRows(rows) {
   let expectedPointsLoss = 0;
   for (const row of rows) {
     const games = 1;
-    const outcome = row[EXPLORE_LOG_FIELDS.outcome];
-    const family = row[EXPLORE_LOG_FIELDS.family] || "Unknown opening";
+    const outcome = row[EXPLORE_GAME_FIELDS.outcome];
+    const family = row[EXPLORE_GAME_FIELDS.family] || "Unknown opening";
     const values = {
-      score: numericField(row, EXPLORE_LOG_FIELDS.score),
-      blunders: numericField(row, EXPLORE_LOG_FIELDS.blunders),
-      mistakes: numericField(row, EXPLORE_LOG_FIELDS.mistakes),
-      inaccuracies: numericField(row, EXPLORE_LOG_FIELDS.inaccuracies),
+      score: numericField(row, EXPLORE_GAME_FIELDS.score),
+      blunders: numericField(row, EXPLORE_GAME_FIELDS.blunders),
+      mistakes: numericField(row, EXPLORE_GAME_FIELDS.mistakes),
+      inaccuracies: numericField(row, EXPLORE_GAME_FIELDS.inaccuracies),
       expectedPointsLoss: numericField(
         row,
-        EXPLORE_LOG_FIELDS.expectedPointsLoss,
+        EXPLORE_GAME_FIELDS.expectedPointsLoss,
       ),
     };
     total += games;
@@ -1950,21 +1961,19 @@ function summarizeExploreRows(rows) {
 
 function exploreLogRows(rows) {
   return rows.map((row) => ({
-    timestamp: row[EXPLORE_LOG_FIELDS.timestamp] ?? null,
-    gameId: row[EXPLORE_LOG_FIELDS.gameId] ?? null,
+    timestamp: row[EXPLORE_GRADE_FIELDS.timestamp] ?? null,
+    gameId: row[EXPLORE_GRADE_FIELDS.gameId] ?? null,
     opening:
-      row[EXPLORE_LOG_FIELDS.opening] ??
-      row[EXPLORE_LOG_FIELDS.family] ??
+      row[EXPLORE_GRADE_FIELDS.opening] ??
+      row[EXPLORE_GRADE_FIELDS.family] ??
       "Unknown opening",
-    color: row[EXPLORE_LOG_FIELDS.color] ?? null,
-    outcome: row[EXPLORE_LOG_FIELDS.outcome] ?? null,
-    score: numericField(row, EXPLORE_LOG_FIELDS.score),
-    blunders: numericField(row, EXPLORE_LOG_FIELDS.blunders),
-    mistakes: numericField(row, EXPLORE_LOG_FIELDS.mistakes),
-    inaccuracies: numericField(row, EXPLORE_LOG_FIELDS.inaccuracies),
+    color: row[EXPLORE_GRADE_FIELDS.color] ?? null,
+    ply: numericField(row, EXPLORE_GRADE_FIELDS.ply),
+    san: row[EXPLORE_GRADE_FIELDS.san] ?? null,
+    grade: row[EXPLORE_GRADE_FIELDS.grade] ?? null,
     expectedPointsLoss: numericField(
       row,
-      EXPLORE_LOG_FIELDS.expectedPointsLoss,
+      EXPLORE_GRADE_FIELDS.expectedPointsLoss,
     ),
   }));
 }
@@ -2040,29 +2049,59 @@ async function handleExploreRequest(req, res, url) {
     if (plan.color) {
       filters.push(`chess.player.color:${quoteSentrySearch(plan.color)}`);
     }
-    const query = filters.join(" ");
-    const logParams = new URLSearchParams({
+    const gameQuery = filters.join(" ");
+    const gameParams = new URLSearchParams({
       dataset: "logs",
       project: SENTRY_PROJECT_ID,
       statsPeriod: "90d",
-      query,
+      query: gameQuery,
       per_page: "100",
       sort: "-timestamp",
     });
-    for (const field of Object.values(EXPLORE_LOG_FIELDS)) {
-      logParams.append("field", field);
+    for (const field of Object.values(EXPLORE_GAME_FIELDS)) {
+      gameParams.append("field", field);
     }
-    const logResult = await sentryApi(
-      `/organizations/${SENTRY_ORG}/events/?${logParams}`,
+    const gameResult = await sentryApi(
+      `/organizations/${SENTRY_ORG}/events/?${gameParams}`,
     );
-    const rows = Array.isArray(logResult?.data) ? logResult.data : [];
-    const summary = summarizeExploreRows(rows);
+    const gameRows = Array.isArray(gameResult?.data) ? gameResult.data : [];
+    const gameIds = [
+      ...new Set(
+        gameRows
+          .map((row) => row[EXPLORE_GAME_FIELDS.gameId])
+          .filter((gameId) => typeof gameId === "string" && gameId),
+      ),
+    ];
+    const gradeQuery = gameIds.length
+      ? `message:${quoteSentrySearch("chess.move.graded")} chess.game.id:[${gameIds.join(",")}]`
+      : null;
+    let gradeRows = [];
+    if (gradeQuery) {
+      const gradeParams = new URLSearchParams({
+        dataset: "logs",
+        project: SENTRY_PROJECT_ID,
+        statsPeriod: "90d",
+        query: gradeQuery,
+        per_page: "100",
+        sort: "-timestamp",
+      });
+      for (const field of Object.values(EXPLORE_GRADE_FIELDS)) {
+        gradeParams.append("field", field);
+      }
+      const gradeResult = await sentryApi(
+        `/organizations/${SENTRY_ORG}/events/?${gradeParams}`,
+      );
+      gradeRows = Array.isArray(gradeResult?.data) ? gradeResult.data : [];
+    }
+    const summary = summarizeExploreRows(gameRows);
     sendJson(res, 200, {
       question,
       answer: exploreAnswer(summary, plan),
       summary,
-      logs: exploreLogRows(rows.slice(0, 25)),
-      query: query.replace(playerId, "<your-player-id>"),
+      logs: exploreLogRows(gradeRows.slice(0, 25)),
+      query: gradeQuery
+        ? gradeQuery.replace(/chess\.game\.id:\[[^\]]+\]/, "chess.game.id:[<matching-game-ids>]")
+        : `message:${quoteSentrySearch("chess.move.graded")} chess.game.id:[<matching-game-ids>]`,
       period: "90d",
     });
   } catch (error) {

@@ -366,7 +366,7 @@
 .explore-log-main strong { overflow: hidden; color: var(--green); font: 650 13px/1.2 var(--font-geist-sans), Arial, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .explore-log-main div span { color: #7c8882; font: 550 8px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }
 
-.explore-outcome {
+.explore-grade {
   flex: none;
   min-width: 52px;
   padding: 6px 8px;
@@ -376,10 +376,17 @@
   text-transform: uppercase;
 }
 
-.explore-outcome.is-win { background: #3f8066; }
-.explore-outcome.is-draw { background: #b68139; }
-.explore-outcome.is-loss { background: #a74c42; }
-.explore-outcome.is-unknown { background: #77837d; }
+.explore-grade.is-brilliant,
+.explore-grade.is-great,
+.explore-grade.is-best { background: #168c8a; }
+.explore-grade.is-excellent,
+.explore-grade.is-good,
+.explore-grade.is-book { background: #3f8066; }
+.explore-grade.is-inaccuracy { background: #b68139; }
+.explore-grade.is-mistake,
+.explore-grade.is-miss { background: #c66d34; }
+.explore-grade.is-blunder { background: #a74c42; }
+.explore-grade.is-unknown { background: #77837d; }
 
 .explore-log-list dl {
   display: grid;
