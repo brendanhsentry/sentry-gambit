@@ -337,6 +337,7 @@ export function ChessRoom() {
   const [name, setName] = useState("");
   const [timeControl, setTimeControl] =
     useState<TimeControl>(DEFAULT_TIME_CONTROL);
+  const [lobbyTab, setLobbyTab] = useState<"friend" | "patrol">("friend");
   const [room, setRoom] = useState("");
   const [role, setRole] = useState<Role>("spectator");
   const [connection, setConnection] = useState<
@@ -1152,6 +1153,7 @@ export function ChessRoom() {
   const matchUnderway = Boolean(
     state && !state.result && state.players.w && state.players.b,
   );
+  const inLobby = connection === "idle";
   const canControlBoard =
     replayPly === null &&
     !!state &&
@@ -1348,8 +1350,9 @@ export function ChessRoom() {
         }
       />
 
-      <section className="game-layout">
+      <section className={`game-layout ${inLobby ? "game-layout--lobby" : ""}`}>
         <div className="board-column">
+          {!inLobby && (
           <div className="eyebrow-row">
             <span>{room ? `PRIVATE TABLE · ${room}` : "PRIVATE TABLE"}</span>
             <span className="eyebrow-tools">
@@ -1388,6 +1391,7 @@ export function ChessRoom() {
               </span>
             </span>
           </div>
+          )}
 
           {state?.bot &&
             !state.result &&
@@ -1400,14 +1404,16 @@ export function ChessRoom() {
               </div>
             )}
 
-          <PlayerCard
-            name={displayedPlayers[topColor]}
-            color={topColor}
-            time={topTime}
-            active={state?.clock.running === topColor && !state.result}
-            captured={captured[bottomColor]}
-            advantage={topColor === "w" ? materialLead : -materialLead}
-          />
+          {!inLobby && (
+            <PlayerCard
+              name={displayedPlayers[topColor]}
+              color={topColor}
+              time={topTime}
+              active={state?.clock.running === topColor && !state.result}
+              captured={captured[bottomColor]}
+              advantage={topColor === "w" ? materialLead : -materialLead}
+            />
+          )}
 
           <div className="board-wrap">
             <ChessgroundBoard
@@ -1471,16 +1477,14 @@ export function ChessRoom() {
                   </>
                 ) : (
                   <>
-                    <span className="lobby-kicker">PLAY HEAD TO HEAD</span>
                     <h1>
                       Your board.
                       <br />
                       Your move.
                     </h1>
                     <p>
-                      Create a private table or enter a code from a friend. No
-                      account needed — sign in if you want rated games on the
-                      leaderboard.
+                      No account needed — sign in if you want rated games on
+                      the leaderboard.
                     </p>
                     {user ? (
                       <p className="lobby-signed-in">
@@ -1517,6 +1521,26 @@ export function ChessRoom() {
                         ))}
                       </div>
                     </fieldset>
+                    <div className="lobby-tabs" role="tablist">
+                      <button
+                        role="tab"
+                        aria-selected={lobbyTab === "friend"}
+                        className={lobbyTab === "friend" ? "selected" : ""}
+                        onClick={() => setLobbyTab("friend")}
+                      >
+                        Play a friend
+                      </button>
+                      <button
+                        role="tab"
+                        aria-selected={lobbyTab === "patrol"}
+                        className={lobbyTab === "patrol" ? "selected" : ""}
+                        onClick={() => setLobbyTab("patrol")}
+                      >
+                        Challenge the patrol
+                      </button>
+                    </div>
+                    {lobbyTab === "friend" ? (
+                    <>
                     <button className="primary-button" onClick={startTable}>
                       Create a table <span>→</span>
                     </button>
@@ -1541,8 +1565,9 @@ export function ChessRoom() {
                         Join
                       </button>
                     </div>
+                    </>
+                    ) : (
                     <div className="bot-row">
-                      <span>OR CHALLENGE THE PATROL</span>
                       <button
                         type="button"
                         className={`coach-toggle ${coachEnabled ? "coach-toggle--on" : ""}`}
@@ -1580,6 +1605,7 @@ export function ChessRoom() {
                         ))}
                       </div>
                     </div>
+                    )}
                   </>
                 )}
               </div>
@@ -1648,17 +1674,20 @@ export function ChessRoom() {
             )}
           </div>
 
-          <PlayerCard
-            name={displayedPlayers[bottomColor]}
-            color={bottomColor}
-            time={bottomTime}
-            active={state?.clock.running === bottomColor && !state.result}
-            bottom
-            captured={captured[topColor]}
-            advantage={bottomColor === "w" ? materialLead : -materialLead}
-          />
+          {!inLobby && (
+            <PlayerCard
+              name={displayedPlayers[bottomColor]}
+              color={bottomColor}
+              time={bottomTime}
+              active={state?.clock.running === bottomColor && !state.result}
+              bottom
+              captured={captured[topColor]}
+              advantage={bottomColor === "w" ? materialLead : -materialLead}
+            />
+          )}
         </div>
 
+        {!inLobby && (
         <aside
           className={`match-panel ${matchUnderway ? "match-panel--live" : ""}`}
         >
@@ -1682,7 +1711,7 @@ export function ChessRoom() {
             </div>
           )}
 
-          {matchUnderway ? null : room ? (
+          {!matchUnderway && room && (
             <div className="invite-card">
               <span>
                 {state
@@ -1710,21 +1739,6 @@ export function ChessRoom() {
                   {replayCopied ? "Replay link copied!" : "Share replay"}
                 </button>
               )}
-            </div>
-          ) : (
-            <div className="rule-card">
-              <span>HOW IT WORKS</span>
-              <ol>
-                <li>
-                  <b>01</b> Create a private table
-                </li>
-                <li>
-                  <b>02</b> Share the six-character code
-                </li>
-                <li>
-                  <b>03</b> Play in real time
-                </li>
-              </ol>
             </div>
           )}
 
@@ -2305,6 +2319,7 @@ export function ChessRoom() {
             </div>
           )}
         </aside>
+        )}
       </section>
 
       {seerExpanded && seer.phase === "done" && (
