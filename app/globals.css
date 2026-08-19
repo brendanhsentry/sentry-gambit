@@ -723,7 +723,7 @@ button.move-cell > span {
   border-bottom: 1px solid var(--line);
 }
 
-.archive-index { border-right: 1px solid var(--line); min-width: 0; }
+.archive-index { border-right: 2px solid var(--line); min-width: 0; }
 .archive-tools { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 18px 18px 18px 0; border-bottom: 1px solid var(--line); }
 .archive-tools label span { display: block; margin-bottom: 7px; color: #718078; font: 650 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
 .archive-tools input { width: 100%; height: 44px; border: 2px solid var(--line); background: rgba(255,255,255,.35); padding: 0 11px; outline: none; color: var(--green); font-size: 12px; }
@@ -733,13 +733,15 @@ button.move-cell > span {
 .archive-tools button:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
 .archive-tools button:disabled { opacity: .45; }
 
-.game-record-list { max-height: 610px; overflow: auto; scrollbar-width: thin; }
-.game-record-list > button { width: 100%; display: grid; gap: 7px; border: 0; border-bottom: 1px solid rgba(23,63,53,.1); background: transparent; padding: 17px 18px 17px 0; cursor: pointer; text-align: left; }
-.game-record-list > button:hover, .game-record-list > button.is-active { background: rgba(23,63,53,.065); box-shadow: inset 3px 0 var(--amber); padding-left: 14px; }
+.game-record-list { max-height: 610px; overflow: auto; scrollbar-width: thin; padding: 16px 18px 10px 0; }
+.game-record-list > button { width: 100%; display: grid; gap: 8px; margin-bottom: 12px; border: 2px solid var(--btn-line); border-radius: 12px; background: var(--btn-bg); padding: 14px 16px; cursor: pointer; text-align: left; box-shadow: 0 3px 0 0 var(--btn-line); }
+.game-record-list > button:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
+.game-record-list > button.is-active { border-color: var(--green); background: #fffdf8; box-shadow: 0 3px 0 0 var(--green); }
+.game-record-list > button.is-active:hover { box-shadow: 0 4px 0 0 var(--green); }
 .record-date { color: #85918b; font: 600 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .07em; text-transform: uppercase; }
-.game-record-list strong { color: var(--green); font-size: 14px; line-height: 1.35; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-record-list strong { color: var(--green); font-size: 15px; line-height: 1.35; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .game-record-list strong i, .record-heading h2 i { color: #9aa49f; font-size: .7em; font-weight: 400; }
-.record-result { color: #52665e; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.record-result { color: #52665e; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .record-meta { display: flex; justify-content: space-between; gap: 14px; color: #89948f; }
 .record-meta code { min-width: 0; overflow: hidden; font: 500 9.5px/1 var(--font-geist-mono), monospace; text-overflow: ellipsis; }
 .record-meta small { flex: none; font: 650 9.5px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }
@@ -817,10 +819,9 @@ button.move-cell > span {
 
 @media (max-width: 800px) {
   .archive-browser { grid-template-columns: 1fr; }
-  .archive-index { border-right: 0; border-bottom: 1px solid var(--line); }
+  .archive-index { border-right: 0; border-bottom: 2px solid var(--line); }
   .archive-tools { padding-right: 0; }
-  .game-record-list { max-height: 330px; }
-  .game-record-list > button { padding-right: 0; }
+  .game-record-list { max-height: 330px; padding-right: 0; }
   .record-replay-layout { grid-template-columns: minmax(0, 520px); }
   .record-move-table { max-height: 320px; }
 }
