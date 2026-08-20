@@ -20,8 +20,9 @@ npm run start    # production server
 
 `npm run dev` first downloads the Maia 3 model and ONNX runtime into
 `public/maia3` and `public/ort` (once, ~58 MB, via
-`scripts/fetch-maia-assets.mjs`). These power the three bot opponents —
-Levy (1100), Hikaru (1500), and Magnus (1900) — which run the
+`scripts/fetch-maia-assets.mjs`). These power five bot opponents —
+Novice (800), Levy (1100), Hikaru (1500), Magnus (1900), and Grandmaster
+(2200) — which run the
 [Maia](https://www.maiachess.com/) human-like chess model in a browser worker
 on the seated player's machine; the server stays authoritative for legality,
 clocks, and archiving.
