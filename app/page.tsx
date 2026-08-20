@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ChessRoom } from "./ChessRoom";
+import { HomeClient } from "./HomeClient";
 
 export const metadata: Metadata = {
   title: "Pawn Patrol — Live chess",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  return <ChessRoom />;
+  return <HomeClient />;
 }
