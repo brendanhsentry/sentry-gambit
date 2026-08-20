@@ -2,7 +2,7 @@
 
 import type { Color, Dests, Key } from "@lichess-org/chessground/types";
 import type { DrawShape } from "@lichess-org/chessground/draw";
-import { Chess } from "chess.js";
+import { Chess, type PieceSymbol, type Square } from "chess.js";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   playCapture,
@@ -14,10 +14,12 @@ import {
   soundsMuted,
 } from "../board-sounds";
 import { ChessgroundBoard } from "../ChessgroundBoard";
+import { PIECE_GLYPHS } from "../chess-pieces";
 import { TopBar } from "../TopBar";
 import { PUZZLES } from "./puzzles";
 
 type Phase = "playing" | "replying" | "solved";
+type Promotion = { from: Key; to: Key };
 
 function movePosition(fen: string, uci: string) {
   const chess = new Chess(fen);
@@ -52,6 +54,7 @@ export function PuzzleTrainer() {
   const [hintLevel, setHintLevel] = useState(0);
   const [mistakes, setMistakes] = useState(0);
   const [wrongMove, setWrongMove] = useState<Key[] | null>(null);
+  const [promotion, setPromotion] = useState<Promotion | null>(null);
   const [resetToken, setResetToken] = useState(0);
   const [solvedIds, setSolvedIds] = useState<Set<string>>(new Set());
   const [muted, setMuted] = useState(false);
@@ -110,6 +113,7 @@ export function PuzzleTrainer() {
     setHintLevel(0);
     setMistakes(0);
     setWrongMove(null);
+    setPromotion(null);
     setResetToken((value) => value + 1);
   }, []);
 
@@ -155,9 +159,18 @@ export function PuzzleTrainer() {
     return shapes;
   }, [expectedMove, hintLevel, phase, wrongMove]);
 
-  function handleMove(from: Key, to: Key) {
+  function handleMove(from: Key, to: Key, promotionPiece?: PieceSymbol) {
     if (phase !== "playing" || !expectedMove) return;
-    if (`${from}${to}` !== expectedMove.slice(0, 4)) {
+    const promotionOptions = chess
+      .moves({ square: from as Square, verbose: true })
+      .filter((move) => move.to === to && move.promotion);
+    if (!promotionPiece && promotionOptions.length) {
+      setPromotion({ from, to });
+      return;
+    }
+
+    setPromotion(null);
+    if (`${from}${to}${promotionPiece ?? ""}` !== expectedMove) {
       setMistakes((value) => value + 1);
       setWrongMove([from, to]);
       setResetToken((value) => value + 1);
@@ -256,7 +269,6 @@ export function PuzzleTrainer() {
             <div className="puzzle-board-meta">
               <span>{puzzle.difficulty}</span>
               <span className="puzzle-board-tools">
-                <strong>{puzzle.theme}</strong>
                 <button
                   className="sound-toggle"
                   onClick={toggleMute}
@@ -294,9 +306,37 @@ export function PuzzleTrainer() {
                 dests={legalDests}
                 autoShapes={hintShapes}
                 onMove={handleMove}
-                resetKey={`${puzzle.id}-${resetToken}`}
-                ariaLabel={`${puzzle.title}, ${orientation} orientation`}
+                resetKey={`${puzzle.id}-${resetToken}-${promotion ? `${promotion.from}${promotion.to}` : ""}`}
+                ariaLabel={`Puzzle board, ${orientation} orientation`}
               />
+              {promotion && (
+                <div
+                  className="promotion-picker"
+                  role="dialog"
+                  aria-label="Choose promotion piece"
+                >
+                  <span>Promote pawn to</span>
+                  <div>
+                    {(["q", "r", "b", "n"] as PieceSymbol[]).map((piece) => (
+                      <button
+                        key={piece}
+                        onClick={() =>
+                          handleMove(promotion.from, promotion.to, piece)
+                        }
+                        aria-label={`Promote to ${piece}`}
+                      >
+                        {PIECE_GLYPHS[piece]}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    className="promotion-cancel"
+                    onClick={() => setPromotion(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           </section>
 
@@ -305,8 +345,7 @@ export function PuzzleTrainer() {
               <span className="panel-kicker">
                 PUZZLE {puzzleIndex + 1} / {PUZZLES.length}
               </span>
-              <h2>{puzzle.title}</h2>
-              {puzzle.prompt && <p>{puzzle.prompt}</p>}
+              <h2>Puzzle {String(puzzleIndex + 1).padStart(2, "0")}</h2>
             </div>
 
             <div
@@ -383,8 +422,8 @@ export function PuzzleTrainer() {
                     aria-current={index === puzzleIndex ? "true" : undefined}
                   >
                     <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{item.title}</strong>
-                    <small>{solvedIds.has(item.id) ? "✓" : item.theme}</small>
+                    <strong>Puzzle {String(index + 1).padStart(2, "0")}</strong>
+                    <small>{solvedIds.has(item.id) ? "✓" : ""}</small>
                   </button>
                 </Fragment>
               ))}
