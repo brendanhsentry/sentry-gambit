@@ -73,10 +73,7 @@ export function ChessgroundBoard({
       },
       draggable: { showGhost: true },
       premovable: { enabled: false, showDests: true },
-      animation: {
-        enabled: !window.matchMedia("(max-width: 600px)").matches,
-        duration: 180,
-      },
+      animation: { enabled: true, duration: 180 },
       movable: {
         free: false,
         showDests: true,
