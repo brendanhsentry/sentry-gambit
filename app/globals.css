@@ -71,6 +71,7 @@ button { color: inherit; }
 .topbar-nav a.is-current { color: var(--green); }
 .topbar-nav a.is-current::after { background: var(--amber); transform: scaleX(1); }
 .topbar-actions { grid-column: -2 / -1; justify-self: end; display: flex; align-items: center; gap: 20px; }
+.mobile-nav-toggle { display: none; }
 .topbar-actions .text-button { text-decoration: none; }
 .topbar-cta { border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); padding: 11px 18px; cursor: pointer; color: var(--green); font-size: 11px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; box-shadow: 0 3px 0 0 var(--btn-line); }
 .topbar-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
@@ -392,10 +393,9 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 
 @media (max-width: 600px) {
   .topbar {
-    height: auto;
-    min-height: 102px;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: 61px 40px;
+    height: 62px;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     column-gap: 12px;
     padding: 0 16px;
   }
@@ -404,16 +404,47 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .brand-mark img { width: 24px; height: 24px; }
   .text-button { font-size: 10px; }
   .topbar-nav {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    align-self: stretch;
-    justify-self: stretch;
-    justify-content: space-between;
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 12px;
+    left: auto;
+    width: min(260px, calc(100vw - 32px));
+    justify-self: auto;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0;
-    border-top: 1px solid var(--line);
+    padding: 8px;
+    border: 2px solid var(--line);
+    border-top: 3px solid var(--amber);
+    background: var(--paper);
+    box-shadow: 0 18px 44px rgba(9, 38, 32, 0.18);
   }
-  .topbar-nav a { font-size: 10px; }
-  .topbar-actions { grid-column: 2; grid-row: 1; min-width: 0; gap: 12px; }
+  .topbar-nav.is-open { display: flex; }
+  .topbar-nav a {
+    padding: 12px 13px;
+    font-size: 11px;
+  }
+  .topbar-nav a::after { display: none; }
+  .topbar-nav a.is-current { background: rgba(23, 63, 53, 0.07); box-shadow: inset 3px 0 var(--amber); }
+  .topbar-actions { grid-column: 2; min-width: 0; gap: 12px; }
+  .mobile-nav-toggle {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 4px;
+    border: 2px solid var(--btn-line);
+    border-radius: 8px;
+    background: var(--btn-bg);
+    cursor: pointer;
+    box-shadow: 0 2px 0 var(--btn-line);
+  }
+  .mobile-nav-toggle span { width: 14px; height: 2px; background: var(--green); transition: transform 160ms ease, opacity 160ms ease; }
+  .mobile-nav-toggle[aria-expanded="true"] span:first-child { transform: translateY(6px) rotate(45deg); }
+  .mobile-nav-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+  .mobile-nav-toggle[aria-expanded="true"] span:last-child { transform: translateY(-6px) rotate(-45deg); }
   .topbar-cta { padding: 6px 9px; font-size: 10px; }
   .user-menu-trigger { max-width: 130px; font-size: 10px; }
   .user-menu-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -436,7 +467,6 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .topbar .brand > span:last-child { display: none; }
   .topbar-actions { gap: 8px; }
   .topbar-actions .text-button { font-size: 9px; }
-  .topbar-nav a { font-size: 9px; }
   .user-menu-trigger { max-width: 105px; }
 }
 

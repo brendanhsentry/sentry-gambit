@@ -29,15 +29,21 @@ export function TopBar({
   const pathname = usePathname();
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !navOpen) return;
     function onPointerDown(event: PointerEvent) {
       if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+      if (!navRef.current?.contains(event.target as Node)) setNavOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        setNavOpen(false);
+      }
     }
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
@@ -45,7 +51,7 @@ export function TopBar({
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [menuOpen]);
+  }, [menuOpen, navOpen]);
 
   return (
     <header className="topbar">
@@ -69,7 +75,12 @@ export function TopBar({
           PAWN <em>PATROL</em>
         </span>
       </Link>
-      <nav className="topbar-nav" aria-label="Main">
+      <nav
+        className={`topbar-nav ${navOpen ? "is-open" : ""}`}
+        id="mobile-navigation"
+        aria-label="Main"
+        ref={navRef}
+      >
         {NAV.map((item) => {
           const current =
             item.href === "/"
@@ -81,6 +92,7 @@ export function TopBar({
               href={item.href}
               className={current ? "is-current" : undefined}
               aria-current={current ? "page" : undefined}
+              onClick={() => setNavOpen(false)}
             >
               {item.label}
             </Link>
@@ -134,6 +146,18 @@ export function TopBar({
           </button>
         )}
       </div>
+      <button
+        className="mobile-nav-toggle"
+        type="button"
+        aria-controls="mobile-navigation"
+        aria-expanded={navOpen}
+        aria-label={navOpen ? "Close navigation" : "Open navigation"}
+        onClick={() => setNavOpen((open) => !open)}
+      >
+        <span />
+        <span />
+        <span />
+      </button>
       {authOpen && (
         <AuthDialog
           onClose={() => setAuthOpen(false)}
