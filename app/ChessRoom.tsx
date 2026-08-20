@@ -586,7 +586,6 @@ export function ChessRoom() {
     currentGameId ?? room,
     state?.history ?? [],
     Boolean(state?.history.length),
-    state?.bot?.color,
   );
 
   const flagClock = useCallback(() => send({ type: "flag" }), [send]);

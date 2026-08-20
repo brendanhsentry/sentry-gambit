@@ -1,6 +1,6 @@
 "use client";
 
-import { type Color, type Move, type PieceSymbol } from "chess.js";
+import { type Move, type PieceSymbol } from "chess.js";
 import { useEffect, useRef, useState } from "react";
 
 export type ReviewMove = Pick<Move, "from" | "to" | "san" | "color"> & {
@@ -82,7 +82,6 @@ export function useMoveAnalysis(
   gameId: string,
   history: ReviewMove[],
   enabled: boolean,
-  excludedColor?: Color,
 ): AnalysisState {
   const [analysis, setAnalysis] = useState<AnalysisState>({
     moves: [],
@@ -121,15 +120,6 @@ export function useMoveAnalysis(
       });
 
       for (let index = startIndex; index < moves.length; index += 1) {
-        if (moves[index].color === excludedColor) {
-          cacheRef.current = {
-            gameId,
-            history: moves.slice(0, index + 1),
-            moves: results.slice(0, index + 1),
-          };
-          setAnalysis({ moves: [...results], completed: index + 1, status: "analyzing" });
-          continue;
-        }
         const response = await fetch("/api/move-analysis", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -158,7 +148,7 @@ export function useMoveAnalysis(
       }
     });
     return () => controller.abort();
-  }, [enabled, excludedColor, gameId, historyKey]);
+  }, [enabled, gameId, historyKey]);
 
   return analysis;
 }
