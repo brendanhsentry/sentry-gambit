@@ -192,9 +192,9 @@ function resultScore(result) {
   return null;
 }
 
-// A game is rated when every seat is a signed-in player or a bot and at
-// least one side is a player. Bots act as fixed-rating anchors.
+// Only completed games between signed-in players are rated.
 async function applyGameRatings(table) {
+  if (table.bot) return;
   const whiteScore = resultScore(table.result ?? "");
   if (whiteScore === null || table.chess.history().length < 2) return;
   const ratings = {};
