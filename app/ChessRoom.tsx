@@ -179,8 +179,6 @@ type CoachItem = {
   thinking: boolean;
 };
 
-const NOTE_COOLDOWN_PLIES = 8;
-
 type CoachHint =
   | { phase: "loading"; tier: "maia" | "best" }
   | {
@@ -412,7 +410,6 @@ export function ChessRoom() {
   const coachSeenRef = useRef(new Set<string>());
   const coachBaselineRef = useRef<{ gameId: string; ply: number } | null>(null);
   const coachIdRef = useRef(1);
-  const lastNotePlyRef = useRef(-Infinity);
   const openingRef = useRef<{
     gameId: string;
     name: string | null;
@@ -639,14 +636,12 @@ export function ChessRoom() {
       });
   }, [state, role, connection, pickMove, send]);
 
-  // The coach watches the live grades and speaks up on notable moves.
   useEffect(() => {
     if (!state?.coach || !state.bot || role === "spectator") return;
     if (coachBaselineRef.current?.gameId !== state.gameId) {
       // Joining mid-game (e.g. after a refresh) must not replay the backlog.
       coachBaselineRef.current = { gameId: state.gameId, ply: state.history.length };
       coachSeenRef.current.clear();
-      lastNotePlyRef.current = -Infinity;
       setCoachFeed([]);
       return;
     }
@@ -677,44 +672,22 @@ export function ChessRoom() {
       if (!reviewed || !move || ply <= baseline) return;
       const seenKey = `${state.gameId}:${ply}:${move.san}`;
       if (coachSeenRef.current.has(seenKey)) return;
-      const offCooldown = ply - lastNotePlyRef.current >= NOTE_COOLDOWN_PLIES;
       if (move.color !== role) {
-        if (!COACH_ALERT_GRADES.has(reviewed.grade)) return;
         coachSeenRef.current.add(seenKey);
-        if (!offCooldown) return;
-        lastNotePlyRef.current = ply;
-        pushNote(ply, move.san, "The bot slipped — look for tactics.", reviewed.grade);
+        pushNote(
+          ply,
+          move.san,
+          COACH_ALERT_GRADES.has(reviewed.grade)
+            ? "The bot slipped — look for tactics."
+            : "The bot's move has been graded.",
+          reviewed.grade,
+        );
         return;
       }
       const isAlert = COACH_ALERT_GRADES.has(reviewed.grade);
       if (!isAlert && !COACH_PRAISE_GRADES.has(reviewed.grade)) {
         coachSeenRef.current.add(seenKey);
-        // The player moved on, so any remark about an earlier move goes away.
-        const clearStale = () =>
-          setCoachFeed((current) =>
-            current.length && current[0].ply < ply ? [] : current,
-          );
-        if (!offCooldown) {
-          clearStale();
-          return;
-        }
-        const onceKey = (tag: string) => `${state.gameId}:${tag}`;
-        let text: string | null = null;
-        if (move.san.startsWith("O-O") && !coachSeenRef.current.has(onceKey("castle"))) {
-          coachSeenRef.current.add(onceKey("castle"));
-          text = "King's safe.";
-        } else if (move.promotion === "q") {
-          text = "A new queen.";
-        } else if (move.san.endsWith("+") && !coachSeenRef.current.has(onceKey("check"))) {
-          coachSeenRef.current.add(onceKey("check"));
-          text = "Keep the pressure on.";
-        }
-        if (!text) {
-          clearStale();
-          return;
-        }
-        lastNotePlyRef.current = ply;
-        pushNote(ply, move.san, text);
+        pushNote(ply, move.san, "Move graded.", reviewed.grade);
         return;
       }
       coachSeenRef.current.add(seenKey);
