@@ -391,15 +391,32 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
 }
 
 @media (max-width: 600px) {
-  .topbar { height: 62px; padding: 0 16px; }
+  .topbar {
+    height: auto;
+    min-height: 102px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 61px 40px;
+    column-gap: 12px;
+    padding: 0 16px;
+  }
   .brand { font-size: 12px; gap: 8px; }
   .brand-mark { width: 32px; padding-right: 8px; }
   .brand-mark img { width: 24px; height: 24px; }
   .text-button { font-size: 10px; }
-  .topbar-nav { gap: 12px; }
+  .topbar-nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: stretch;
+    justify-self: stretch;
+    justify-content: space-between;
+    gap: 0;
+    border-top: 1px solid var(--line);
+  }
   .topbar-nav a { font-size: 10px; }
+  .topbar-actions { grid-column: 2; grid-row: 1; min-width: 0; gap: 12px; }
   .topbar-cta { padding: 6px 9px; font-size: 10px; }
-  .user-menu-trigger { font-size: 10px; }
+  .user-menu-trigger { max-width: 130px; font-size: 10px; }
+  .user-menu-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .game-layout { width: 100%; margin: 16px auto 32px; gap: 28px; }
   .eyebrow-row, .player-card, .match-panel { margin-left: 14px; margin-right: 14px; }
   .chessboard { --board-border: 5px; }
@@ -419,8 +436,8 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .topbar .brand > span:last-child { display: none; }
   .topbar-actions { gap: 8px; }
   .topbar-actions .text-button { font-size: 9px; }
-  .topbar-nav { gap: 9px; }
   .topbar-nav a { font-size: 9px; }
+  .user-menu-trigger { max-width: 105px; }
 }
 
 /* Interactive tactics trainer. */
@@ -844,7 +861,6 @@ button.move-cell > span {
 }
 
 @media (max-width: 600px) {
-  .topbar-actions { gap: 12px; }
   .archive-page { width: calc(100% - 28px); margin-top: 32px; }
   .archive-title-row { align-items: start; }
   .archive-title-row h1 { font-size: 27px; }

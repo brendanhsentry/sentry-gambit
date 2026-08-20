@@ -97,7 +97,7 @@ export function TopBar({
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((open) => !open)}
             >
-              {user.username} · {user.rating}
+              <span>{user.username} · {user.rating}</span>
               <svg
                 width="9"
                 height="9"
