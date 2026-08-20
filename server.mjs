@@ -49,9 +49,9 @@ const STARTING_TIMES = new Set(
 const INCREMENTS = new Map([[15 * 60 * 1000, 10_000]]);
 const IDLE_ROOM_TTL = 60 * 60 * 1000;
 const BOTS = {
-  haiku: { name: "Haiku", elo: 1100 },
-  sonnet: { name: "Sonnet", elo: 1500 },
-  opus: { name: "Opus", elo: 1900 },
+  levy: { name: "Levy", elo: 1100 },
+  hikaru: { name: "Hikaru", elo: 1500 },
+  magnus: { name: "Magnus", elo: 1900 },
 };
 const MOVE_GRADES = new Set([
   "brilliant",
