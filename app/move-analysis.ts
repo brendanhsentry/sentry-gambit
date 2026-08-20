@@ -110,16 +110,28 @@ export function useMoveAnalysis(
       }
 
       const cached = cacheRef.current;
-      const canContinue = Boolean(
-        cached &&
-          cached.gameId === gameId &&
-          cached.history.length <= moves.length &&
-          cached.history.every((move, index) => uci(move) === uci(moves[index])),
-      );
-      const startIndex = canContinue ? cached!.history.length : 0;
-      const results: Array<ClassifiedMove | null> = canContinue
-        ? [...cached!.moves, ...Array(moves.length - startIndex).fill(null)]
+      let startIndex = 0;
+      if (cached?.gameId === gameId) {
+        const comparableMoves = Math.min(cached.history.length, moves.length);
+        while (
+          startIndex < comparableMoves &&
+          uci(cached.history[startIndex]) === uci(moves[startIndex])
+        ) {
+          startIndex += 1;
+        }
+      }
+      const results: Array<ClassifiedMove | null> = cached?.gameId === gameId
+        ? [
+            ...cached.moves.slice(0, startIndex),
+            ...Array(moves.length - startIndex).fill(null),
+          ]
         : Array(moves.length).fill(null);
+
+      cacheRef.current = {
+        gameId,
+        history: moves.slice(0, startIndex),
+        moves: results.slice(0, startIndex),
+      };
 
       setAnalysis({
         moves: [...results],
@@ -137,6 +149,7 @@ export function useMoveAnalysis(
         const data = (await response.json().catch(() => ({}))) as {
           analysis?: ClassifiedMove;
         };
+        if (controller.signal.aborted) return;
         if (!response.ok || !data.analysis) throw new Error("Analysis unavailable.");
         results[index] = data.analysis;
         cacheRef.current = {
