@@ -1,5 +1,6 @@
 /** Node server: Next.js frontend plus an in-memory WebSocket chess table service. */
 import { createServer } from "node:http";
+import { spawn } from "node:child_process";
 import { createReadStream, statSync } from "node:fs";
 import {
   createHash,
@@ -9,13 +10,21 @@ import {
   scryptSync,
   timingSafeEqual,
 } from "node:crypto";
+import { createRequire } from "node:module";
 import * as Sentry from "@sentry/node";
 import next from "next";
 import { WebSocketServer } from "ws";
 import { Chess } from "chess.js";
 import { openGameStore } from "./game-store.mjs";
 import { openFirestoreGameStore } from "./firestore-game-store.mjs";
-import { classifyOpening, findOpeningMention } from "./app/opening-book.mjs";
+import {
+  classifyOpening,
+  findOpeningMention,
+  isOpeningPosition,
+} from "./app/opening-book.mjs";
+
+const require = createRequire(import.meta.url);
+const STOCKFISH_SCRIPT = require.resolve("stockfish/bin/stockfish-18-lite-single.js");
 
 const dev = process.env.NODE_ENV !== "production";
 if (dev) {
@@ -279,6 +288,8 @@ function createTable(id, initialTimeMs = DEFAULT_STARTING_TIME) {
     clock: { w: initialTimeMs, b: initialTimeMs, running: null, since: null },
     gradedPlies: new Set(),
     moveGrades: new Map(),
+    moveAnalyses: new Map(),
+    moveReviewLosses: new Map(),
     playerColors: new Map(),
     seatUsers: { w: null, b: null },
     sentrySpan: createGameTrace(id, gameId),
@@ -321,6 +332,8 @@ function restoreTable(id, saved) {
     clock: { w: saved.clock.w, b: saved.clock.b, running: null, since: null },
     gradedPlies: new Set(),
     moveGrades: new Map(),
+    moveAnalyses: new Map(),
+    moveReviewLosses: new Map(),
     playerColors: new Map(Object.entries(saved.playerColors ?? {})),
     seatUsers: {
       w: saved.seatUsers?.w ?? null,
@@ -509,6 +522,8 @@ function applyUndo(table, color) {
     if (ply > newLength) {
       table.gradedPlies.delete(ply);
       table.moveGrades.delete(ply);
+      table.moveAnalyses.delete(ply);
+      table.moveReviewLosses.delete(ply);
     }
   }
   gameStore.undoMoves(
@@ -527,6 +542,42 @@ function applyUndo(table, color) {
   });
   resumeClock(table, now);
   broadcast(table);
+}
+
+function recordMoveGrade(table, ply, analysis) {
+  if (table.gradedPlies.has(ply)) return false;
+  const acceptedMove = table.chess.history({ verbose: true })[ply - 1];
+  if (!acceptedMove || !MOVE_GRADES.has(analysis.grade)) return false;
+
+  const loss = analysis.expectedPointsLoss;
+  if (
+    loss !== null &&
+    (!Number.isFinite(loss) || loss < 0 || loss > 1)
+  )
+    return false;
+
+  table.gradedPlies.add(ply);
+  table.moveGrades.set(ply, { grade: analysis.grade, expectedPointsLoss: loss });
+  const attributes = {
+    "chess.room.id": table.id,
+    "chess.game.id": table.gameId,
+    "chess.move.ply": ply,
+    "chess.move.number": Math.ceil(ply / 2),
+    "chess.move.color": acceptedMove.color === "w" ? "white" : "black",
+    "chess.move.from": acceptedMove.from,
+    "chess.move.to": acceptedMove.to,
+    "chess.move.san": acceptedMove.san,
+    "chess.move.uci": `${acceptedMove.from}${acceptedMove.to}${acceptedMove.promotion ?? ""}`,
+    "chess.position.fen_after": acceptedMove.after,
+    "chess.move.grade": analysis.grade,
+    "chess.analysis.engine": "stockfish-18-lite-single",
+    "chess.analysis.search_depth": 12,
+    ...openingAttributes(tableOpening(table)),
+  };
+  if (loss !== null) attributes["chess.move.expected_points_loss"] = loss;
+  logGameEvent(table, "chess.move.graded", attributes);
+  endGameTraceWhenReady(table);
+  return true;
 }
 
 function handleTableMessage(table, client, raw) {
@@ -626,30 +677,7 @@ function handleTableMessage(table, client, raw) {
     )
       return;
 
-    const acceptedMove = table.chess.history({ verbose: true })[ply - 1];
-    if (!acceptedMove) return;
-
-    table.gradedPlies.add(ply);
-    table.moveGrades.set(ply, { grade, expectedPointsLoss: loss });
-    const attributes = {
-      "chess.room.id": table.id,
-      "chess.game.id": table.gameId,
-      "chess.move.ply": ply,
-      "chess.move.number": Math.ceil(ply / 2),
-      "chess.move.color": acceptedMove.color === "w" ? "white" : "black",
-      "chess.move.from": acceptedMove.from,
-      "chess.move.to": acceptedMove.to,
-      "chess.move.san": acceptedMove.san,
-      "chess.move.uci": `${acceptedMove.from}${acceptedMove.to}${acceptedMove.promotion ?? ""}`,
-      "chess.position.fen_after": acceptedMove.after,
-      "chess.move.grade": grade,
-      "chess.analysis.engine": "stockfish-18-lite-single",
-      "chess.analysis.search_depth": 12,
-      ...openingAttributes(tableOpening(table)),
-    };
-    if (loss !== null) attributes["chess.move.expected_points_loss"] = loss;
-    logGameEvent(table, "chess.move.graded", attributes);
-    endGameTraceWhenReady(table);
+    recordMoveGrade(table, ply, { grade, expectedPointsLoss: loss });
     return;
   }
 
@@ -989,6 +1017,9 @@ const PIECE_NAMES = {
 };
 const explanationCache = new Map();
 const explanationRateLimits = new Map();
+const analysisRateLimits = new Map();
+const analysisCache = new Map();
+const analysisJobs = new Map();
 const MOVE_COACH_AGENT_NAME = "Pawn Patrol Move Coach";
 const MOVE_COACH_SPAN_ORIGIN = "manual.ai.openrouter";
 const SENTRY_SPAN_STATUS_ERROR = 2;
@@ -1129,6 +1160,254 @@ function describeEngineLine(fen, moves) {
   });
 }
 
+function expectedPointsFromStockfish(tokens) {
+  const wdlIndex = tokens.indexOf("wdl");
+  if (wdlIndex >= 0) {
+    const wins = Number(tokens[wdlIndex + 1]);
+    const draws = Number(tokens[wdlIndex + 2]);
+    const losses = Number(tokens[wdlIndex + 3]);
+    const total = wins + draws + losses;
+    if (total > 0) return (wins + draws * 0.5) / total;
+  }
+  const scoreIndex = tokens.indexOf("score");
+  if (scoreIndex < 0) return null;
+  const score = Number(tokens[scoreIndex + 2]);
+  if (tokens[scoreIndex + 1] === "mate") return score > 0 ? 1 : 0;
+  if (tokens[scoreIndex + 1] === "cp") return 1 / (1 + Math.exp(-score / 220));
+  return null;
+}
+
+function parseStockfishLine(message) {
+  if (!message.startsWith("info ") || !message.includes(" score ") || !message.includes(" pv "))
+    return null;
+  const tokens = message.trim().split(/\s+/);
+  if (tokens.includes("lowerbound") || tokens.includes("upperbound")) return null;
+  const pvIndex = tokens.indexOf("pv");
+  const expectedPoints = expectedPointsFromStockfish(tokens);
+  const pv = tokens.slice(pvIndex + 1);
+  if (expectedPoints === null || !pv.length) return null;
+  const multipvIndex = tokens.indexOf("multipv");
+  return {
+    multipv: multipvIndex >= 0 ? Number(tokens[multipvIndex + 1]) : 1,
+    line: { move: pv[0], expectedPoints, pv },
+  };
+}
+
+class ServerStockfish {
+  constructor() {
+    this.child = null;
+    this.ready = null;
+    this.listeners = new Set();
+    this.queue = Promise.resolve();
+    this.output = "";
+  }
+
+  emit(line) {
+    for (const listener of this.listeners) listener(line);
+  }
+
+  reset() {
+    const child = this.child;
+    this.child = null;
+    this.ready = null;
+    if (child && !child.killed) child.kill();
+  }
+
+  start() {
+    if (this.child) return;
+    const child = spawn(process.execPath, [STOCKFISH_SCRIPT], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    this.child = child;
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      this.output += chunk;
+      const lines = this.output.split(/\r?\n/);
+      this.output = lines.pop() ?? "";
+      for (const line of lines) this.emit(line);
+    });
+    child.stderr.on("data", (chunk) => console.warn(`Stockfish: ${chunk}`));
+    child.on("exit", () => {
+      if (this.child === child) {
+        this.child = null;
+        this.ready = null;
+      }
+    });
+    this.ready = (async () => {
+      await this.waitFor("uci", (line) => line === "uciok");
+      this.send("setoption name Hash value 32");
+      this.send("setoption name UCI_ShowWDL value true");
+      await this.waitFor("isready", (line) => line === "readyok");
+    })();
+  }
+
+  send(command) {
+    if (!this.child || !this.child.stdin.writable) throw new Error("Stockfish is unavailable.");
+    this.child.stdin.write(`${command}\n`);
+  }
+
+  waitFor(command, predicate) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.listeners.delete(listener);
+        reject(new Error("Stockfish timed out."));
+      }, 20_000);
+      const listener = (line) => {
+        if (!predicate(line)) return;
+        clearTimeout(timeout);
+        this.listeners.delete(listener);
+        resolve(line);
+      };
+      this.listeners.add(listener);
+      try {
+        this.send(command);
+      } catch (error) {
+        clearTimeout(timeout);
+        this.listeners.delete(listener);
+        reject(error);
+      }
+    });
+  }
+
+  async searchNow(fen, multipv, searchMove) {
+    this.start();
+    try {
+      await this.ready;
+      this.send(`setoption name MultiPV value ${multipv}`);
+      await this.waitFor("isready", (line) => line === "readyok");
+      this.send(`position fen ${fen}`);
+      return await new Promise((resolve, reject) => {
+        const lines = new Map();
+        const timeout = setTimeout(() => {
+          this.listeners.delete(listener);
+          this.send("stop");
+          reject(new Error("Stockfish timed out."));
+        }, 20_000);
+        const listener = (line) => {
+          const parsed = parseStockfishLine(line);
+          if (parsed) lines.set(parsed.multipv, parsed.line);
+          if (!line.startsWith("bestmove ")) return;
+          clearTimeout(timeout);
+          this.listeners.delete(listener);
+          const result = [...lines.entries()]
+            .sort(([a], [b]) => a - b)
+            .map(([, value]) => value);
+          if (result.length) resolve(result);
+          else reject(new Error("Stockfish returned no evaluation."));
+        };
+        this.listeners.add(listener);
+        const restriction = searchMove ? ` searchmoves ${searchMove}` : "";
+        this.send(`go depth 12${restriction}`);
+      });
+    } catch (error) {
+      this.reset();
+      throw error;
+    }
+  }
+
+  search(fen, multipv, searchMove) {
+    const run = this.queue.then(() => this.searchNow(fen, multipv, searchMove));
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  async reviewMove(fen, playedMove) {
+    const top = await this.search(fen, 2);
+    const played =
+      top.find((line) => line.move === playedMove) ??
+      (await this.search(fen, 1, playedMove))[0];
+    return {
+      best: top[0],
+      second: top[1] ?? null,
+      played,
+      loss: Math.max(0, top[0].expectedPoints - played.expectedPoints),
+    };
+  }
+}
+
+const stockfish = new ServerStockfish();
+const PIECE_VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
+function materialBalance(board, color) {
+  let balance = 0;
+  for (const rank of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    for (const file of ["a", "b", "c", "d", "e", "f", "g", "h"]) {
+      const piece = board.get(`${file}${rank}`);
+      if (piece) balance += (piece.color === color ? 1 : -1) * PIECE_VALUE[piece.type];
+    }
+  }
+  return balance;
+}
+
+function applyUci(board, move) {
+  return board.move({
+    from: move.slice(0, 2),
+    to: move.slice(2, 4),
+    promotion: move[4] || "q",
+  });
+}
+
+function detectsSacrifice(fen, playedMove, pv, mover) {
+  const board = new Chess(fen);
+  const before = materialBalance(board, mover);
+  const line = pv[0] === playedMove ? pv : [playedMove, ...pv];
+  try {
+    if (!applyUci(board, line[0]) || line.length < 2) return false;
+    applyUci(board, line[1]);
+    if (before - materialBalance(board, mover) < 1.75) return false;
+    if (line.length >= 3) applyUci(board, line[2]);
+    return before - materialBalance(board, mover) >= 1.75;
+  } catch {
+    return false;
+  }
+}
+
+function classifyServerMove(review, fenBefore, move, previousReview) {
+  const playedMove = `${move.from}${move.to}${move.promotion ?? ""}`;
+  const secondExpectedPoints = review.second?.expectedPoints ?? review.best.expectedPoints;
+  const criticalGap = review.best.expectedPoints - secondExpectedPoints;
+  const loss = review.loss;
+  const evidence = {
+    fenBefore,
+    playedMove,
+    playedLine: review.played.pv.slice(0, 16),
+    bestLine: review.best.pv.slice(0, 16),
+    bestExpectedPoints: review.best.expectedPoints,
+    playedExpectedPoints: review.played.expectedPoints,
+  };
+  const isBest = review.best.move === playedMove;
+  const sacrifice = detectsSacrifice(fenBefore, playedMove, review.played.pv, move.color);
+  let grade;
+  if (
+    isBest &&
+    loss <= 0.02 &&
+    sacrifice &&
+    review.played.expectedPoints >= 0.45 &&
+    criticalGap >= 0.04
+  ) {
+    grade = "brilliant";
+  } else {
+    const changesOutcome =
+      (review.best.expectedPoints >= 0.72 && secondExpectedPoints < 0.55) ||
+      (review.best.expectedPoints >= 0.45 && secondExpectedPoints < 0.25);
+    const opponentCreatedOpportunity = previousReview?.loss >= 0.1;
+    if (loss <= 0.02 && (criticalGap >= 0.12 || changesOutcome)) grade = "great";
+    else if (
+      opponentCreatedOpportunity &&
+      review.best.expectedPoints >= 0.7 &&
+      review.played.expectedPoints < 0.58 &&
+      loss >= 0.1
+    ) grade = "miss";
+    else if (isBest) grade = "best";
+    else if (loss <= 0.02) grade = "excellent";
+    else if (loss <= 0.05) grade = "good";
+    else if (loss <= 0.12) grade = "inaccuracy";
+    else if (loss <= 0.28 || review.played.expectedPoints >= 0.65) grade = "mistake";
+    else grade = "blunder";
+  }
+  return { grade, expectedPointsLoss: loss, evidence };
+}
+
 function validateMoveAnalysis(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new RequestError(400, "Move analysis is required.");
@@ -1186,6 +1465,185 @@ function consumeExplanationRateLimit(req) {
   }
   existing.count += 1;
   return existing.count <= 20;
+}
+
+function consumeAnalysisRateLimit(req) {
+  const key = clientAddress(req);
+  const now = Date.now();
+  const existing = analysisRateLimits.get(key);
+  if (!existing || now - existing.startedAt >= 10 * 60 * 1000) {
+    analysisRateLimits.set(key, { startedAt: now, count: 1 });
+    return true;
+  }
+  existing.count += 1;
+  return existing.count <= 80;
+}
+
+function parseAnalysisHistory(value) {
+  if (!Array.isArray(value) || !value.length || value.length > 300) {
+    throw new RequestError(400, "Analysis contains an invalid move list.");
+  }
+  const board = new Chess();
+  const history = [];
+  const fensBefore = [];
+  const fensAfter = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      throw new RequestError(400, "Analysis contains an invalid move.");
+    }
+    const from = parseUciMove(`${item.from}${item.to}${item.promotion ?? ""}`);
+    fensBefore.push(board.fen());
+    try {
+      const move = board.move({
+        from: from.slice(0, 2),
+        to: from.slice(2, 4),
+        promotion: from[4] || "q",
+      });
+      if (!move) throw new Error("Illegal move");
+      history.push(move);
+      fensAfter.push(board.fen());
+    } catch {
+      throw new RequestError(400, "Analysis contains an illegal move.");
+    }
+  }
+  return { history, fensBefore, fensAfter };
+}
+
+function liveTableForGame(gameId) {
+  for (const table of tables.values()) {
+    if (table.gameId === gameId) return table;
+  }
+  return null;
+}
+
+function matchesTableHistory(table, history, ply) {
+  const accepted = table.chess.history({ verbose: true });
+  if (history.length > accepted.length || !accepted[ply - 1]) return false;
+  return history.slice(0, ply).every((move, index) => {
+    const existing = accepted[index];
+    return (
+      existing.from === move.from &&
+      existing.to === move.to &&
+      (existing.promotion ?? "") === (move.promotion ?? "")
+    );
+  });
+}
+
+function cacheAnalysis(key, analysis) {
+  if (analysisCache.size >= 1_000) {
+    const oldest = analysisCache.keys().next().value;
+    if (oldest) analysisCache.delete(oldest);
+  }
+  analysisCache.set(key, analysis);
+}
+
+async function handleMoveAnalysisRequest(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+  if (!consumeAnalysisRateLimit(req)) {
+    sendJson(res, 429, { error: "Too many analysis requests. Try again shortly." });
+    return;
+  }
+
+  let body;
+  let replay;
+  let ply;
+  let gameId;
+  try {
+    body = await readJsonBody(req, 32_768);
+    gameId = typeof body.gameId === "string" ? body.gameId : "";
+    ply = Number(body.ply);
+    if (!gameId || gameId.length > 100 || !Number.isInteger(ply) || ply < 1) {
+      throw new RequestError(400, "Analysis contains an invalid game move.");
+    }
+    replay = parseAnalysisHistory(body.history);
+    if (ply > replay.history.length) {
+      throw new RequestError(400, "Analysis contains an invalid move number.");
+    }
+  } catch (error) {
+    sendJson(res, error instanceof RequestError ? error.status : 400, {
+      error: error instanceof Error ? error.message : "Invalid request.",
+    });
+    return;
+  }
+
+  const table = liveTableForGame(gameId);
+  if (table && !matchesTableHistory(table, replay.history, ply)) {
+    sendJson(res, 409, { error: "The game changed before analysis could begin." });
+    return;
+  }
+  if (table?.moveAnalyses.has(ply)) {
+    sendJson(res, 200, { analysis: table.moveAnalyses.get(ply), cached: true });
+    return;
+  }
+
+  const move = replay.history[ply - 1];
+  const fenBefore = replay.fensBefore[ply - 1];
+  const uci = `${move.from}${move.to}${move.promotion ?? ""}`;
+  const previousLoss = table?.moveReviewLosses.get(ply - 1) ?? null;
+  const cacheKey = createHash("sha256")
+    .update(JSON.stringify({ fenBefore, uci, previousLoss }))
+    .digest("hex");
+  const cached = analysisCache.get(cacheKey);
+  let job = cached ? Promise.resolve({ analysis: cached, review: null }) : analysisJobs.get(cacheKey);
+  if (!job) {
+    job = (async () => {
+      if (isOpeningPosition(replay.fensAfter[ply - 1])) {
+        return { analysis: { grade: "book", expectedPointsLoss: null, evidence: null }, review: null };
+      }
+      const review = await stockfish.reviewMove(fenBefore, uci);
+      return {
+        analysis: classifyServerMove(
+          review,
+          fenBefore,
+          move,
+          previousLoss === null ? null : { loss: previousLoss },
+        ),
+        review,
+      };
+    })();
+    analysisJobs.set(cacheKey, job);
+    void job.finally(() => analysisJobs.delete(cacheKey));
+  }
+
+  try {
+    const { analysis, review } = await job;
+    if (!cached) cacheAnalysis(cacheKey, analysis);
+    if (table && matchesTableHistory(table, replay.history, ply)) {
+      table.moveAnalyses.set(ply, analysis);
+      if (review) table.moveReviewLosses.set(ply, review.loss);
+      else if (analysis.expectedPointsLoss !== null)
+        table.moveReviewLosses.set(ply, analysis.expectedPointsLoss);
+      recordMoveGrade(table, ply, analysis);
+    }
+    sendJson(res, 200, { analysis, cached: Boolean(cached) });
+  } catch (error) {
+    console.error("Stockfish move analysis failed:", error);
+    sendJson(res, 503, { error: "Move analysis is temporarily unavailable." });
+  }
+}
+
+async function handleBestMoveRequest(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+  if (!consumeAnalysisRateLimit(req)) {
+    sendJson(res, 429, { error: "Too many analysis requests. Try again shortly." });
+    return;
+  }
+  try {
+    const body = await readJsonBody(req);
+    const fen = typeof body.fen === "string" && body.fen.length <= 120 ? body.fen : "";
+    new Chess(fen);
+    const [best] = await stockfish.search(fen, 1);
+    sendJson(res, 200, { move: best.move });
+  } catch (error) {
+    console.error("Stockfish hint failed:", error);
+    sendJson(res, 503, { error: "The engine is temporarily unavailable." });
+  }
 }
 
 function cacheExplanation(key, value) {
@@ -2389,6 +2847,14 @@ const server = createServer((req, res) => {
   }
   if (url.pathname === "/api/explore") {
     void handleExploreRequest(req, res, url);
+    return;
+  }
+  if (url.pathname === "/api/move-analysis") {
+    void handleMoveAnalysisRequest(req, res);
+    return;
+  }
+  if (url.pathname === "/api/best-move") {
+    void handleBestMoveRequest(req, res);
     return;
   }
   if (url.pathname === "/api/move-explanation") {

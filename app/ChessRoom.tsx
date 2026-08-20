@@ -394,7 +394,6 @@ export function ChessRoom() {
   const [moveExplanations, setMoveExplanations] = useState<
     Record<number, MoveExplanation>
   >({});
-  const reportedGradesRef = useRef(new Set<string>());
   const explanationRequestsRef = useRef(new Set<number>());
   const {
     status: maiaStatus,
@@ -591,26 +590,6 @@ export function ChessRoom() {
     state?.history ?? [],
     Boolean(state?.history.length),
   );
-
-  useEffect(() => {
-    if (!currentGameId || connection !== "online") return;
-
-    analysis.moves.forEach((reviewed, index) => {
-      if (!reviewed) return;
-      const ply = index + 1;
-      const reportKey = `${currentGameId}:${ply}`;
-      if (reportedGradesRef.current.has(reportKey)) return;
-
-      const sent = send({
-        type: "move_grade",
-        gameId: currentGameId,
-        ply,
-        grade: reviewed.grade,
-        expectedPointsLoss: reviewed.expectedPointsLoss,
-      });
-      if (sent) reportedGradesRef.current.add(reportKey);
-    });
-  }, [analysis.moves, connection, currentGameId, send]);
 
   const flagClock = useCallback(() => send({ type: "flag" }), [send]);
 

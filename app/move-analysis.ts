@@ -1,9 +1,7 @@
 "use client";
 
-import { Chess, type Color, type Move, type PieceSymbol, type Square } from "chess.js";
+import { type Move, type PieceSymbol } from "chess.js";
 import { useEffect, useRef, useState } from "react";
-
-import { isOpeningPosition } from "./opening-book.mjs";
 
 export type ReviewMove = Pick<Move, "from" | "to" | "san" | "color"> & {
   promotion?: PieceSymbol;
@@ -21,12 +19,6 @@ export type MoveGrade =
   | "miss"
   | "blunder";
 
-export type ClassifiedMove = {
-  grade: MoveGrade;
-  expectedPointsLoss: number | null;
-  evidence: MoveAnalysisEvidence | null;
-};
-
 export type MoveAnalysisEvidence = {
   fenBefore: string;
   playedMove: string;
@@ -36,17 +28,10 @@ export type MoveAnalysisEvidence = {
   playedExpectedPoints: number;
 };
 
-type EngineLine = {
-  move: string;
-  expectedPoints: number;
-  pv: string[];
-};
-
-type EngineReview = {
-  best: EngineLine;
-  second: EngineLine | null;
-  played: EngineLine;
-  loss: number;
+export type ClassifiedMove = {
+  grade: MoveGrade;
+  expectedPointsLoss: number | null;
+  evidence: MoveAnalysisEvidence | null;
 };
 
 type AnalysisState = {
@@ -59,11 +44,7 @@ type AnalysisCache = {
   gameId: string;
   history: ReviewMove[];
   moves: Array<ClassifiedMove | null>;
-  reviews: Array<EngineReview | null>;
 };
-
-const ENGINE_PATH = "/stockfish/stockfish-18-lite-single.js";
-const SEARCH_DEPTH = 12;
 
 const GRADE_LABELS: Record<MoveGrade, string> = {
   brilliant: "Brilliant",
@@ -86,262 +67,35 @@ function uci(move: ReviewMove) {
   return `${move.from}${move.to}${move.promotion ?? ""}`;
 }
 
-function expectedPointsFromInfo(tokens: string[]) {
-  const wdlIndex = tokens.indexOf("wdl");
-  if (wdlIndex >= 0) {
-    const wins = Number(tokens[wdlIndex + 1]);
-    const draws = Number(tokens[wdlIndex + 2]);
-    const losses = Number(tokens[wdlIndex + 3]);
-    const total = wins + draws + losses;
-    if (total > 0) return (wins + draws * 0.5) / total;
-  }
-
-  const scoreIndex = tokens.indexOf("score");
-  if (scoreIndex < 0) return null;
-  const scoreType = tokens[scoreIndex + 1];
-  const score = Number(tokens[scoreIndex + 2]);
-  if (scoreType === "mate") return score > 0 ? 1 : 0;
-  if (scoreType === "cp") return 1 / (1 + Math.exp(-score / 220));
-  return null;
-}
-
-function parseEngineLine(line: string): { multipv: number; line: EngineLine } | null {
-  if (!line.startsWith("info ") || !line.includes(" score ") || !line.includes(" pv ")) return null;
-  const tokens = line.trim().split(/\s+/);
-  if (tokens.includes("lowerbound") || tokens.includes("upperbound")) return null;
-  const pvIndex = tokens.indexOf("pv");
-  const expectedPoints = expectedPointsFromInfo(tokens);
-  if (pvIndex < 0 || expectedPoints === null) return null;
-  const pv = tokens.slice(pvIndex + 1);
-  if (!pv.length) return null;
-  const multipvIndex = tokens.indexOf("multipv");
-  return {
-    multipv: multipvIndex >= 0 ? Number(tokens[multipvIndex + 1]) : 1,
-    line: { move: pv[0], expectedPoints, pv },
-  };
-}
-
-class StockfishClient {
-  private readonly worker: Worker;
-  private listener: ((line: string) => void) | null = null;
-  private readonly ready: Promise<void>;
-
-  constructor() {
-    this.worker = new Worker(ENGINE_PATH);
-    this.worker.addEventListener("message", (event) => this.listener?.(String(event.data)));
-    this.ready = this.initialize();
-    // Boot failures surface when search() awaits ready; an all-book game never awaits it.
-    this.ready.catch(() => {});
-  }
-
-  private waitFor(command: string, predicate: (line: string) => boolean) {
-    return new Promise<string>((resolve, reject) => {
-      const timeout = window.setTimeout(() => {
-        this.listener = null;
-        reject(new Error("The local chess engine timed out."));
-      }, 20_000);
-      this.listener = (line) => {
-        if (!predicate(line)) return;
-        window.clearTimeout(timeout);
-        this.listener = null;
-        resolve(line);
-      };
-      this.worker.postMessage(command);
-    });
-  }
-
-  private async initialize() {
-    await this.waitFor("uci", (line) => line === "uciok");
-    this.worker.postMessage("setoption name Hash value 16");
-    this.worker.postMessage("setoption name UCI_ShowWDL value true");
-    await this.waitFor("isready", (line) => line === "readyok");
-  }
-
-  async search(fen: string, multipv: number, searchMove?: string) {
-    await this.ready;
-    this.worker.postMessage(`setoption name MultiPV value ${multipv}`);
-    await this.waitFor("isready", (line) => line === "readyok");
-    this.worker.postMessage(`position fen ${fen}`);
-
-    return new Promise<EngineLine[]>((resolve, reject) => {
-      const lines = new Map<number, EngineLine>();
-      const timeout = window.setTimeout(() => {
-        this.listener = null;
-        this.worker.postMessage("stop");
-        reject(new Error("The local chess engine timed out."));
-      }, 20_000);
-      this.listener = (message) => {
-        const parsed = parseEngineLine(message);
-        if (parsed) lines.set(parsed.multipv, parsed.line);
-        if (!message.startsWith("bestmove ")) return;
-        window.clearTimeout(timeout);
-        this.listener = null;
-        const result = [...lines.entries()].sort(([a], [b]) => a - b).map(([, value]) => value);
-        if (result.length) resolve(result);
-        else reject(new Error("The local chess engine returned no evaluation."));
-      };
-      const restriction = searchMove ? ` searchmoves ${searchMove}` : "";
-      this.worker.postMessage(`go depth ${SEARCH_DEPTH}${restriction}`);
-    });
-  }
-
-  async reviewMove(fen: string, playedMove: string): Promise<EngineReview> {
-    const top = await this.search(fen, 2);
-    const played = top.find((line) => line.move === playedMove) ?? (await this.search(fen, 1, playedMove))[0];
-    const best = top[0];
-    return {
-      best,
-      second: top[1] ?? null,
-      played,
-      loss: Math.max(0, best.expectedPoints - played.expectedPoints),
-    };
-  }
-
-  terminate() {
-    this.worker.terminate();
-    this.listener = null;
-  }
-}
-
-let hintEngine: StockfishClient | null = null;
-let hintQueue: Promise<unknown> = Promise.resolve();
-
-// One shared engine for live hints, rebooted if a search dies. Calls are
-// serialized: overlapping searches would cross-wire the worker's listener
-// and answer one position with another position's best move.
-export function engineBestMove(fen: string): Promise<EngineLine> {
-  const run = hintQueue.then(async () => {
-    hintEngine ??= new StockfishClient();
-    try {
-      const [best] = await hintEngine.search(fen, 1);
-      return best;
-    } catch (error) {
-      hintEngine.terminate();
-      hintEngine = null;
-      throw error;
-    }
+export async function engineBestMove(fen: string): Promise<{ move: string }> {
+  const response = await fetch("/api/best-move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fen }),
   });
-  hintQueue = run.catch(() => {});
-  return run;
+  const data = (await response.json().catch(() => ({}))) as { move?: string };
+  if (!response.ok || !data.move) throw new Error("The engine is unavailable.");
+  return { move: data.move };
 }
 
-const PIECE_VALUE: Record<PieceSymbol, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-
-function materialBalance(chess: Chess, color: Color) {
-  let balance = 0;
-  for (const rank of [1, 2, 3, 4, 5, 6, 7, 8]) {
-    for (const file of ["a", "b", "c", "d", "e", "f", "g", "h"]) {
-      const piece = chess.get(`${file}${rank}` as Square);
-      if (piece) balance += (piece.color === color ? 1 : -1) * PIECE_VALUE[piece.type];
-    }
-  }
-  return balance;
-}
-
-function applyUci(chess: Chess, move: string) {
-  return chess.move({
-    from: move.slice(0, 2),
-    to: move.slice(2, 4),
-    promotion: (move[4] as PieceSymbol | undefined) ?? "q",
-  });
-}
-
-function detectsSacrifice(fen: string, playedMove: string, pv: string[], mover: Color) {
-  const line = new Chess(fen);
-  const before = materialBalance(line, mover);
-  const continuation = pv[0] === playedMove ? pv : [playedMove, ...pv];
-
-  try {
-    const played = applyUci(line, continuation[0]);
-    if (!played || continuation.length < 2) return false;
-
-    applyUci(line, continuation[1]);
-    const afterReply = materialBalance(line, mover);
-    if (before - afterReply < 1.75) return false;
-
-    if (continuation.length >= 3) applyUci(line, continuation[2]);
-    return before - materialBalance(line, mover) >= 1.75;
-  } catch {
-    return false;
-  }
-}
-
-function classifyMove(
-  review: EngineReview,
-  fen: string,
-  move: ReviewMove,
-  previousReview: EngineReview | null,
-): ClassifiedMove {
-  const loss = review.loss;
-  const playedMove = uci(move);
-  const isBest = review.best.move === playedMove;
-  const secondEp = review.second?.expectedPoints ?? review.best.expectedPoints;
-  const criticalGap = review.best.expectedPoints - secondEp;
-  const sacrifice = detectsSacrifice(fen, playedMove, review.played.pv, move.color);
-  // The coach endpoint rejects engine lines longer than 16 moves.
-  const evidence: MoveAnalysisEvidence = {
-    fenBefore: fen,
-    playedMove,
-    playedLine: review.played.pv.slice(0, 16),
-    bestLine: review.best.pv.slice(0, 16),
-    bestExpectedPoints: review.best.expectedPoints,
-    playedExpectedPoints: review.played.expectedPoints,
-  };
-  let grade: MoveGrade;
-
-  if (
-    isBest &&
-    loss <= 0.02 &&
-    sacrifice &&
-    review.played.expectedPoints >= 0.45 &&
-    criticalGap >= 0.04
-  ) {
-    grade = "brilliant";
-  } else {
-    const changesOutcome =
-      (review.best.expectedPoints >= 0.72 && secondEp < 0.55) ||
-      (review.best.expectedPoints >= 0.45 && secondEp < 0.25);
-    const opponentCreatedOpportunity = previousReview?.loss !== undefined && previousReview.loss >= 0.1;
-
-    if (loss <= 0.02 && (criticalGap >= 0.12 || changesOutcome)) grade = "great";
-    else if (
-    opponentCreatedOpportunity &&
-    review.best.expectedPoints >= 0.7 &&
-    review.played.expectedPoints < 0.58 &&
-    loss >= 0.1
-    ) grade = "miss";
-    else if (isBest) grade = "best";
-    else if (loss <= 0.02) grade = "excellent";
-    else if (loss <= 0.05) grade = "good";
-    else if (loss <= 0.12) grade = "inaccuracy";
-    // A blunder must genuinely endanger the result, not just shed surplus
-    // advantage in a position that stays clearly winning.
-    else if (loss <= 0.28 || review.played.expectedPoints >= 0.65)
-      grade = "mistake";
-    else grade = "blunder";
-  }
-
-  return { grade, expectedPointsLoss: loss, evidence };
-}
-
-export function useMoveAnalysis(gameId: string, history: ReviewMove[], enabled: boolean): AnalysisState {
+export function useMoveAnalysis(
+  gameId: string,
+  history: ReviewMove[],
+  enabled: boolean,
+): AnalysisState {
   const [analysis, setAnalysis] = useState<AnalysisState>({
     moves: [],
     completed: 0,
     status: "idle",
   });
   const cacheRef = useRef<AnalysisCache | null>(null);
-
   const historyKey = JSON.stringify(history);
 
   useEffect(() => {
-    let cancelled = false;
-    let engine: StockfishClient | null = null;
+    const controller = new AbortController();
     const moves = JSON.parse(historyKey) as ReviewMove[];
 
     async function run() {
-      await Promise.resolve();
-      if (cancelled) return;
       if (!enabled || !moves.length) {
         setAnalysis({ moves: Array(moves.length).fill(null), completed: 0, status: "idle" });
         return;
@@ -358,63 +112,42 @@ export function useMoveAnalysis(gameId: string, history: ReviewMove[], enabled: 
       const results: Array<ClassifiedMove | null> = canContinue
         ? [...cached!.moves, ...Array(moves.length - startIndex).fill(null)]
         : Array(moves.length).fill(null);
-      const rawReviews: Array<EngineReview | null> = canContinue
-        ? [...cached!.reviews, ...Array(moves.length - startIndex).fill(null)]
-        : Array(moves.length).fill(null);
 
       setAnalysis({
         moves: [...results],
         completed: startIndex,
         status: startIndex === moves.length ? "complete" : "loading",
       });
-      if (startIndex === moves.length) return;
-
-      const board = new Chess();
-      for (const move of moves.slice(0, startIndex)) {
-        board.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
-      }
-      engine = new StockfishClient();
 
       for (let index = startIndex; index < moves.length; index += 1) {
-        if (cancelled) return;
-        const move = moves[index];
-        const beforeFen = board.fen();
-
-        board.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
-
-        if (isOpeningPosition(board.fen())) {
-          results[index] = { grade: "book", expectedPointsLoss: null, evidence: null };
-        } else {
-          const review = await engine.reviewMove(beforeFen, uci(move));
-          rawReviews[index] = review;
-          results[index] = classifyMove(review, beforeFen, move, rawReviews[index - 1] ?? null);
-        }
-
-        if (!cancelled) {
-          cacheRef.current = {
-            gameId,
-            history: moves.slice(0, index + 1),
-            moves: results.slice(0, index + 1),
-            reviews: rawReviews.slice(0, index + 1),
-          };
-          setAnalysis({ moves: [...results], completed: index + 1, status: "analyzing" });
-        }
+        const response = await fetch("/api/move-analysis", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({ gameId, ply: index + 1, history: moves }),
+        });
+        const data = (await response.json().catch(() => ({}))) as {
+          analysis?: ClassifiedMove;
+        };
+        if (!response.ok || !data.analysis) throw new Error("Analysis unavailable.");
+        results[index] = data.analysis;
+        cacheRef.current = {
+          gameId,
+          history: moves.slice(0, index + 1),
+          moves: results.slice(0, index + 1),
+        };
+        setAnalysis({ moves: [...results], completed: index + 1, status: "analyzing" });
       }
 
-      if (!cancelled) {
-        cacheRef.current = { gameId, history: moves, moves: results, reviews: rawReviews };
-        setAnalysis({ moves: results, completed: moves.length, status: "complete" });
-      }
+      setAnalysis({ moves: results, completed: moves.length, status: "complete" });
     }
 
-    void run().catch(() => {
-      if (!cancelled) setAnalysis((current) => ({ ...current, status: "error" }));
+    void run().catch((error) => {
+      if (!(error instanceof Error && error.name === "AbortError")) {
+        setAnalysis((current) => ({ ...current, status: "error" }));
+      }
     });
-
-    return () => {
-      cancelled = true;
-      engine?.terminate();
-    };
+    return () => controller.abort();
   }, [enabled, gameId, historyKey]);
 
   return analysis;
