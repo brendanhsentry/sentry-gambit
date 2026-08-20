@@ -1615,8 +1615,10 @@ export function ChessRoom() {
                 </p>
                 {user ? (
                   <p className="lobby-signed-in">
-                    PLAYING AS <strong>{user.username}</strong> · RATING{" "}
-                    {user.rating}
+                    <span>PLAYING AS</span>
+                    <strong>{user.username}</strong>
+                    <span>·</span>
+                    <span className="lobby-rating">RATING {user.rating}</span>
                   </p>
                 ) : (
                   <label>
@@ -1641,8 +1643,10 @@ export function ChessRoom() {
                 <h1>New table</h1>
                 {user ? (
                   <p className="lobby-signed-in">
-                    PLAYING AS <strong>{user.username}</strong> · RATING{" "}
-                    {user.rating}
+                    <span>PLAYING AS</span>
+                    <strong>{user.username}</strong>
+                    <span>·</span>
+                    <span className="lobby-rating">RATING {user.rating}</span>
                   </p>
                 ) : (
                   <label>
@@ -1668,7 +1672,7 @@ export function ChessRoom() {
                         onClick={() => setTimeControl(minutes)}
                         aria-pressed={timeControl === minutes}
                       >
-                        <strong>{minutes === 15 ? "15 | 10" : `${minutes} min`}</strong>
+                        <strong>{minutes === 15 ? "15 + 10" : `${minutes} min`}</strong>
                         <small>{TIME_CONTROL_NAMES[minutes]}</small>
                       </button>
                     ))}
