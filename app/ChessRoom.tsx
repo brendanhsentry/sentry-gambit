@@ -252,46 +252,77 @@ function relativeStatus(state: GameState, role: Role) {
   return "Opponent’s move";
 }
 
-function useClock(clock: ClockState | null, onFlag: () => void) {
+function useClock(clock: ClockState | null, color: Color, onFlag: () => void) {
   const [now, setNow] = useState(() => Date.now());
   const flagged = useRef(false);
 
   useEffect(() => {
     flagged.current = false;
-  }, [clock?.running, clock?.since]);
+  }, [clock?.running, clock?.since, color]);
 
   useEffect(() => {
-    if (!clock?.running) return;
+    if (!clock || clock.running !== color) return;
+    const activeClock = clock;
     const id = window.setInterval(() => {
       const next = Date.now();
       setNow(next);
-      if (!flagged.current && projectedTime(clock, clock.running!, next) <= 0) {
+      if (!flagged.current && projectedTime(activeClock, color, next) <= 0) {
         flagged.current = true;
         onFlag();
       }
     }, 100);
     return () => window.clearInterval(id);
-  }, [clock, onFlag]);
+  }, [clock, color, onFlag]);
 
   return now;
+}
+
+function ClockDisplay({
+  clock,
+  color,
+  initialTime,
+  active,
+  onFlag,
+}: {
+  clock: ClockState | null;
+  color: Color;
+  initialTime: number;
+  active: boolean;
+  onFlag: () => void;
+}) {
+  const now = useClock(clock, color, onFlag);
+  const time = clock ? projectedTime(clock, color, now) : initialTime;
+
+  return (
+    <div
+      className={`clock ${active ? "clock--active" : ""}`}
+      aria-label={`${color === "w" ? "White" : "Black"} clock`}
+    >
+      {formatClock(time)}
+    </div>
+  );
 }
 
 function PlayerCard({
   name,
   color,
-  time,
+  clock,
+  initialTime,
   active,
   bottom,
   captured,
   advantage,
+  onFlag,
 }: {
   name: string | null;
   color: Color;
-  time: number;
+  clock: ClockState | null;
+  initialTime: number;
   active: boolean;
   bottom?: boolean;
   captured?: PieceSymbol[];
   advantage?: number;
+  onFlag: () => void;
 }) {
   const fallback = color === "w" ? "Waiting for white" : "Waiting for black";
   return (
@@ -321,12 +352,13 @@ function PlayerCard({
           )}
         </div>
       )}
-      <div
-        className={`clock ${active ? "clock--active" : ""}`}
-        aria-label={`${color === "w" ? "White" : "Black"} clock`}
-      >
-        {formatClock(time)}
-      </div>
+      <ClockDisplay
+        clock={clock}
+        color={color}
+        initialTime={initialTime}
+        active={active}
+        onFlag={onFlag}
+      />
     </div>
   );
 }
@@ -581,7 +613,6 @@ export function ChessRoom() {
   }, [analysis.moves, connection, currentGameId, send]);
 
   const flagClock = useCallback(() => send({ type: "flag" }), [send]);
-  const now = useClock(state?.clock ?? null, flagClock);
 
   useEffect(() => {
     latestStateRef.current = state;
@@ -1117,10 +1148,6 @@ export function ChessRoom() {
   const bottomColor: Color = orientation;
   const displayedPlayers = state?.players ?? { w: null, b: null };
   const idleTime = timeControl * 60_000;
-  const topTime = state ? projectedTime(state.clock, topColor, now) : idleTime;
-  const bottomTime = state
-    ? projectedTime(state.clock, bottomColor, now)
-    : idleTime;
 
   const captured = useMemo(
     () => capturedPieces(viewFen, viewHistory.slice(0, viewedPly)),
@@ -1461,10 +1488,12 @@ export function ChessRoom() {
             <PlayerCard
               name={displayedPlayers[topColor]}
               color={topColor}
-              time={topTime}
+              clock={state?.clock ?? null}
+              initialTime={idleTime}
               active={state?.clock.running === topColor && !state.result}
               captured={captured[bottomColor]}
               advantage={topColor === "w" ? materialLead : -materialLead}
+              onFlag={flagClock}
             />
           )}
 
@@ -1563,11 +1592,13 @@ export function ChessRoom() {
             <PlayerCard
               name={displayedPlayers[bottomColor]}
               color={bottomColor}
-              time={bottomTime}
+              clock={state?.clock ?? null}
+              initialTime={idleTime}
               active={state?.clock.running === bottomColor && !state.result}
               bottom
               captured={captured[topColor]}
               advantage={bottomColor === "w" ? materialLead : -materialLead}
+              onFlag={flagClock}
             />
           )}
         </div>

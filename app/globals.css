@@ -448,7 +448,7 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .topbar-cta { padding: 6px 9px; font-size: 10px; }
   .user-menu-trigger { max-width: 130px; font-size: 10px; }
   .user-menu-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .game-layout { width: 100%; margin: 16px auto 32px; gap: 28px; }
+  .game-layout { width: calc(100% - 28px); margin: 16px auto 32px; gap: 28px; }
   .eyebrow-row, .player-card, .match-panel { margin-left: 14px; margin-right: 14px; }
   .chessboard { --board-border: 5px; }
   .piece { font-size: 10vw; }
