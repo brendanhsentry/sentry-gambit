@@ -679,7 +679,7 @@ export function ChessRoom() {
           move.san,
           COACH_ALERT_GRADES.has(reviewed.grade)
             ? "The bot slipped — look for tactics."
-            : "The bot's move has been graded.",
+            : "",
           reviewed.grade,
         );
         return;
@@ -687,7 +687,7 @@ export function ChessRoom() {
       const isAlert = COACH_ALERT_GRADES.has(reviewed.grade);
       if (!isAlert && !COACH_PRAISE_GRADES.has(reviewed.grade)) {
         coachSeenRef.current.add(seenKey);
-        pushNote(ply, move.san, "Move graded.", reviewed.grade);
+        pushNote(ply, move.san, "", reviewed.grade);
         return;
       }
       coachSeenRef.current.add(seenKey);
@@ -1843,10 +1843,12 @@ export function ChessRoom() {
                           </span>
                         )}
                       </div>
-                      <p className={item.thinking ? "coach-thinking" : ""}>
-                        {item.text}
-                        {item.thinking && " Let me take a closer look…"}
-                      </p>
+                      {(item.text || item.thinking) && (
+                        <p className={item.thinking ? "coach-thinking" : ""}>
+                          {item.text}
+                          {item.thinking && " Let me take a closer look…"}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
