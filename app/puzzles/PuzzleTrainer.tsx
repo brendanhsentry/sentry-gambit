@@ -6,6 +6,7 @@ import { Chess } from "chess.js";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   playCapture,
+  playCastle,
   playCheck,
   playGameEnd,
   playMove,
@@ -36,7 +37,8 @@ function groundColor(color: "w" | "b"): Color {
 }
 
 function playMoveSound(san: string) {
-  if (san.includes("+") || san.includes("#")) playCheck();
+  if (san.startsWith("O-O")) playCastle();
+  else if (san.includes("+") || san.includes("#")) playCheck();
   else if (san.includes("x")) playCapture();
   else playMove();
 }

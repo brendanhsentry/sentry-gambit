@@ -19,17 +19,40 @@ export function setSoundsMuted(next: boolean) {
 const SOUND_FILES = {
   move: "/sounds/move.mp3",
   capture: "/sounds/capture.mp3",
+  castle: "/sounds/castle.mp3",
   check: "/sounds/check.mp3",
   end: "/sounds/game-end.mp3",
 } as const;
 
+const PLAYBACK_GAIN = 1.75;
 const cache = new Map<string, HTMLAudioElement>();
+let context: AudioContext | null = null;
+let output: GainNode | null = null;
+
+function audioOutput() {
+  const Ctor =
+    window.AudioContext ??
+    (window as Window & { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext;
+  if (!Ctor) return null;
+  if (!context) {
+    context = new Ctor();
+    output = context.createGain();
+    output.gain.value = PLAYBACK_GAIN;
+    output.connect(context.destination);
+  }
+  if (context.state === "suspended") void context.resume();
+  return output;
+}
 
 function play(name: keyof typeof SOUND_FILES) {
   if (muted || typeof window === "undefined") return;
+  const destination = audioOutput();
   let audio = cache.get(name);
   if (!audio) {
     audio = new Audio(SOUND_FILES[name]);
+    if (context && destination)
+      context.createMediaElementSource(audio).connect(destination);
     cache.set(name, audio);
   }
   audio.currentTime = 0;
@@ -40,5 +63,6 @@ function play(name: keyof typeof SOUND_FILES) {
 
 export const playMove = () => play("move");
 export const playCapture = () => play("capture");
+export const playCastle = () => play("castle");
 export const playCheck = () => play("check");
 export const playGameEnd = () => play("end");

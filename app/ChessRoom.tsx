@@ -20,6 +20,7 @@ import { ChessgroundBoard } from "./ChessgroundBoard";
 import { IconSeer } from "./IconSeer";
 import {
   playCapture,
+  playCastle,
   playCheck,
   playGameEnd,
   playMove,
@@ -1005,7 +1006,8 @@ export function ChessRoom() {
     if (!forward && prev.ply - viewedPly !== 1) return;
     const move = viewHistory[(forward ? viewedPly : prev.ply) - 1];
     if (!move) return;
-    if (forward && (move.san.includes("+") || move.san.includes("#")))
+    if (forward && move.san.startsWith("O-O")) playCastle();
+    else if (forward && (move.san.includes("+") || move.san.includes("#")))
       playCheck();
     else if (forward && move.san.includes("x")) playCapture();
     else playMove();
