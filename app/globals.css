@@ -250,7 +250,6 @@ button { color: inherit; }
 .bot-card strong { font: 700 13px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--green); }
 .bot-card small { font: 600 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; color: #7d8983; }
 .bot-card em { font-style: normal; font-size: 10px; line-height: 1.35; color: #5d6a64; }
-.bot-card--novice { border-top-color: #9aafc8; }
 .bot-card--levy { border-top-color: #7d8983; }
 .bot-card--hikaru { border-top-color: var(--amber); }
 .bot-card--magnus { border-top-color: #ae372b; }

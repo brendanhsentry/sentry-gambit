@@ -49,7 +49,6 @@ const STARTING_TIMES = new Set(
 const INCREMENTS = new Map([[15 * 60 * 1000, 10_000]]);
 const IDLE_ROOM_TTL = 60 * 60 * 1000;
 const BOTS = {
-  novice: { name: "Jose", elo: 800 },
   levy: { name: "Garry", elo: 1100 },
   hikaru: { name: "Mikhail", elo: 1500 },
   magnus: { name: "Magnus", elo: 1900 },
