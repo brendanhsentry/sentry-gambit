@@ -1,7 +1,7 @@
 "use client";
 
 import { Chess, type Color, type Move, type PieceSymbol, type Square } from "chess.js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { isOpeningPosition } from "./opening-book.mjs";
 
@@ -53,6 +53,13 @@ type AnalysisState = {
   moves: Array<ClassifiedMove | null>;
   completed: number;
   status: "idle" | "loading" | "analyzing" | "complete" | "error";
+};
+
+type AnalysisCache = {
+  gameId: string;
+  history: ReviewMove[];
+  moves: Array<ClassifiedMove | null>;
+  reviews: Array<EngineReview | null>;
 };
 
 const ENGINE_PATH = "/stockfish/stockfish-18-lite-single.js";
@@ -323,6 +330,7 @@ export function useMoveAnalysis(gameId: string, history: ReviewMove[], enabled: 
     completed: 0,
     status: "idle",
   });
+  const cacheRef = useRef<AnalysisCache | null>(null);
 
   const historyKey = JSON.stringify(history);
 
@@ -334,15 +342,40 @@ export function useMoveAnalysis(gameId: string, history: ReviewMove[], enabled: 
     async function run() {
       await Promise.resolve();
       if (cancelled) return;
-      setAnalysis({ moves: Array(moves.length).fill(null), completed: 0, status: enabled ? "loading" : "idle" });
-      if (!enabled || !moves.length) return;
+      if (!enabled || !moves.length) {
+        setAnalysis({ moves: Array(moves.length).fill(null), completed: 0, status: "idle" });
+        return;
+      }
 
-      const results: Array<ClassifiedMove | null> = Array(moves.length).fill(null);
-      const rawReviews: Array<EngineReview | null> = Array(moves.length).fill(null);
+      const cached = cacheRef.current;
+      const canContinue = Boolean(
+        cached &&
+          cached.gameId === gameId &&
+          cached.history.length <= moves.length &&
+          cached.history.every((move, index) => uci(move) === uci(moves[index])),
+      );
+      const startIndex = canContinue ? cached!.history.length : 0;
+      const results: Array<ClassifiedMove | null> = canContinue
+        ? [...cached!.moves, ...Array(moves.length - startIndex).fill(null)]
+        : Array(moves.length).fill(null);
+      const rawReviews: Array<EngineReview | null> = canContinue
+        ? [...cached!.reviews, ...Array(moves.length - startIndex).fill(null)]
+        : Array(moves.length).fill(null);
+
+      setAnalysis({
+        moves: [...results],
+        completed: startIndex,
+        status: startIndex === moves.length ? "complete" : "loading",
+      });
+      if (startIndex === moves.length) return;
+
       const board = new Chess();
+      for (const move of moves.slice(0, startIndex)) {
+        board.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
+      }
       engine = new StockfishClient();
 
-      for (let index = 0; index < moves.length; index += 1) {
+      for (let index = startIndex; index < moves.length; index += 1) {
         if (cancelled) return;
         const move = moves[index];
         const beforeFen = board.fen();
@@ -358,11 +391,20 @@ export function useMoveAnalysis(gameId: string, history: ReviewMove[], enabled: 
         }
 
         if (!cancelled) {
+          cacheRef.current = {
+            gameId,
+            history: moves.slice(0, index + 1),
+            moves: results.slice(0, index + 1),
+            reviews: rawReviews.slice(0, index + 1),
+          };
           setAnalysis({ moves: [...results], completed: index + 1, status: "analyzing" });
         }
       }
 
-      if (!cancelled) setAnalysis({ moves: results, completed: moves.length, status: "complete" });
+      if (!cancelled) {
+        cacheRef.current = { gameId, history: moves, moves: results, reviews: rawReviews };
+        setAnalysis({ moves: results, completed: moves.length, status: "complete" });
+      }
     }
 
     void run().catch(() => {
