@@ -1672,7 +1672,7 @@ export function ChessRoom() {
                         onClick={() => setTimeControl(minutes)}
                         aria-pressed={timeControl === minutes}
                       >
-                        <strong>{minutes === 15 ? "15 + 10" : `${minutes} min`}</strong>
+                        <strong>{minutes === 15 ? "15 | 10" : `${minutes} min`}</strong>
                         <small>{TIME_CONTROL_NAMES[minutes]}</small>
                       </button>
                     ))}

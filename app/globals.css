@@ -172,7 +172,7 @@ button { color: inherit; }
 .lobby-card input:focus { border-color: var(--green); box-shadow: 0 0 0 2px rgba(23,63,53,.08); }
 .time-control { margin: 13px 0 0; padding: 0; border: 0; }
 .time-control legend { margin-bottom: 7px; color: #57655f; font: 600 10.5px/1 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .1em; }
-.time-control > div { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.time-control > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.2fr); gap: 6px; }
 .time-control button { display: flex; min-width: 0; flex-direction: column; gap: 4px; padding: 10px 8px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); cursor: pointer; text-align: left; box-shadow: 0 3px 0 0 var(--btn-line); }
 .time-control button:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
 .time-control button:active { transform: translateY(2px); box-shadow: none; }
@@ -469,6 +469,7 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .topbar-actions { gap: 8px; }
   .topbar-actions .text-button { font-size: 9px; }
   .user-menu-trigger { max-width: 105px; }
+  .time-control > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* Interactive tactics trainer. */
