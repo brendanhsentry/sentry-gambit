@@ -249,12 +249,10 @@ button { color: inherit; }
 .bot-card:disabled { opacity: .55; cursor: default; }
 .bot-card strong { font: 700 13px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--green); }
 .bot-card small { font: 600 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; color: #7d8983; }
-.bot-card em { font-style: normal; font-size: 10px; line-height: 1.35; color: #5d6a64; }
 .bot-card--levy { border-top-color: #7d8983; }
 .bot-card--hikaru { border-top-color: var(--amber); }
 .bot-card--magnus { border-top-color: #ae372b; }
 .bot-card--grandmaster { border-top-color: #5d427b; }
-.bot-status { margin-bottom: 10px; padding: 7px 10px; border: 2px solid var(--line); background: rgba(255,255,255,.4); font: 600 10.5px/1.4 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; color: #57655f; }
 
 .game-over { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; background: rgba(13, 47, 40, 0.5); animation: game-over-fade 220ms ease-out both; }
 @keyframes game-over-fade { from { opacity: 0; } }
@@ -944,7 +942,7 @@ button.move-cell > span {
 /* Rounded corners for cohesion */
 .lobby-card, .game-over-card, .promotion-picker, .resign-confirm, .user-menu-sheet, .auth-card { border-radius: 16px; }
 .invite-card, .live-coach, .record-seer, .move-explanation, .puzzle-feedback, .takeback-bar, .live-coach-hintbox { border-radius: 12px; }
-.lobby-signed-in, .bot-status, .notice, .coach-toggle, .clock { border-radius: 10px; }
+.lobby-signed-in, .notice, .coach-toggle, .clock { border-radius: 10px; }
 .lobby-card input, .auth-card input, .archive-tools input { border-radius: 10px; }
 .move-grade, .coach-motif, .result-chip { border-radius: 6px; }
 .board-wrap, .chessboard, .puzzle-board-wrap, .record-board { border-radius: 12px; }

@@ -18,14 +18,11 @@ npm run build    # production build
 npm run start    # production server
 ```
 
-`npm run dev` first downloads the Maia 3 model and ONNX runtime into
-`public/maia3` and `public/ort` (once, ~58 MB, via
-`scripts/fetch-maia-assets.mjs`). These power five bot opponents —
-Garry (1100), Mikhail (1500), Magnus (1900), and Bobby
-(2200) — which run the
-[Maia](https://www.maiachess.com/) human-like chess model in a browser worker
-on the seated player's machine; the server stays authoritative for legality,
-clocks, and archiving.
+`npm run dev` first downloads the Maia 3 model into `models/` (once, ~46 MB,
+via `scripts/fetch-maia-assets.mjs`). It powers four bot opponents —
+Garry (1100), Mikhail (1500), Magnus (1900), and Bobby (2200) — which run the
+[Maia](https://www.maiachess.com/) human-like chess model on the server, next
+to Stockfish; the browser only sends and receives moves.
 
 To enable on-demand explanations for Stockfish mistakes and blunders, create an
 OpenRouter API key and put it in the ignored `.env.local` file:
@@ -106,9 +103,7 @@ games list query requires the composite index on
 
 Every push to `main` builds the image and deploys it automatically via GitHub
 Actions (`.github/workflows/deploy.yml`); a newer push cancels an in-flight
-deploy. Note that Cloud Run rejects fixed-length responses over 32 MB, so the
-Maia model is streamed by `server.mjs` with chunked encoding rather than served
-as a Next static file.
+deploy.
 
 To deploy manually instead, build the image locally and deploy it
 (`gcloud run deploy --source` is blocked in this project — the default build
@@ -125,7 +120,9 @@ gcloud run deploy sentry-gambit \
   --allow-unauthenticated \
   --max-instances 1 \
   --timeout 3600 \
-  --memory 512Mi
+  --memory 2Gi \
+  --cpu 4 \
+  --no-cpu-throttling
 ```
 
 `--timeout 3600` keeps WebSocket connections open for up to an hour;

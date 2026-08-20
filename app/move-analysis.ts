@@ -67,15 +67,23 @@ function uci(move: ReviewMove) {
   return `${move.from}${move.to}${move.promotion ?? ""}`;
 }
 
-export async function engineBestMove(fen: string): Promise<{ move: string }> {
-  const response = await fetch("/api/best-move", {
+async function postForMove(path: string, body: object): Promise<{ move: string }> {
+  const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fen }),
+    body: JSON.stringify(body),
   });
   const data = (await response.json().catch(() => ({}))) as { move?: string };
   if (!response.ok || !data.move) throw new Error("The engine is unavailable.");
   return { move: data.move };
+}
+
+export function engineBestMove(fen: string) {
+  return postForMove("/api/best-move", { fen });
+}
+
+export function botMove(fen: string, elo: number) {
+  return postForMove("/api/bot-move", { fen, elo });
 }
 
 export function useMoveAnalysis(

@@ -1,7 +1,6 @@
 /** Node server: Next.js frontend plus an in-memory WebSocket chess table service. */
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { createReadStream, statSync } from "node:fs";
 import {
   createHash,
   randomBytes,
@@ -17,6 +16,7 @@ import { WebSocketServer } from "ws";
 import { Chess } from "chess.js";
 import { openGameStore } from "./game-store.mjs";
 import { openFirestoreGameStore } from "./firestore-game-store.mjs";
+import { loadMaia, pickMaiaMove } from "./maia.mjs";
 import {
   classifyOpening,
   findOpeningMention,
@@ -57,6 +57,7 @@ const STARTING_TIMES = new Set(
 );
 const INCREMENTS = new Map([[15 * 60 * 1000, 10_000]]);
 const IDLE_ROOM_TTL = 60 * 60 * 1000;
+const BOT_THINK_MS = 500;
 const BOTS = {
   levy: { name: "Garry", elo: 1100 },
   hikaru: { name: "Mikhail", elo: 1500 },
@@ -426,6 +427,7 @@ function send(client, payload) {
 }
 
 function broadcast(table) {
+  scheduleBotMove(table);
   const payload = JSON.stringify({
     type: "state",
     state: serializeTable(table),
@@ -580,6 +582,86 @@ function recordMoveGrade(table, ply, analysis) {
   return true;
 }
 
+function playMove(table, move, movedByBot) {
+  const now = Date.now();
+  pauseClock(table, now);
+  let acceptedMove;
+  try {
+    acceptedMove = table.chess.move({
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion || "q",
+    });
+  } catch {
+    resumeClock(table, now);
+    return false;
+  }
+  table.undoRequest = null;
+  table.drawOffer = null;
+  table.clock[acceptedMove.color] += INCREMENTS.get(table.initialTimeMs) ?? 0;
+  setBoardResult(table);
+  if (!table.result) resumeClock(table, now);
+  const ply = table.chess.history().length;
+  gameStore.recordMove(
+    table.gameId,
+    ply,
+    acceptedMove,
+    table.chess.fen(),
+    table.clock,
+  );
+  logGameEvent(table, "chess.move.accepted", {
+    "chess.room.id": table.id,
+    "chess.game.id": table.gameId,
+    "chess.move.ply": ply,
+    "chess.move.number": Math.ceil(ply / 2),
+    "chess.move.color": acceptedMove.color === "w" ? "white" : "black",
+    "chess.move.from": acceptedMove.from,
+    "chess.move.to": acceptedMove.to,
+    "chess.move.san": acceptedMove.san,
+    "chess.move.uci": `${acceptedMove.from}${acceptedMove.to}${acceptedMove.promotion ?? ""}`,
+    "chess.position.fen_after": table.chess.fen(),
+    "chess.clock.remaining_ms": table.clock[acceptedMove.color],
+    "chess.move.by_bot": movedByBot,
+    "chess.game.finished": Boolean(table.result),
+    "chess.game.result": table.result ?? "in_progress",
+    ...openingAttributes(tableOpening(table)),
+  });
+  captureFinishedGame(table);
+  broadcast(table);
+  return true;
+}
+
+function scheduleBotMove(table) {
+  const bot = table.bot;
+  if (!bot || table.result) return;
+  if (table.chess.turn() !== bot.color) {
+    // Reset so an undo returning to a previously seen ply retriggers the bot.
+    table.botMoveKey = null;
+    return;
+  }
+  const fen = table.chess.fen();
+  const moveKey = `${table.gameId}:${table.chess.history().length}:${fen}`;
+  if (table.botMoveKey === moveKey) return;
+  table.botMoveKey = moveKey;
+  Promise.all([
+    pickMaiaMove(fen, bot.elo),
+    new Promise((resolve) => setTimeout(resolve, BOT_THINK_MS)),
+  ])
+    .then(([uci]) => {
+      if (table.result || table.botMoveKey !== moveKey || table.chess.fen() !== fen) return;
+      if (flagIfExpired(table)) {
+        captureFinishedGame(table);
+        broadcast(table);
+        return;
+      }
+      playMove(table, { from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] }, true);
+    })
+    .catch((error) => {
+      console.error("Bot move failed:", error);
+      if (table.botMoveKey === moveKey) table.botMoveKey = null;
+    });
+}
+
 function handleTableMessage(table, client, raw) {
   let message;
   try {
@@ -592,11 +674,7 @@ function handleTableMessage(table, client, raw) {
   table.touchedAt = Date.now();
   if (message.type === "move") {
     if (table.result || (client.role !== "w" && client.role !== "b")) return;
-    // A seated human relays the bot's moves, since the bot runs in their browser.
-    const movedByBot =
-      table.bot?.color === table.chess.turn() &&
-      client.role !== table.bot.color;
-    if (client.role !== table.chess.turn() && !movedByBot) {
+    if (client.role !== table.chess.turn()) {
       send(client, { type: "error", message: "Wait for your turn." });
       return;
     }
@@ -606,53 +684,9 @@ function handleTableMessage(table, client, raw) {
       return;
     }
     if (!message.from || !message.to) return;
-
-    const now = Date.now();
-    pauseClock(table, now);
-    let acceptedMove;
-    try {
-      acceptedMove = table.chess.move({
-        from: message.from,
-        to: message.to,
-        promotion: message.promotion || "q",
-      });
-    } catch {
-      resumeClock(table, now);
+    if (!playMove(table, message, false)) {
       send(client, { type: "error", message: "That move is not legal." });
-      return;
     }
-    table.undoRequest = null;
-    table.drawOffer = null;
-    table.clock[acceptedMove.color] += INCREMENTS.get(table.initialTimeMs) ?? 0;
-    setBoardResult(table);
-    if (!table.result) resumeClock(table, now);
-    const ply = table.chess.history().length;
-    gameStore.recordMove(
-      table.gameId,
-      ply,
-      acceptedMove,
-      table.chess.fen(),
-      table.clock,
-    );
-    logGameEvent(table, "chess.move.accepted", {
-      "chess.room.id": table.id,
-      "chess.game.id": table.gameId,
-      "chess.move.ply": ply,
-      "chess.move.number": Math.ceil(ply / 2),
-      "chess.move.color": acceptedMove.color === "w" ? "white" : "black",
-      "chess.move.from": acceptedMove.from,
-      "chess.move.to": acceptedMove.to,
-      "chess.move.san": acceptedMove.san,
-      "chess.move.uci": `${acceptedMove.from}${acceptedMove.to}${acceptedMove.promotion ?? ""}`,
-      "chess.position.fen_after": table.chess.fen(),
-      "chess.clock.remaining_ms": table.clock[acceptedMove.color],
-      "chess.move.by_bot": movedByBot,
-      "chess.game.finished": Boolean(table.result),
-      "chess.game.result": table.result ?? "in_progress",
-      ...openingAttributes(tableOpening(table)),
-    });
-    captureFinishedGame(table);
-    broadcast(table);
     return;
   }
 
@@ -1643,6 +1677,27 @@ async function handleBestMoveRequest(req, res) {
   } catch (error) {
     console.error("Stockfish hint failed:", error);
     sendJson(res, 503, { error: "The engine is temporarily unavailable." });
+  }
+}
+
+async function handleBotMove(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+  if (!consumeAnalysisRateLimit(req)) {
+    sendJson(res, 429, { error: "Too many analysis requests. Try again shortly." });
+    return;
+  }
+  try {
+    const body = await readJsonBody(req);
+    const fen = typeof body.fen === "string" && body.fen.length <= 120 ? body.fen : "";
+    new Chess(fen);
+    const elo = Math.min(2800, Math.max(800, Number(body.elo) || 1500));
+    sendJson(res, 200, { move: await pickMaiaMove(fen, elo) });
+  } catch (error) {
+    console.error("Bot hint failed:", error);
+    sendJson(res, 503, { error: "The bot is temporarily unavailable." });
   }
 }
 
@@ -2812,30 +2867,8 @@ async function handleReviewRequest(req, res, url) {
   }
 }
 
-// Cloud Run rejects fixed-length responses over 32 MB, so the ~46 MB Maia
-// model must be streamed with chunked encoding instead of served by Next.
-function serveMaiaModel(res) {
-  let size;
-  try {
-    size = statSync("public/maia3/maia3.onnx").size;
-  } catch {
-    sendJson(res, 404, { error: "The bot model is not available." });
-    return;
-  }
-  res.writeHead(200, {
-    "Content-Type": "application/octet-stream",
-    "Cache-Control": "public, max-age=31536000, immutable",
-    "X-Model-Size": String(size),
-  });
-  createReadStream("public/maia3/maia3.onnx").pipe(res);
-}
-
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
-  if (req.method === "GET" && url.pathname === "/maia3/maia3.onnx") {
-    serveMaiaModel(res);
-    return;
-  }
   if (handleGamesRequest(req, res, url)) return;
   if (url.pathname.startsWith("/api/auth/")) {
     void handleAuthRequest(req, res, url);
@@ -2855,6 +2888,10 @@ const server = createServer((req, res) => {
   }
   if (url.pathname === "/api/best-move") {
     void handleBestMoveRequest(req, res);
+    return;
+  }
+  if (url.pathname === "/api/bot-move") {
+    void handleBotMove(req, res);
     return;
   }
   if (url.pathname === "/api/move-explanation") {
@@ -2886,6 +2923,7 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
+loadMaia().catch((error) => console.error("Maia failed to load:", error));
 server.listen(port, "0.0.0.0", () => {
   console.log(`Pawn Patrol listening on http://0.0.0.0:${port}`);
 });

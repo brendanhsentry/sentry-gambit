@@ -30,6 +30,7 @@ import {
 import { PIECE_GLYPHS } from "./chess-pieces";
 import { startGameReplay, stopGameReplay } from "./sentry-replay";
 import {
+  botMove,
   engineBestMove,
   gradeLabel,
   useMoveAnalysis,
@@ -37,7 +38,7 @@ import {
   type ReviewMove,
 } from "./move-analysis";
 import { isOpeningPosition, openingName } from "./opening-book.mjs";
-import { BOTS, useMaiaEngine, type BotKey } from "./maia-bot";
+import { BOTS, type BotKey } from "./bots";
 import { authToken, useAuth } from "./auth";
 import { TopBar } from "./TopBar";
 
@@ -405,14 +406,6 @@ export function ChessRoom() {
     Record<number, MoveExplanation>
   >({});
   const explanationRequestsRef = useRef(new Set<number>());
-  const {
-    status: maiaStatus,
-    progress: maiaProgress,
-    load: loadMaia,
-    pickMove,
-  } = useMaiaEngine();
-  const [pendingBot, setPendingBot] = useState<BotKey | null>(null);
-  const botMoveKeyRef = useRef("");
   const latestStateRef = useRef<GameState | null>(null);
   const auth = useAuth();
   const { user } = auth;
@@ -606,48 +599,6 @@ export function ChessRoom() {
     latestStateRef.current = state;
   }, [state]);
 
-  // Rejoining a bot room (e.g. after a refresh) needs the engine warmed up.
-  useEffect(() => {
-    if (state?.bot && !state.result && role !== "spectator" && maiaStatus === "idle") {
-      loadMaia().catch(() => {});
-    }
-  }, [state, role, maiaStatus, loadMaia]);
-
-  // The seated human's browser runs the bot: whenever it is the bot's turn,
-  // ask Maia for a move and relay it to the server.
-  useEffect(() => {
-    const bot = state?.bot;
-    if (!state || !bot || state.result || role === "spectator" || connection !== "online")
-      return;
-    if (new Chess(state.fen).turn() !== bot.color) {
-      // Reset so an undo returning to a previously seen ply retriggers the bot.
-      botMoveKeyRef.current = "";
-      return;
-    }
-    const moveKey = `${state.gameId}:${state.history.length}`;
-    if (botMoveKeyRef.current === moveKey) return;
-    botMoveKeyRef.current = moveKey;
-    const thinkingTime = 600 + Math.random() * 1400;
-    void Promise.all([
-      pickMove(state.fen, bot.elo),
-      new Promise((resolve) => setTimeout(resolve, thinkingTime)),
-    ])
-      .then(([move]) => {
-        const current = latestStateRef.current;
-        if (
-          current &&
-          !current.result &&
-          `${current.gameId}:${current.history.length}` === moveKey
-        ) {
-          send({ type: "move", ...move });
-        }
-      })
-      .catch(() => {
-        botMoveKeyRef.current = "";
-        setNotice(`${bot.name} crashed while thinking. It will retry on the next update.`);
-      });
-  }, [state, role, connection, pickMove, send]);
-
   useEffect(() => {
     if (!state?.coach || !state.bot || role === "spectator") return;
     if (coachBaselineRef.current?.gameId !== state.gameId) {
@@ -825,8 +776,7 @@ export function ChessRoom() {
       if (tier === "best" || !started.bot) {
         uci = (await engineBestMove(fen)).move;
       } else {
-        const picked = await pickMove(fen, started.bot.elo);
-        uci = `${picked.from}${picked.to}${picked.promotion ?? ""}`;
+        uci = (await botMove(fen, started.bot.elo)).move;
       }
       const san = sanFromUci(fen, uci);
       if (!san || latestStateRef.current?.fen !== fen) {
@@ -848,18 +798,10 @@ export function ChessRoom() {
     }
   }
 
-  async function startBotGame(bot: BotKey) {
-    setPendingBot(bot);
-    try {
-      await loadMaia();
-      const nextRoom = makeRoomCode();
-      setRoomInput(nextRoom);
-      connect(nextRoom, name, bot, timeControl * 60_000, coachEnabled);
-    } catch {
-      setNotice("The bot engine could not be loaded. Try again.");
-    } finally {
-      setPendingBot(null);
-    }
+  function startBotGame(bot: BotKey) {
+    const nextRoom = makeRoomCode();
+    setRoomInput(nextRoom);
+    connect(nextRoom, name, bot, timeControl * 60_000, coachEnabled);
   }
 
   const viewHistory = useMemo(() => state?.history ?? [], [state?.history]);
@@ -1460,17 +1402,6 @@ export function ChessRoom() {
           </div>
           )}
 
-          {state?.bot &&
-            !state.result &&
-            role !== "spectator" &&
-            maiaStatus !== "ready" && (
-              <div className="bot-status" role="status">
-                {maiaStatus === "error"
-                  ? `${state.bot.name} failed to boot. Refresh to retry.`
-                  : `Booting ${state.bot.name}… ${maiaProgress}%`}
-              </div>
-            )}
-
           {!inLobby && (
             <PlayerCard
               name={displayedPlayers[topColor]}
@@ -1735,18 +1666,10 @@ export function ChessRoom() {
                       <button
                         key={key}
                         className={`bot-card bot-card--${key}`}
-                        onClick={() => void startBotGame(key)}
-                        disabled={pendingBot !== null}
+                        onClick={() => startBotGame(key)}
                       >
                         <strong>{BOTS[key].name}</strong>
                         <small>ELO {BOTS[key].elo}</small>
-                        {pendingBot === key && (
-                          <em>
-                            {maiaStatus === "loading"
-                              ? `LOADING ${maiaProgress}%`
-                              : "STARTING…"}
-                          </em>
-                        )}
                       </button>
                     ))}
                   </div>

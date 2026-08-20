@@ -35,5 +35,7 @@ jobs:
           flags: >-
             --max-instances=1
             --timeout=3600
-            --memory=512Mi
+            --memory=2Gi
+            --cpu=4
+            --no-cpu-throttling
             --update-secrets=SEER_API_TOKEN=seer-api-token:latest
