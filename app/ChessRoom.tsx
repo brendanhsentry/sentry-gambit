@@ -201,6 +201,18 @@ function sanFromUci(fen: string, uci: string) {
     return null;
   }
 }
+
+function playMoveSound(san: string) {
+  if (san.startsWith("O-O")) playCastle();
+  else if (san.includes("+") || san.includes("#")) playCheck();
+  else if (san.includes("x")) playCapture();
+  else playMove();
+}
+
+function moveSoundKey(move: Pick<ReviewMove, "from" | "to" | "promotion">) {
+  return `${move.from}${move.to}${move.promotion ?? ""}`;
+}
+
 function makeRoomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from(
@@ -971,6 +983,11 @@ export function ChessRoom() {
   const prevBoardRef = useRef<{ key: string; ply: number; fen: string } | null>(
     null,
   );
+  const localMoveSoundRef = useRef<{
+    gameId: string;
+    ply: number;
+    key: string;
+  } | null>(null);
   const boardKey = currentGameId ?? "";
 
   useEffect(() => {
@@ -981,11 +998,17 @@ export function ChessRoom() {
     if (!forward && prev.ply - viewedPly !== 1) return;
     const move = viewHistory[(forward ? viewedPly : prev.ply) - 1];
     if (!move) return;
-    if (forward && move.san.startsWith("O-O")) playCastle();
-    else if (forward && (move.san.includes("+") || move.san.includes("#")))
-      playCheck();
-    else if (forward && move.san.includes("x")) playCapture();
-    else playMove();
+    const localMove = localMoveSoundRef.current;
+    if (
+      forward &&
+      localMove?.gameId === boardKey &&
+      localMove.ply === viewedPly &&
+      localMove.key === moveSoundKey(move)
+    ) {
+      localMoveSoundRef.current = null;
+      return;
+    }
+    playMoveSound(move.san);
   }, [boardKey, viewedPly, viewFen, viewHistory]);
 
   // Chime when the game we were watching or playing reaches a result.
@@ -1210,7 +1233,27 @@ export function ChessRoom() {
       setPromotion({ from, to, color: role });
       return true;
     }
-    send({ type: "move", from, to });
+    return submitMove(options[0]);
+  }
+
+  function submitMove(move: ReviewMove) {
+    localMoveSoundRef.current = {
+      gameId: boardKey,
+      ply: viewedPly + 1,
+      key: moveSoundKey(move),
+    };
+    if (
+      !send({
+        type: "move",
+        from: move.from,
+        to: move.to,
+        ...(move.promotion ? { promotion: move.promotion } : {}),
+      })
+    ) {
+      localMoveSoundRef.current = null;
+      return false;
+    }
+    playMoveSound(move.san);
     return true;
   }
 
@@ -1508,14 +1551,16 @@ export function ChessRoom() {
                   {(["q", "r", "b", "n"] as PieceSymbol[]).map((piece) => (
                     <button
                       key={piece}
-                      onClick={() =>
-                        send({
-                          type: "move",
-                          from: promotion.from,
-                          to: promotion.to,
-                          promotion: piece,
-                        })
-                      }
+                      onClick={() => {
+                        const move = chess
+                          .moves({ square: promotion.from, verbose: true })
+                          .find(
+                            (candidate) =>
+                              candidate.to === promotion.to &&
+                              candidate.promotion === piece,
+                          );
+                        if (move) submitMove(move);
+                      }}
                       aria-label={`Promote to ${piece}`}
                     >
                       {PIECE_GLYPHS[piece]}
