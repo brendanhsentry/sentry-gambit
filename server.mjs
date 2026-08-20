@@ -172,10 +172,13 @@ function logCompletedGameSummaries(table) {
 }
 
 function endGameTraceWhenReady(table) {
+  const gradeablePlies = table.chess
+    .history({ verbose: true })
+    .filter((move) => move.color !== table.bot?.color).length;
   if (
     table.sentryTraceEnded ||
     !table.result ||
-    table.gradedPlies.size < table.chess.history().length
+    table.gradedPlies.size < gradeablePlies
   )
     return;
   logCompletedGameSummaries(table);
@@ -547,7 +550,12 @@ function applyUndo(table, color) {
 function recordMoveGrade(table, ply, analysis) {
   if (table.gradedPlies.has(ply)) return false;
   const acceptedMove = table.chess.history({ verbose: true })[ply - 1];
-  if (!acceptedMove || !MOVE_GRADES.has(analysis.grade)) return false;
+  if (
+    !acceptedMove ||
+    acceptedMove.color === table.bot?.color ||
+    !MOVE_GRADES.has(analysis.grade)
+  )
+    return false;
 
   const loss = analysis.expectedPointsLoss;
   if (

@@ -586,6 +586,7 @@ export function ChessRoom() {
     currentGameId ?? room,
     state?.history ?? [],
     Boolean(state?.history.length),
+    state?.bot?.color,
   );
 
   const flagClock = useCallback(() => send({ type: "flag" }), [send]);
@@ -674,14 +675,6 @@ export function ChessRoom() {
       if (coachSeenRef.current.has(seenKey)) return;
       if (move.color !== role) {
         coachSeenRef.current.add(seenKey);
-        pushNote(
-          ply,
-          move.san,
-          COACH_ALERT_GRADES.has(reviewed.grade)
-            ? "The bot slipped — look for tactics."
-            : "",
-          reviewed.grade,
-        );
         return;
       }
       const isAlert = COACH_ALERT_GRADES.has(reviewed.grade);
