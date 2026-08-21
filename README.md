@@ -67,8 +67,8 @@ automatically. In production, games are stored in Firestore (selected with
 service account authenticates automatically). Every accepted move is stored with
 its notation and resulting position, and results are finalized on checkmate,
 draw, resignation, timeout, or rematch. The Past Games panel lists games played
-from the current browser; a random player key in `localStorage` keeps the
-account-free archive from becoming a public game list.
+by the signed-in account; guest games remain private to the browser that played
+them through a random player key in `localStorage`.
 
 Because every move is persisted as it is played, a server restart or new deploy
 does not lose games in progress: when a player rejoins a room the server no

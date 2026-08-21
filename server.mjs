@@ -2284,11 +2284,18 @@ function handleGamesRequest(req, res, url) {
     .slice(0, 64);
   if (url.pathname === "/api/games") {
     void (async () => {
+      const token = bearerToken(req, url);
+      const user = token ? await gameStore.getSessionUser(token) : null;
       sendJson(res, 200, {
-        games: await gameStore.listGames(
-          playerKey,
-          url.searchParams.get("limit") ?? 20,
-        ),
+        games: user
+          ? await gameStore.listGamesForUser(
+              user.id,
+              url.searchParams.get("limit") ?? 20,
+            )
+          : await gameStore.listGames(
+              playerKey,
+              url.searchParams.get("limit") ?? 20,
+            ),
       });
     })().catch((error) => {
       console.error("Game list request failed:", error);
@@ -2300,9 +2307,13 @@ function handleGamesRequest(req, res, url) {
   if (!match) return false;
   void (async () => {
     const gameId = decodeURIComponent(match[1]);
-    const ownedGame = playerKey
-      ? await gameStore.getGame(gameId, playerKey)
-      : null;
+    const token = bearerToken(req, url);
+    const user = token ? await gameStore.getSessionUser(token) : null;
+    const ownedGame = user
+      ? await gameStore.getGameForUser(gameId, user.id)
+      : playerKey
+        ? await gameStore.getGame(gameId, playerKey)
+        : null;
     const game = ownedGame ?? (await gameStore.getSharedGame(gameId));
     sendJson(res, game ? 200 : 404, game ?? { error: "Game not found" });
   })().catch((error) => {
@@ -2649,14 +2660,20 @@ async function handleExploreRequest(req, res, url) {
     }
     const plan = explorePlan(question);
     const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const storedGames = playerKey
-      ? (await gameStore.listGames(playerKey, 100)).filter(
-          (game) => !game.finishedAt || game.finishedAt >= cutoff,
-        )
-      : [];
+    const storedGames = (
+      user
+        ? await gameStore.listGamesForUser(user.id, 100)
+        : playerKey
+          ? await gameStore.listGames(playerKey, 100)
+          : []
+    ).filter((game) => !game.finishedAt || game.finishedAt >= cutoff);
     const hydratedGames = (
       await Promise.all(
-        storedGames.map((game) => gameStore.getGame(game.id, playerKey)),
+        storedGames.map((game) =>
+          user
+            ? gameStore.getGameForUser(game.id, user.id)
+            : gameStore.getGame(game.id, playerKey),
+        ),
       )
     )
       .filter(Boolean)

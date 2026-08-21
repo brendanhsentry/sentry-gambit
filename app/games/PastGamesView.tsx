@@ -7,6 +7,7 @@ import { PIECE_GLYPHS } from "../chess-pieces";
 import { ChessgroundBoard } from "../ChessgroundBoard";
 import { IconSeer } from "../IconSeer";
 import { TopBar } from "../TopBar";
+import { authToken } from "../auth";
 import {
   gradeLabel,
   useMoveAnalysis,
@@ -69,8 +70,10 @@ export function PastGamesView() {
     setSeer({ phase: "idle" });
     try {
       const key = browserPlayerKey();
+      const token = authToken();
       const response = await fetch(
         `/api/games/${encodeURIComponent(gameId)}?playerKey=${encodeURIComponent(key)}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
       );
       if (!response.ok) throw new Error("Game not found");
       const game = (await response.json()) as SavedGame;
@@ -92,8 +95,10 @@ export function PastGamesView() {
     setError("");
     try {
       const key = browserPlayerKey();
+      const token = authToken();
       const response = await fetch(
         `/api/games?limit=100&playerKey=${encodeURIComponent(key)}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
       );
       if (!response.ok) throw new Error("Archive unavailable");
       const data = (await response.json()) as { games: SavedGameSummary[] };

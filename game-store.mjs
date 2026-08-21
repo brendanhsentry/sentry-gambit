@@ -145,6 +145,18 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       WHERE games.status = 'completed'
       GROUP BY games.id ORDER BY games.finished_at DESC LIMIT ?
     `),
+    selectGamesForUser: database.prepare(`
+      SELECT games.id, games.room, games.white_name, games.black_name, games.result,
+        games.started_at, games.finished_at, games.final_fen,
+        games.white_time_ms, games.black_time_ms, games.shareable,
+        CASE WHEN games.white_user_id = ? THEN 'w' ELSE 'b' END AS player_color,
+        COUNT(moves.ply) AS ply_count
+      FROM games
+      LEFT JOIN moves ON moves.game_id = games.id
+      WHERE games.status = 'completed'
+        AND (games.white_user_id = ? OR games.black_user_id = ?)
+      GROUP BY games.id ORDER BY games.finished_at DESC LIMIT ?
+    `),
     selectGame: database.prepare(`
       SELECT id, room, white_name, black_name, result, started_at, finished_at,
         final_fen, white_time_ms, black_time_ms, shareable,
@@ -152,6 +164,14 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       FROM games
       JOIN game_players ON game_players.game_id = games.id
       WHERE id = ? AND status = 'completed' AND game_players.player_key = ?
+    `),
+    selectGameForUser: database.prepare(`
+      SELECT id, room, white_name, black_name, result, started_at, finished_at,
+        final_fen, white_time_ms, black_time_ms, shareable,
+        CASE WHEN white_user_id = ? THEN 'w' ELSE 'b' END AS player_color
+      FROM games
+      WHERE id = ? AND status = 'completed'
+        AND (white_user_id = ? OR black_user_id = ?)
     `),
     selectSharedGame: database.prepare(`
       SELECT id, room, white_name, black_name, result, started_at, finished_at,
@@ -304,9 +324,25 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       if (!playerKey) return [];
       return statements.selectGames.all(playerKey, safeLimit).map(summary);
     },
+    listGamesForUser(userId, limit = 20) {
+      const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+      if (!userId) return [];
+      return statements.selectGamesForUser
+        .all(userId, userId, userId, safeLimit)
+        .map(summary);
+    },
     getGame(gameId, playerKey) {
       if (!playerKey) return null;
       const row = statements.selectGame.get(gameId, playerKey);
+      if (!row) return null;
+      return {
+        ...summary(row),
+        history: statements.selectMoves.all(gameId).map(mapMove),
+      };
+    },
+    getGameForUser(gameId, userId) {
+      if (!userId) return null;
+      const row = statements.selectGameForUser.get(userId, gameId, userId, userId);
       if (!row) return null;
       return {
         ...summary(row),

@@ -47,7 +47,7 @@ export function openFirestoreGameStore() {
     };
   }
 
-  function summary(doc, playerKey = null) {
+  function summary(doc, playerKey = null, userId = null) {
     const data = doc.data();
     return {
       id: doc.id,
@@ -60,7 +60,15 @@ export function openFirestoreGameStore() {
       clock: { w: data.whiteTimeMs, b: data.blackTimeMs },
       plyCount: data.plyCount ?? 0,
       shareable: data.shareable === true,
-      playerColor: playerKey ? (data.playerColors?.[playerKey] ?? null) : null,
+      playerColor: playerKey
+        ? (data.playerColors?.[playerKey] ?? null)
+        : userId
+          ? data.whiteUserId === userId
+            ? "w"
+            : data.blackUserId === userId
+              ? "b"
+              : null
+          : null,
     };
   }
 
@@ -187,6 +195,25 @@ export function openFirestoreGameStore() {
         .get();
       return snapshot.docs.map((doc) => summary(doc, playerKey));
     },
+    async listGamesForUser(userId, limit = 20) {
+      const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+      if (!userId) return [];
+      const [whiteGames, blackGames] = await Promise.all(
+        ["whiteUserId", "blackUserId"].map((field) =>
+          games
+            .where(field, "==", userId)
+            .get(),
+        ),
+      );
+      const byId = new Map(
+        [...whiteGames.docs, ...blackGames.docs].map((doc) => [doc.id, doc]),
+      );
+      return [...byId.values()]
+        .filter((doc) => doc.data().status === "completed")
+        .sort((left, right) => (right.data().finishedAt ?? 0) - (left.data().finishedAt ?? 0))
+        .slice(0, safeLimit)
+        .map((doc) => summary(doc, null, userId));
+    },
     async getGame(gameId, playerKey) {
       if (!playerKey) return null;
       await writeQueues.get(gameId);
@@ -197,6 +224,23 @@ export function openFirestoreGameStore() {
       const moves = await games.doc(gameId).collection("moves").orderBy("ply").get();
       return {
         ...summary(doc, playerKey),
+        history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),
+      };
+    },
+    async getGameForUser(gameId, userId) {
+      if (!userId) return null;
+      await writeQueues.get(gameId);
+      const doc = await games.doc(gameId).get();
+      const data = doc.data();
+      if (
+        !doc.exists ||
+        data.status !== "completed" ||
+        (data.whiteUserId !== userId && data.blackUserId !== userId)
+      )
+        return null;
+      const moves = await games.doc(gameId).collection("moves").orderBy("ply").get();
+      return {
+        ...summary(doc, null, userId),
         history: moves.docs.map((moveDoc) => mapMove(moveDoc.data())),
       };
     },
