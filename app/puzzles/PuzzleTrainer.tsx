@@ -50,7 +50,7 @@ export function PuzzleTrainer() {
   const [fen, setFen] = useState(PUZZLES[0].fen);
   const [lineIndex, setLineIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("playing");
-  const [lastMove, setLastMove] = useState<Key[] | undefined>();
+  const [lastMove, setLastMove] = useState<Key[] | undefined>(PUZZLES[0].lastMove);
   const [hintLevel, setHintLevel] = useState(0);
   const [mistakes, setMistakes] = useState(0);
   const [wrongMove, setWrongMove] = useState<Key[] | null>(null);
@@ -109,7 +109,7 @@ export function PuzzleTrainer() {
     setFen(next.fen);
     setLineIndex(0);
     setPhase("playing");
-    setLastMove(undefined);
+    setLastMove(next.lastMove);
     setHintLevel(0);
     setMistakes(0);
     setWrongMove(null);
@@ -345,8 +345,8 @@ export function PuzzleTrainer() {
               <span className="panel-kicker">
                 PUZZLE {puzzleIndex + 1} / {PUZZLES.length}
               </span>
-              <h2>{PUZZLES[puzzleIndex].title}</h2>
-              <p className="puzzle-theme">{PUZZLES[puzzleIndex].theme}</p>
+              <h2>Puzzle {puzzleIndex + 1}</h2>
+              <p className="puzzle-theme">Rated {puzzle.rating}</p>
             </div>
 
             <div
@@ -356,7 +356,9 @@ export function PuzzleTrainer() {
               {phase === "solved" ? (
                 <>
                   <strong>✓ Tactic found</strong>
-                  <p>{puzzle.explanation}</p>
+                  {puzzle.themes.length > 0 && (
+                    <p>{puzzle.themes.join(" · ")}</p>
+                  )}
                   <span className="puzzle-solution">{solutionSan}</span>
                   <small>
                     {mistakes
@@ -386,14 +388,13 @@ export function PuzzleTrainer() {
               <div className="puzzle-hint">
                 <div>
                   <span>NEED A NUDGE?</span>
-                  {hintLevel > 0 && <p>{puzzle.hint}</p>}
                 </div>
                 <button
                   onClick={() => setHintLevel((level) => Math.min(2, level + 1))}
                   disabled={hintLevel === 2 || phase === "replying"}
                 >
                   {hintLevel === 0
-                    ? "Show hint"
+                    ? "Show piece"
                     : hintLevel === 1
                       ? "Show move"
                       : "Move shown"}
@@ -423,8 +424,8 @@ export function PuzzleTrainer() {
                     aria-current={index === puzzleIndex ? "true" : undefined}
                   >
                     <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{item.title}</strong>
-                    <em>{item.theme}</em>
+                    <strong>Puzzle {index + 1}</strong>
+                    <em>{item.rating}</em>
                     <small>{solvedIds.has(item.id) ? "✓" : ""}</small>
                   </button>
                 </Fragment>

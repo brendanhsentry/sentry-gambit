@@ -1,211 +1,25 @@
+import type { Key } from "@lichess-org/chessground/types";
+import data from "./lichess-puzzles.json";
+
+export type Difficulty = "Advanced" | "Expert" | "Master";
+
 export type Puzzle = {
   id: string;
-  title: string;
-  theme: string;
-  difficulty: "Beginner" | "Intermediate" | "Advanced";
+  rating: number;
+  difficulty: Difficulty;
+  themes: string[];
   fen: string;
+  lastMove: [Key, Key];
   line: string[];
-  prompt?: string;
-  hint: string;
-  explanation: string;
 };
 
-export const PUZZLES: Puzzle[] = [
-  {
-    id: "back-rank-bell",
-    title: "Puzzle 1",
-    theme: "Mate in one",
-    difficulty: "Beginner",
-    fen: "6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1",
-    line: ["e1e8"],
-    hint: "The pawns around the king leave it no flight square.",
-    explanation: "Re8# seals every escape along the boxed-in back rank.",
-  },
-  {
-    id: "night-watch",
-    title: "Puzzle 2",
-    theme: "Smothered mate",
-    difficulty: "Beginner",
-    fen: "6rk/6pp/8/4N3/8/8/8/6K1 w - - 0 1",
-    line: ["e5f7"],
-    prompt: "White to move. The king's own guard is in the way.",
-    hint: "A knight can check without opening a path to the king.",
-    explanation: "Nf7# attacks h8 while the rook and pawns smother their king.",
-  },
-  {
-    id: "four-move-fire",
-    title: "Puzzle 3",
-    theme: "Opening mate",
-    difficulty: "Beginner",
-    fen: "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2",
-    line: ["d8h4"],
-    prompt: "Black to move. Punish the weakened diagonal.",
-    hint: "White has exposed the route from h4 to e1.",
-    explanation: "Qh4# uses the open diagonal to deliver the fastest possible mate.",
-  },
-  {
-    id: "scholars-snare",
-    title: "Puzzle 4",
-    theme: "Mate in one",
-    difficulty: "Beginner",
-    fen: "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
-    line: ["h5f7"],
-    prompt: "White to move. Only the king defends f7.",
-    hint: "The bishop on c4 backs up the queen.",
-    explanation: "Qxf7# — the bishop guards the queen, so the king cannot take.",
-  },
-  {
-    id: "family-fork",
-    title: "Puzzle 5",
-    theme: "Knight fork",
-    difficulty: "Beginner",
-    fen: "q3k3/5pp1/8/3N4/8/8/5PP1/6K1 w - - 0 1",
-    line: ["d5c7", "e8d7", "c7a8"],
-    prompt: "White to move. The knight is attacked — make it count.",
-    hint: "Look for a check that also touches a8.",
-    explanation: "Nc7+ forks king and queen; whatever the king does, Nxa8 follows.",
-  },
-  {
-    id: "foot-soldier",
-    title: "Puzzle 6",
-    theme: "Pawn fork",
-    difficulty: "Beginner",
-    fen: "5rk1/pp3ppp/3q1n2/8/3PP3/5N2/P4PPP/R2Q2K1 w - - 0 1",
-    line: ["e4e5", "d6d7", "e5f6"],
-    prompt: "White to move. One pawn step attacks two pieces.",
-    hint: "The e-pawn is protected by its neighbor on d4.",
-    explanation: "e5 hits queen and knight at once; the queen runs, and exf6 wins a piece.",
-  },
-  {
-    id: "royal-fork",
-    title: "Puzzle 7",
-    theme: "Win the queen",
-    difficulty: "Intermediate",
-    fen: "2q1k3/8/8/5N2/8/8/8/6K1 w - - 0 1",
-    line: ["f5d6", "e8d8", "d6c8"],
-    prompt: "White to move. Check first, collect second.",
-    hint: "Find a knight check that also attacks c8.",
-    explanation: "Nd6+ forces the king aside, then Nxc8 wins the queen.",
-  },
-  {
-    id: "new-queen",
-    title: "Puzzle 8",
-    theme: "Promotion",
-    difficulty: "Intermediate",
-    fen: "6k1/4P3/8/8/8/8/8/6K1 w - - 0 1",
-    line: ["e7e8q"],
-    prompt: "White to move. Promote with tempo.",
-    hint: "Choose the promotion that immediately checks the king.",
-    explanation: "e8=Q+ creates the strongest piece and gains a move with check.",
-  },
-  {
-    id: "diagonal-skewer",
-    title: "Puzzle 9",
-    theme: "Skewer",
-    difficulty: "Intermediate",
-    fen: "8/5pk1/6p1/8/8/8/1r3PPP/3Q2K1 w - - 0 1",
-    line: ["d1d4", "g7g8", "d4b2"],
-    prompt: "White to move. Check first, then look behind the king.",
-    hint: "From d4 the queen sees both the king and the rook.",
-    explanation: "Qd4+ forces the king off the long diagonal, and Qxb2 collects the rook.",
-  },
-  {
-    id: "frozen-knight",
-    title: "Puzzle 10",
-    theme: "Pin",
-    difficulty: "Intermediate",
-    fen: "4k3/pp2pppp/2n5/1B6/3PP3/8/5PPP/6K1 w - - 0 1",
-    line: ["d4d5", "h7h6", "d5c6"],
-    prompt: "White to move. The c6 knight cannot run.",
-    hint: "The bishop pins the knight to the king — attack it with a pawn.",
-    explanation: "d5 attacks a piece that cannot move; dxc6 wins it for a pawn.",
-  },
-  {
-    id: "two-birds",
-    title: "Puzzle 11",
-    theme: "Double attack",
-    difficulty: "Intermediate",
-    fen: "r5k1/6pp/8/8/8/8/5PPP/3Q2K1 w - - 0 1",
-    line: ["d1d5", "g8f8", "d5a8"],
-    prompt: "White to move. Find the square that sees both targets.",
-    hint: "From d5 the queen checks the king and eyes a8.",
-    explanation: "Qd5+ hits king and rook at once; after any king move, Qxa8+ wins the rook.",
-  },
-  {
-    id: "unmasked-bishop",
-    title: "Puzzle 12",
-    theme: "Discovered check",
-    difficulty: "Intermediate",
-    fen: "5q1k/5p1p/8/8/3N4/8/1B3PPP/6K1 w - - 0 1",
-    line: ["d4e6", "h8g8", "e6f8"],
-    prompt: "White to move. The knight is blocking something.",
-    hint: "Move the knight with a threat — the bishop delivers the check.",
-    explanation: "Ne6+ unmasks the bishop and attacks f8, winning the queen for a knight.",
-  },
-  {
-    id: "anastasia",
-    title: "Puzzle 13",
-    theme: "Mate in two",
-    difficulty: "Intermediate",
-    fen: "5rk1/5pp1/6P1/3N4/8/R7/5P1P/6K1 w - - 0 1",
-    line: ["d5e7", "g8h8", "a3h3"],
-    prompt: "White to move. Push the king into the corner first.",
-    hint: "A knight check leaves the king only one square.",
-    explanation: "Ne7+ forces Kh8, and Rh3# strikes down the open h-file.",
-  },
-  {
-    id: "philidor-finish",
-    title: "Puzzle 14",
-    theme: "Smothered mate",
-    difficulty: "Advanced",
-    fen: "5r1k/6pp/4Q2N/8/8/8/5PPP/6K1 w - - 0 1",
-    line: ["e6g8", "f8g8", "h6f7"],
-    prompt: "White to move. Seal the king's shelter shut.",
-    hint: "Sacrifice the queen to drag the rook onto g8.",
-    explanation: "Qg8+! forces Rxg8, and Nf7# mates the fully smothered king.",
-  },
-  {
-    id: "opera-finale",
-    title: "Puzzle 15",
-    theme: "Deflection",
-    difficulty: "Advanced",
-    fen: "4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 0 16",
-    line: ["b3b8", "d7b8", "d1d8"],
-    prompt: "White to move. Morphy's famous finish — deflect the defender.",
-    hint: "The knight is the only guard of d8.",
-    explanation: "Qb8+! forces Nxb8, and Rd8# lands with the bishop guarding the rook.",
-  },
-  {
-    id: "boden-cross",
-    title: "Puzzle 16",
-    theme: "Mate in two",
-    difficulty: "Advanced",
-    fen: "3r2k1/4bppp/8/q4b2/8/2N5/PP3PPP/2KQ1B1R b - - 0 1",
-    line: ["a5c3", "b2c3", "e7a3"],
-    prompt: "Black to move. Two bishops aim at the castled king.",
-    hint: "The b2 pawn is the only cover on the dark squares.",
-    explanation: "Qxc3+! bxc3 Ba3# — the bishops criss-cross while the rook cuts d2.",
-  },
-  {
-    id: "legal-legacy",
-    title: "Puzzle 17",
-    theme: "Queen sacrifice",
-    difficulty: "Advanced",
-    fen: "r2qkbnr/ppp2ppp/2np4/4p3/2B1P1b1/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 4 5",
-    line: ["f3e5", "g4d1", "c4f7", "e8e7", "c3d5"],
-    prompt: "White to move. Ignore the queen and hunt the king.",
-    hint: "The pinned knight can move because the attack ends in mate.",
-    explanation: "Nxe5 invites Bxd1, but Bxf7+ and Nd5# reveal the queen as bait.",
-  },
-  {
-    id: "knight-not-queen",
-    title: "Puzzle 18",
-    theme: "Underpromotion",
-    difficulty: "Advanced",
-    fen: "8/p4P1k/6p1/6K1/8/1BB5/P7/8 w - - 0 1",
-    line: ["f7f8n"],
-    prompt: "White to move. The obvious promotion does not even check.",
-    hint: "Only one piece checks h7 from f8.",
-    explanation: "f8=N#! A new queen gives no check, but the knight covers h7 with mate.",
-  },
-];
+function difficulty(rating: number): Difficulty {
+  if (rating >= 2400) return "Master";
+  if (rating >= 2100) return "Expert";
+  return "Advanced";
+}
+
+// Sampled from the CC0 Lichess puzzle database; see scripts/build-puzzles.mjs.
+export const PUZZLES: Puzzle[] = (data as Omit<Puzzle, "difficulty">[]).map(
+  (puzzle) => ({ ...puzzle, difficulty: difficulty(puzzle.rating) }),
+);
