@@ -1280,7 +1280,7 @@ export function ChessRoom() {
           <span>—</span>
         </span>
       );
-    const reviewed = analysis.moves[move.index];
+    const reviewed = state?.result ? analysis.moves[move.index] : null;
     const title = reviewed
       ? `${gradeLabel(reviewed.grade)}${reviewed.expectedPointsLoss === null ? "" : ` · ${(reviewed.expectedPointsLoss * 100).toFixed(1)} expected points lost`}`
       : undefined;
@@ -1832,7 +1832,9 @@ export function ChessRoom() {
             <div className="moves-header">
               <span>MOVE SHEET</span>
               <span>
-                {analysis.status === "loading" || analysis.status === "analyzing"
+                {!state.result
+                  ? `${state.history.length} ${state.history.length === 1 ? "PLY" : "PLIES"}`
+                  : analysis.status === "loading" || analysis.status === "analyzing"
                   ? `GRADING ${analysis.completed}/${state.history.length}`
                   : analysis.status === "complete"
                     ? "GRADES READY"
