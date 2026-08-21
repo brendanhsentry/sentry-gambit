@@ -8,10 +8,7 @@ import { ChessgroundBoard } from "../ChessgroundBoard";
 import { IconSeer } from "../IconSeer";
 import { TopBar } from "../TopBar";
 import { authToken } from "../auth";
-import {
-  gradeLabel,
-  useMoveAnalysis,
-} from "../move-analysis";
+import { gradeLabel, useMoveAnalysis } from "../move-analysis";
 import {
   formatClock,
   formatDate,
@@ -160,7 +157,7 @@ export function PastGamesView() {
   const positionExpectedPoints =
     replayPly === 0
       ? 0.5
-      : analysis.moves[replayPly - 1]?.positionExpectedPoints ?? null;
+      : (analysis.moves[replayPly - 1]?.positionExpectedPoints ?? null);
   const whiteExpectedPercent =
     positionExpectedPoints === null
       ? 50
@@ -194,7 +191,7 @@ export function PastGamesView() {
         if (response.status !== 404) {
           const data = await response
             .json()
-            .catch(() => ({} as { error?: string }));
+            .catch(() => ({}) as { error?: string });
           setSeer({
             phase: "error",
             message: data.error ?? "The review could not be started.",
@@ -224,7 +221,11 @@ export function PastGamesView() {
         const response = await fetch(
           `/api/review/status?issueId=${encodeURIComponent(seer.issueId)}`,
         );
-        if (!response.ok || !active || selectedGameIdRef.current !== seer.gameId)
+        if (
+          !response.ok ||
+          !active ||
+          selectedGameIdRef.current !== seer.gameId
+        )
           return;
         const data = await response.json();
         if (data.status === "completed" && data.text) {
@@ -434,7 +435,10 @@ export function PastGamesView() {
                   </p>
                 </div>
 
-                <section className="record-seer" aria-labelledby="record-seer-title">
+                <section
+                  className="record-seer"
+                  aria-labelledby="record-seer-title"
+                >
                   <div className="record-seer-head">
                     <div>
                       <span className="seer-eye">
@@ -603,7 +607,7 @@ export function PastGamesView() {
                       <p className="record-eval-label" aria-live="polite">
                         {positionExpectedPoints === null
                           ? "Stockfish is evaluating this position…"
-                          : `Stockfish · White ${whiteExpectedPercent}% expected score`}
+                          : `White ${whiteExpectedPercent}% expected score`}
                       </p>
                       <div
                         className="record-replay-controls"
