@@ -2474,32 +2474,32 @@ function sentryDataApi(path, options) {
 const exploreRateLimits = new Map();
 const EXPLORE_GAME_FIELDS = {
   timestamp: "timestamp",
-  gameId: "chess.game.id",
-  opening: "chess.opening.name",
-  family: "chess.opening.family",
-  color: "chess.player.color",
-  outcome: "chess.player.outcome",
-  score: "chess.player.score",
-  blunders: "chess.player.blunders",
-  mistakes: "chess.player.mistakes",
-  inaccuracies: "chess.player.inaccuracies",
-  expectedPointsLoss: "chess.player.expected_points_loss",
+  gameId: "tags[chess.game.id,string]",
+  opening: "tags[chess.opening.name,string]",
+  family: "tags[chess.opening.family,string]",
+  color: "tags[chess.player.color,string]",
+  outcome: "tags[chess.player.outcome,string]",
+  score: "tags[chess.player.score,number]",
+  blunders: "tags[chess.player.blunders,number]",
+  mistakes: "tags[chess.player.mistakes,number]",
+  inaccuracies: "tags[chess.player.inaccuracies,number]",
+  expectedPointsLoss: "tags[chess.player.expected_points_loss,number]",
 };
 const EXPLORE_GRADE_FIELDS = {
   timestamp: "timestamp",
-  gameId: "chess.game.id",
-  opening: "chess.opening.name",
-  family: "chess.opening.family",
-  color: "chess.move.color",
+  gameId: "tags[chess.game.id,string]",
+  opening: "tags[chess.opening.name,string]",
+  family: "tags[chess.opening.family,string]",
+  color: "tags[chess.move.color,string]",
   ply: "tags[chess.move.ply,number]",
-  san: "chess.move.san",
-  grade: "chess.move.grade",
+  san: "tags[chess.move.san,string]",
+  grade: "tags[chess.move.grade,string]",
   expectedPointsLoss: "tags[chess.move.expected_points_loss,number]",
 };
 
 const EXPLORE_COUNT_FIELDS = {
-  gameId: "chess.game.id",
-  grade: "chess.move.grade",
+  gameId: "tags[chess.game.id,string]",
+  grade: "tags[chess.move.grade,string]",
   count: "count()",
   avgLoss: "avg(tags[chess.move.expected_points_loss,number])",
 };
@@ -2530,7 +2530,10 @@ function explorePlan(question) {
   if (!color && opening && against) {
     color = opening.side === "white" ? "black" : "white";
   }
-  return { opening, color, against };
+  const strongest = /\b(strongest|best|highest(?:\s|-)?scoring|most successful)\b/.test(
+    normalized,
+  );
+  return { opening, color, against, strongest };
 }
 
 function numericField(row, field) {
@@ -2650,7 +2653,7 @@ function exploreLogRows(rows, gamesById = new Map()) {
   }));
 }
 
-function storedExploreRows(games, gradeCountRows) {
+function exploreGameRows(rows, gradeCountRows) {
   const countsByGame = new Map();
   for (const row of gradeCountRows) {
     const gameId = row[EXPLORE_COUNT_FIELDS.gameId];
@@ -2663,11 +2666,11 @@ function storedExploreRows(games, gradeCountRows) {
     });
     countsByGame.set(gameId, buckets);
   }
-  return games.flatMap((game) => {
-    const whiteScore = resultScore(game.result ?? "");
-    if (whiteScore === null || !["w", "b"].includes(game.playerColor)) return [];
-    const score = game.playerColor === "w" ? whiteScore : 1 - whiteScore;
-    const buckets = countsByGame.get(game.id) ?? [];
+  return rows.flatMap((row) => {
+    const gameId = row[EXPLORE_GAME_FIELDS.gameId];
+    const outcome = row[EXPLORE_GAME_FIELDS.outcome];
+    if (!gameId || !["win", "loss", "draw"].includes(outcome)) return [];
+    const buckets = countsByGame.get(gameId) ?? [];
     const gradeCount = (name) =>
       buckets
         .filter((bucket) => bucket.grade === name)
@@ -2679,18 +2682,19 @@ function storedExploreRows(games, gradeCountRows) {
     );
     return [
       {
-        [EXPLORE_GAME_FIELDS.timestamp]: game.finishedAt
-          ? new Date(game.finishedAt).toISOString()
-          : null,
-        [EXPLORE_GAME_FIELDS.gameId]: game.id,
-        [EXPLORE_GAME_FIELDS.opening]: game.opening?.name ?? "Unknown opening",
+        [EXPLORE_GAME_FIELDS.timestamp]:
+          row[EXPLORE_GAME_FIELDS.timestamp] ?? null,
+        [EXPLORE_GAME_FIELDS.gameId]: gameId,
+        [EXPLORE_GAME_FIELDS.opening]:
+          row[EXPLORE_GAME_FIELDS.opening] ?? "Unknown opening",
         [EXPLORE_GAME_FIELDS.family]:
-          game.opening?.family ?? "Unknown opening",
-        [EXPLORE_GAME_FIELDS.color]:
-          game.playerColor === "w" ? "white" : "black",
-        [EXPLORE_GAME_FIELDS.outcome]:
-          score === 1 ? "win" : score === 0 ? "loss" : "draw",
-        [EXPLORE_GAME_FIELDS.score]: score,
+          row[EXPLORE_GAME_FIELDS.family] ?? "Unknown opening",
+        [EXPLORE_GAME_FIELDS.color]: row[EXPLORE_GAME_FIELDS.color] ?? null,
+        [EXPLORE_GAME_FIELDS.outcome]: outcome,
+        [EXPLORE_GAME_FIELDS.score]: numericField(
+          row,
+          EXPLORE_GAME_FIELDS.score,
+        ),
         [EXPLORE_GAME_FIELDS.blunders]: gradeCount("blunder"),
         [EXPLORE_GAME_FIELDS.mistakes]: gradeCount("mistake"),
         [EXPLORE_GAME_FIELDS.inaccuracies]: gradeCount("inaccuracy"),
@@ -2720,10 +2724,14 @@ function exploreAnswer(summary, plan) {
   if (!plan.opening && summary.breakdown.length > 1) {
     const eligible = summary.breakdown.filter((item) => item.games >= 2);
     const candidates = eligible.length ? eligible : summary.breakdown;
-    const weakest = [...candidates].sort(
-      (left, right) => left.scorePercent - right.scorePercent,
+    const comparison = [...candidates].sort((left, right) =>
+      plan.strongest
+        ? right.scorePercent - left.scorePercent
+        : left.scorePercent - right.scorePercent,
     )[0];
-    answer += ` Your lowest-scoring opening family is ${weakest.opening} at ${weakest.scorePercent.toFixed(0)}% across ${weakest.games} game${weakest.games === 1 ? "" : "s"}.`;
+    answer += plan.strongest
+      ? ` Your strongest opening family is ${comparison.opening} at ${comparison.scorePercent.toFixed(0)}% across ${comparison.games} game${comparison.games === 1 ? "" : "s"}.`
+      : ` Your lowest-scoring opening family is ${comparison.opening} at ${comparison.scorePercent.toFixed(0)}% across ${comparison.games} game${comparison.games === 1 ? "" : "s"}.`;
   }
   return answer;
 }
@@ -2762,43 +2770,10 @@ async function handleExploreRequest(req, res, url) {
       return;
     }
     const plan = explorePlan(question);
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const storedGames = (
-      user
-        ? await gameStore.listGamesForUser(user.id, 100)
-        : playerKey
-          ? await gameStore.listGames(playerKey, 100)
-          : []
-    ).filter((game) => !game.finishedAt || game.finishedAt >= cutoff);
-    const hydratedGames = (
-      await Promise.all(
-        storedGames.map((game) =>
-          user
-            ? gameStore.getGameForUser(game.id, user.id)
-            : gameStore.getGame(game.id, playerKey),
-        ),
-      )
-    )
-      .filter(Boolean)
-      .map((game) => ({
-        ...game,
-        opening: classifyOpening(
-          game.history.map(
-            (move) => `${move.from}${move.to}${move.promotion ?? ""}`,
-          ),
-        ),
-      }));
-    const matchingGames = hydratedGames.filter((game) => {
-      if (plan.opening && game.opening?.family !== plan.opening.family)
-        return false;
-      if (
-        plan.color &&
-        game.playerColor !== (plan.color === "white" ? "w" : "b")
-      )
-        return false;
-      return true;
-    });
-    const gameIds = matchingGames.map((game) => game.id);
+    const playerId = user
+      ? telemetryPlayerId("user", user.id)
+      : telemetryPlayerId("player", playerKey);
+    const summaryMessage = `message:${quoteSentrySearch("chess.player.game.completed")}`;
     const gradedMessage = `message:${quoteSentrySearch("chess.move.graded")}`;
     const queryLogs = async (query, fields, extra = {}) => {
       const params = new URLSearchParams({
@@ -2815,9 +2790,32 @@ async function handleExploreRequest(req, res, url) {
       );
       return Array.isArray(result?.data) ? result.data : [];
     };
+    const summaryFilters = [summaryMessage, `chess.player.id:${playerId}`];
+    if (plan.opening)
+      summaryFilters.push(
+        `chess.opening.family:${quoteSentrySearch(plan.opening.family)}`,
+      );
+    if (plan.color) summaryFilters.push(`chess.player.color:${plan.color}`);
+    const summaryQuery = summaryFilters.join(" ");
+    const summaryRows = await queryLogs(
+      summaryQuery,
+      Object.values(EXPLORE_GAME_FIELDS),
+      { sort: "-timestamp" },
+    );
+    const gameIds = [
+      ...new Set(
+        summaryRows
+          .map((row) => row[EXPLORE_GAME_FIELDS.gameId])
+          .filter(Boolean),
+      ),
+    ];
     const idsByColor = { white: [], black: [] };
-    for (const game of matchingGames) {
-      idsByColor[game.playerColor === "w" ? "white" : "black"].push(game.id);
+    for (const row of summaryRows) {
+      const color = row[EXPLORE_GAME_FIELDS.color];
+      const gameId = row[EXPLORE_GAME_FIELDS.gameId];
+      if (gameId && (color === "white" || color === "black")) {
+        idsByColor[color].push(gameId);
+      }
     }
     const countQueries = [];
     for (const [color, ids] of Object.entries(idsByColor)) {
@@ -2841,8 +2839,18 @@ async function handleExploreRequest(req, res, url) {
           )
         : [],
     ]);
-    const gamesById = new Map(matchingGames.map((game) => [game.id, game]));
-    const gameRows = storedExploreRows(matchingGames, gradeCountRows);
+    const gamesById = new Map(
+      summaryRows.map((row) => [
+        row[EXPLORE_GAME_FIELDS.gameId],
+        {
+          opening: {
+            name: row[EXPLORE_GAME_FIELDS.opening],
+            family: row[EXPLORE_GAME_FIELDS.family],
+          },
+        },
+      ]),
+    );
+    const gameRows = exploreGameRows(summaryRows, gradeCountRows);
     const summary = summarizeExploreRows(gameRows);
     const logs = exploreLogRows(gradeRows, gamesById)
       .sort((left, right) => right.expectedPointsLoss - left.expectedPointsLoss)
@@ -2852,7 +2860,7 @@ async function handleExploreRequest(req, res, url) {
       answer: exploreAnswer(summary, plan),
       summary,
       logs,
-      query: `${gradedMessage} chess.move.color:<your-color> chess.game.id:[<matching-game-ids>]`,
+      query: summaryQuery,
       period: "30d",
     });
   } catch (error) {

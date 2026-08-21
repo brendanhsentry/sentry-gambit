@@ -46,6 +46,7 @@ type ExploreResult = {
 };
 
 const EXAMPLES = [
+  "What is my strongest opening?",
   "What have I done historically against the Queen's Gambit?",
   "Which openings do I struggle with?",
   "How do I score as Black?",
