@@ -343,10 +343,12 @@ button { color: inherit; }
 
 .ai-coach {
   margin-top: 14px;
-  border: 2px solid var(--line);
-  border-top: 3px solid var(--green);
+  margin-bottom: 4px;
+  border: 2px solid var(--btn-line);
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.3);
   padding: 14px;
+  box-shadow: 0 4px 0 0 var(--btn-line);
 }
 .ai-coach-head { display: flex; align-items: center; color: var(--green); font: 700 10.5px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
 .ai-coach > p { margin: 10px 0 0; color: #5d6d66; font-size: 12px; line-height: 1.5; }
@@ -359,11 +361,8 @@ button { color: inherit; }
 
 .move-explanation {
   margin-top: 14px;
-  margin-bottom: 4px;
-  border: 2px solid var(--btn-line);
-  background: rgba(255, 255, 255, 0.3);
-  padding: 14px;
-  box-shadow: 0 4px 0 0 var(--btn-line);
+  border-top: 2px solid var(--line);
+  padding-top: 14px;
 }
 .move-explanation-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .move-explanation-head strong { color: var(--green); font: 700 13px/1 var(--font-geist-mono), monospace; }
@@ -949,7 +948,7 @@ button.move-cell > span {
 
 /* Rounded corners for cohesion */
 .lobby-card, .game-over-card, .promotion-picker, .resign-confirm, .user-menu-sheet, .auth-card { border-radius: 16px; }
-.invite-card, .live-coach, .record-seer, .move-explanation, .puzzle-feedback, .takeback-bar, .live-coach-hintbox { border-radius: 12px; }
+.invite-card, .live-coach, .record-seer, .puzzle-feedback, .takeback-bar, .live-coach-hintbox { border-radius: 12px; }
 .lobby-signed-in, .notice, .coach-toggle, .clock { border-radius: 10px; }
 .lobby-card input, .auth-card input, .archive-tools input { border-radius: 10px; }
 .move-grade, .coach-motif, .result-chip { border-radius: 6px; }
