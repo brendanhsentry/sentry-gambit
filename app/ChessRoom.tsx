@@ -1758,7 +1758,13 @@ export function ChessRoom() {
             />
           )}
 
-          {!matchUnderway && room && (
+          {state?.result && (
+            <button className="replay-share-button" onClick={copyReplay}>
+              {replayCopied ? "Replay link copied!" : "Share replay"}
+            </button>
+          )}
+
+          {!matchUnderway && !state?.result && room && (
             <div className="invite-card">
               <span>
                 {state
@@ -1778,14 +1784,6 @@ export function ChessRoom() {
                     ? "Both players are seated."
                     : "Share this with your opponent."}
               </p>
-              {state?.result && (
-                <button
-                  className="replay-share-button"
-                  onClick={copyReplay}
-                >
-                  {replayCopied ? "Replay link copied!" : "Share replay"}
-                </button>
-              )}
             </div>
           )}
 
@@ -2003,76 +2001,75 @@ export function ChessRoom() {
                 in this game.
               </p>
             )}
-          </section>
-          )}
-
-          {analysisPly &&
-            selectedReview?.evidence &&
-            EXPLAINABLE_GRADES.has(selectedReview.grade) && (
-              <div className="move-explanation" aria-live="polite">
-                <div className="move-explanation-head">
-                  <span
-                    className={`move-grade move-grade--${selectedReview.grade}`}
-                  >
-                    {gradeLabel(selectedReview.grade)}
-                  </span>
-                  <strong>
-                    {Math.ceil(analysisPly / 2)}
-                    {analysisPly % 2 ? "." : "…"}{" "}
-                    {viewHistory[analysisPly - 1]?.san}
-                  </strong>
-                  {selectedReview.expectedPointsLoss !== null && (
-                    <small>
-                      {(selectedReview.expectedPointsLoss * 100).toFixed(1)}{" "}
-                      expected points lost
-                    </small>
+            {analysisPly &&
+              selectedReview?.evidence &&
+              EXPLAINABLE_GRADES.has(selectedReview.grade) && (
+                <div className="move-explanation" aria-live="polite">
+                  <div className="move-explanation-head">
+                    <span
+                      className={`move-grade move-grade--${selectedReview.grade}`}
+                    >
+                      {gradeLabel(selectedReview.grade)}
+                    </span>
+                    <strong>
+                      {Math.ceil(analysisPly / 2)}
+                      {analysisPly % 2 ? "." : "…"}{" "}
+                      {viewHistory[analysisPly - 1]?.san}
+                    </strong>
+                    {selectedReview.expectedPointsLoss !== null && (
+                      <small>
+                        {(selectedReview.expectedPointsLoss * 100).toFixed(1)}{" "}
+                        expected points lost
+                      </small>
+                    )}
+                  </div>
+                  {selectedExplanation?.phase === "loading" ||
+                  !selectedExplanation ? (
+                    <p className="move-explanation-loading">
+                      Asking the coach to explain Stockfish&apos;s line…
+                    </p>
+                  ) : (
+                    <>
+                      {selectedExplanation.phase === "done" && (
+                        <p className="move-explanation-copy">
+                          {selectedExplanation.explanation}
+                        </p>
+                      )}
+                      {selectedExplanation.phase === "error" && (
+                        <p className="move-explanation-error">
+                          {selectedExplanation.message}
+                          <button
+                            onClick={() =>
+                              void requestMoveExplanation(analysisPly - 1)
+                            }
+                          >
+                            Retry
+                          </button>
+                        </p>
+                      )}
+                      {selectedExplanation.requestId && (
+                        <p className="move-explanation-request">
+                          Agent run #{selectedExplanation.requestId}
+                        </p>
+                      )}
+                      {selectedExplanation.playedLine.length > 0 && (
+                        <div className="engine-line">
+                          <span>ENGINE CONTINUATION</span>
+                          <code>{selectedExplanation.playedLine.join(" ")}</code>
+                        </div>
+                      )}
+                      {selectedExplanation.bestLine.length > 0 && (
+                        <div className="engine-line engine-line--best">
+                          <span>BETTER LINE</span>
+                          <code>{selectedExplanation.bestLine.join(" ")}</code>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-                {selectedExplanation?.phase === "loading" ||
-                !selectedExplanation ? (
-                  <p className="move-explanation-loading">
-                    Asking the coach to explain Stockfish&apos;s line…
-                  </p>
-                ) : (
-                  <>
-                    {selectedExplanation.phase === "done" && (
-                      <p className="move-explanation-copy">
-                        {selectedExplanation.explanation}
-                      </p>
-                    )}
-                    {selectedExplanation.phase === "error" && (
-                      <p className="move-explanation-error">
-                        {selectedExplanation.message}
-                        <button
-                          onClick={() =>
-                            void requestMoveExplanation(analysisPly - 1)
-                          }
-                        >
-                          Retry
-                        </button>
-                      </p>
-                    )}
-                    {selectedExplanation.requestId && (
-                      <p className="move-explanation-request">
-                        Agent run #{selectedExplanation.requestId}
-                      </p>
-                    )}
-                    {selectedExplanation.playedLine.length > 0 && (
-                      <div className="engine-line">
-                        <span>ENGINE CONTINUATION</span>
-                        <code>{selectedExplanation.playedLine.join(" ")}</code>
-                      </div>
-                    )}
-                    {selectedExplanation.bestLine.length > 0 && (
-                      <div className="engine-line engine-line--best">
-                        <span>BETTER LINE</span>
-                        <code>{selectedExplanation.bestLine.join(" ")}</code>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+              )}
+          </section>
+          )}
 
           {state &&
             state.rematchRequest &&
