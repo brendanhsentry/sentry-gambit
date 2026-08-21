@@ -2479,7 +2479,6 @@ const EXPLORE_GAME_FIELDS = {
   family: "tags[chess.opening.family,string]",
   color: "tags[chess.player.color,string]",
   outcome: "tags[chess.player.outcome,string]",
-  score: "tags[chess.player.score,number]",
   blunders: "tags[chess.player.blunders,number]",
   mistakes: "tags[chess.player.mistakes,number]",
   inaccuracies: "tags[chess.player.inaccuracies,number]",
@@ -2530,15 +2529,22 @@ function explorePlan(question) {
   if (!color && opening && against) {
     color = opening.side === "white" ? "black" : "white";
   }
-  const strongest = /\b(strongest|best|highest(?:\s|-)?scoring|most successful)\b/.test(
-    normalized,
-  );
+  const strongest =
+    /\b(strongest|best|highest(?:\s|-)?scoring|most successful)\b/.test(
+      normalized,
+    ) || /\b(win the most|most wins|winningest)\b/.test(normalized);
   return { opening, color, against, strongest };
 }
 
 function numericField(row, field) {
   const value = Number(row?.[field]);
   return Number.isFinite(value) ? value : 0;
+}
+
+function outcomePoints(outcome) {
+  if (outcome === "win") return 1;
+  if (outcome === "draw") return 0.5;
+  return 0;
 }
 
 function summarizeExploreRows(rows) {
@@ -2559,7 +2565,7 @@ function summarizeExploreRows(rows) {
     const outcome = row[EXPLORE_GAME_FIELDS.outcome];
     const family = row[EXPLORE_GAME_FIELDS.family] || "Unknown opening";
     const values = {
-      score: numericField(row, EXPLORE_GAME_FIELDS.score),
+      score: outcomePoints(outcome),
       blunders: numericField(row, EXPLORE_GAME_FIELDS.blunders),
       mistakes: numericField(row, EXPLORE_GAME_FIELDS.mistakes),
       inaccuracies: numericField(row, EXPLORE_GAME_FIELDS.inaccuracies),
@@ -2691,10 +2697,6 @@ function exploreGameRows(rows, gradeCountRows) {
           row[EXPLORE_GAME_FIELDS.family] ?? "Unknown opening",
         [EXPLORE_GAME_FIELDS.color]: row[EXPLORE_GAME_FIELDS.color] ?? null,
         [EXPLORE_GAME_FIELDS.outcome]: outcome,
-        [EXPLORE_GAME_FIELDS.score]: numericField(
-          row,
-          EXPLORE_GAME_FIELDS.score,
-        ),
         [EXPLORE_GAME_FIELDS.blunders]: gradeCount("blunder"),
         [EXPLORE_GAME_FIELDS.mistakes]: gradeCount("mistake"),
         [EXPLORE_GAME_FIELDS.inaccuracies]: gradeCount("inaccuracy"),
@@ -2717,20 +2719,25 @@ function exploreAnswer(summary, plan) {
       ? `as ${plan.color === "white" ? "White" : "Black"}`
       : "across all openings";
   const record = `${summary.wins}–${summary.losses}–${summary.draws}`;
-  let answer = `Over the last 30 days, you scored ${summary.scorePercent.toFixed(0)}% ${subject} across ${summary.total} game${summary.total === 1 ? "" : "s"} (${record}).`;
+  let answer = `Over the last 30 days, you earned ${summary.scorePercent.toFixed(0)}% of available points ${subject} across ${summary.total} game${summary.total === 1 ? "" : "s"} (${record}).`;
   if (summary.gradedGames) {
     answer += ` Across ${summary.gradedGames} game${summary.gradedGames === 1 ? "" : "s"} with matching Sentry grade logs, you averaged ${summary.avgBlunders.toFixed(1)} blunders and ${summary.avgMistakes.toFixed(1)} mistakes.`;
   }
   if (!plan.opening && summary.breakdown.length > 1) {
     const eligible = summary.breakdown.filter((item) => item.games >= 2);
     const candidates = eligible.length ? eligible : summary.breakdown;
-    const comparison = [...candidates].sort((left, right) =>
-      plan.strongest
-        ? right.scorePercent - left.scorePercent
-        : left.scorePercent - right.scorePercent,
-    )[0];
+    const comparison = [...candidates].sort((left, right) => {
+      if (plan.strongest) {
+        return (
+          right.wins - left.wins ||
+          right.scorePercent - left.scorePercent ||
+          right.games - left.games
+        );
+      }
+      return left.scorePercent - right.scorePercent;
+    })[0];
     answer += plan.strongest
-      ? ` Your strongest opening family is ${comparison.opening} at ${comparison.scorePercent.toFixed(0)}% across ${comparison.games} game${comparison.games === 1 ? "" : "s"}.`
+      ? ` Your strongest opening family is ${comparison.opening}, with ${comparison.wins} win${comparison.wins === 1 ? "" : "s"} from ${comparison.games} game${comparison.games === 1 ? "" : "s"} (${comparison.scorePercent.toFixed(0)}% score from wins and draws).`
       : ` Your lowest-scoring opening family is ${comparison.opening} at ${comparison.scorePercent.toFixed(0)}% across ${comparison.games} game${comparison.games === 1 ? "" : "s"}.`;
   }
   return answer;
