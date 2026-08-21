@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { authToken } from "../auth";
 import { TopBar } from "../TopBar";
@@ -71,11 +72,25 @@ function browserPlayerKey() {
   return created;
 }
 
+function keyMoments(logs: ExploreLog[]) {
+  const games = new Set<string>();
+  return [...logs]
+    .filter((log) => log.gameId && log.ply > 0)
+    .sort((left, right) => right.expectedPointsLoss - left.expectedPointsLoss)
+    .filter((log) => {
+      if (!log.gameId || games.has(log.gameId)) return false;
+      games.add(log.gameId);
+      return true;
+    })
+    .slice(0, 3);
+}
+
 export function ExploreView() {
   const [question, setQuestion] = useState(EXAMPLES[0]);
   const [result, setResult] = useState<ExploreResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const moments = result ? keyMoments(result.logs) : [];
 
   async function ask(event: FormEvent) {
     event.preventDefault();
@@ -285,20 +300,24 @@ export function ExploreView() {
                   </div>
                 </div>
 
-                <section className="explore-logs">
-                  <div className="explore-section-heading">
-                    <div>
-                      <span className="panel-kicker">RELATED SENTRY LOGS</span>
-                      <h2>Events behind this answer</h2>
+                {moments.length > 0 && (
+                  <section className="explore-logs">
+                    <div className="explore-section-heading">
+                      <div>
+                        <span className="panel-kicker">REVIEW</span>
+                        <h2>Key moments to revisit</h2>
+                      </div>
+                      <strong>{moments.length} games</strong>
                     </div>
-                    <strong>{result.logs.length} shown</strong>
-                  </div>
-                  {result.logs.length ? (
                     <div className="explore-log-list">
-                      {result.logs.map((log, index) => (
-                        <article key={`${log.gameId ?? "game"}-${index}`}>
+                      {moments.map((log) => (
+                        <Link
+                          className="explore-key-moment"
+                          href={`/games/${encodeURIComponent(log.gameId ?? "")}?ply=${log.ply}`}
+                          key={`${log.gameId}-${log.ply}`}
+                        >
                           <div className="explore-log-head">
-                            <code>chess.move.graded</code>
+                            <code>MOVE {Math.ceil(log.ply / 2)}</code>
                             <time>{logTime(log.timestamp)}</time>
                           </div>
                           <div className="explore-log-main">
@@ -317,10 +336,6 @@ export function ExploreView() {
                           </div>
                           <dl>
                             <div>
-                              <dt>ply</dt>
-                              <dd>{log.ply || "—"}</dd>
-                            </div>
-                            <div>
                               <dt>move</dt>
                               <dd>{log.san ?? "—"}</dd>
                             </div>
@@ -335,15 +350,14 @@ export function ExploreView() {
                               </dd>
                             </div>
                           </dl>
-                        </article>
+                          <span className="explore-key-moment-action">
+                            Open replay <span aria-hidden="true">→</span>
+                          </span>
+                        </Link>
                       ))}
                     </div>
-                  ) : (
-                    <p className="explore-logs-empty">
-                      No individual log rows were returned for this query.
-                    </p>
-                  )}
-                </section>
+                  </section>
+                )}
               </>
             )}
 

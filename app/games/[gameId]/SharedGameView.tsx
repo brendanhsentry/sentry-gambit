@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChessgroundBoard } from "../../ChessgroundBoard";
+import { authToken } from "../../auth";
 import { TopBar } from "../../TopBar";
 import { gradeLabel, useMoveAnalysis } from "../../move-analysis";
 import {
@@ -36,6 +38,10 @@ const EXPLAINABLE_GRADES = new Set([
 ]);
 
 export function SharedGameView({ gameId }: { gameId: string }) {
+  const searchParams = useSearchParams();
+  const requestedPlyValue = searchParams.get("ply");
+  const requestedPly =
+    requestedPlyValue === null ? null : Number(requestedPlyValue);
   const [game, setGame] = useState<SavedGame | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
@@ -71,17 +77,29 @@ export function SharedGameView({ gameId }: { gameId: string }) {
     const controller = new AbortController();
     let active = true;
     async function load() {
+      const playerKey = window.localStorage.getItem("pawn-patrol-player-key");
+      const query = playerKey
+        ? `?playerKey=${encodeURIComponent(playerKey)}`
+        : "";
+      const token = authToken();
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           const response = await fetch(
-            `/api/games/${encodeURIComponent(gameId)}`,
-            { signal: controller.signal },
+            `/api/games/${encodeURIComponent(gameId)}${query}`,
+            {
+              signal: controller.signal,
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            },
           );
           if (response.ok) {
             const loaded = (await response.json()) as SavedGame;
             if (!active) return;
             setGame(loaded);
-            setReplayPly(loaded.history.length);
+            setReplayPly(
+              requestedPly !== null && Number.isInteger(requestedPly)
+                ? Math.max(0, Math.min(loaded.history.length, requestedPly))
+                : loaded.history.length,
+            );
             setAnalysisPly(null);
             setMoveExplanations({});
             setLoading(false);
@@ -103,7 +121,7 @@ export function SharedGameView({ gameId }: { gameId: string }) {
       active = false;
       controller.abort();
     };
-  }, [gameId]);
+  }, [gameId, requestedPly]);
 
   useEffect(() => {
     if (!isPlaying || replayPly >= lastPly) return;

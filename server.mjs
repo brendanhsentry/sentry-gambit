@@ -2751,11 +2751,14 @@ async function handleExploreRequest(req, res, url) {
     const gamesById = new Map(matchingGames.map((game) => [game.id, game]));
     const gameRows = storedExploreRows(matchingGames, gradeCountRows);
     const summary = summarizeExploreRows(gameRows);
+    const logs = exploreLogRows(gradeRows, gamesById)
+      .sort((left, right) => right.expectedPointsLoss - left.expectedPointsLoss)
+      .slice(0, 25);
     sendJson(res, 200, {
       question,
       answer: exploreAnswer(summary, plan),
       summary,
-      logs: exploreLogRows(gradeRows.slice(0, 25), gamesById),
+      logs,
       query: `${gradedMessage} chess.move.color:<your-color> chess.game.id:[<matching-game-ids>]`,
       period: "30d",
     });
