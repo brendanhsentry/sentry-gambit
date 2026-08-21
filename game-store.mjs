@@ -99,6 +99,11 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
     database.exec("ALTER TABLE games ADD COLUMN black_user_id TEXT");
   }
 
+  const moveColumns = database.prepare("PRAGMA table_info(moves)").all();
+  if (!moveColumns.some((column) => column.name === "analysis")) {
+    database.exec("ALTER TABLE moves ADD COLUMN analysis TEXT");
+  }
+
   const statements = {
     insertGame: database.prepare(`
       INSERT OR IGNORE INTO games (
@@ -180,9 +185,15 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       WHERE id = ? AND status = 'completed' AND shareable = 1
     `),
     selectMoves: database.prepare(`
-      SELECT color, san, from_square, to_square, promotion, fen_after, played_at
+      SELECT color, san, from_square, to_square, promotion, fen_after, played_at, analysis
       FROM moves WHERE game_id = ? ORDER BY ply
     `),
+    selectMove: database.prepare(`
+      SELECT from_square, to_square, promotion, analysis FROM moves WHERE game_id = ? AND ply = ?
+    `),
+    setMoveAnalysis: database.prepare(
+      "UPDATE moves SET analysis = ? WHERE game_id = ? AND ply = ?",
+    ),
     selectLiveGame: database.prepare(`
       SELECT id, room, white_time_ms, black_time_ms, initial_time_ms,
         bot_key, bot_color, bot_coach, white_user_id, black_user_id
@@ -246,6 +257,7 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
       ...(move.promotion ? { promotion: move.promotion } : {}),
       fenAfter: move.fen_after,
       playedAt: move.played_at,
+      ...(move.analysis ? { analysis: JSON.parse(move.analysis) } : {}),
     };
   }
 
@@ -311,6 +323,19 @@ export function openGameStore(databasePath = DEFAULT_DATABASE_PATH) {
         database.exec("ROLLBACK");
         throw error;
       }
+    },
+    getMoveAnalysis(gameId, ply) {
+      const row = statements.selectMove.get(gameId, ply);
+      if (!row) return null;
+      return {
+        from: row.from_square,
+        to: row.to_square,
+        promotion: row.promotion ?? null,
+        analysis: row.analysis ? JSON.parse(row.analysis) : null,
+      };
+    },
+    saveMoveAnalysis(gameId, ply, analysis) {
+      statements.setMoveAnalysis.run(JSON.stringify(analysis), gameId, ply);
     },
     finishGame(gameId, result, fen, clock) {
       const now = Date.now();

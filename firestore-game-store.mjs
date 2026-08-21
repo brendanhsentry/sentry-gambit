@@ -29,6 +29,7 @@ export function openFirestoreGameStore() {
       ...(move.promotion ? { promotion: move.promotion } : {}),
       fenAfter: move.fenAfter,
       playedAt: move.playedAt,
+      ...(move.analysis ? { analysis: move.analysis } : {}),
     };
   }
 
@@ -166,6 +167,23 @@ export function openFirestoreGameStore() {
         });
         return batch.commit();
       });
+    },
+    async getMoveAnalysis(gameId, ply) {
+      await writeQueues.get(gameId);
+      const doc = await games.doc(gameId).collection("moves").doc(String(ply)).get();
+      if (!doc.exists) return null;
+      const data = doc.data();
+      return {
+        from: data.from,
+        to: data.to,
+        promotion: data.promotion ?? null,
+        analysis: data.analysis ?? null,
+      };
+    },
+    saveMoveAnalysis(gameId, ply, analysis) {
+      enqueue(gameId, () =>
+        games.doc(gameId).collection("moves").doc(String(ply)).update({ analysis }),
+      );
     },
     finishGame(gameId, result, fen, clock) {
       const now = Date.now();

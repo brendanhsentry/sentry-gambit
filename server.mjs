@@ -1518,7 +1518,7 @@ function consumeAnalysisRateLimit(req) {
     return true;
   }
   existing.count += 1;
-  return existing.count <= 80;
+  return existing.count <= 240;
 }
 
 function parseAnalysisHistory(value) {
@@ -1579,13 +1579,15 @@ function cacheAnalysis(key, analysis) {
   analysisCache.set(key, analysis);
 }
 
+function persistMoveAnalysis(gameId, ply, analysis) {
+  Promise.resolve()
+    .then(() => gameStore.saveMoveAnalysis(gameId, ply, analysis))
+    .catch((error) => console.error(`Saving analysis for game ${gameId} failed:`, error));
+}
+
 async function handleMoveAnalysisRequest(req, res) {
   if (req.method !== "POST") {
     sendJson(res, 405, { error: "Method not allowed." });
-    return;
-  }
-  if (!consumeAnalysisRateLimit(req)) {
-    sendJson(res, 429, { error: "Too many analysis requests. Try again shortly." });
     return;
   }
 
@@ -1624,6 +1626,14 @@ async function handleMoveAnalysisRequest(req, res) {
   const move = replay.history[ply - 1];
   const fenBefore = replay.fensBefore[ply - 1];
   const uci = `${move.from}${move.to}${move.promotion ?? ""}`;
+  let storedMove = table ? null : await gameStore.getMoveAnalysis(gameId, ply).catch(() => null);
+  if (storedMove && `${storedMove.from}${storedMove.to}${storedMove.promotion ?? ""}` !== uci) {
+    storedMove = null;
+  }
+  if (storedMove?.analysis) {
+    sendJson(res, 200, { analysis: storedMove.analysis, cached: true });
+    return;
+  }
   const previousLoss = table?.moveReviewLosses.get(ply - 1) ?? null;
   const cacheKey = createHash("sha256")
     .update(JSON.stringify({ fenBefore, uci, previousLoss }))
@@ -1631,6 +1641,10 @@ async function handleMoveAnalysisRequest(req, res) {
   const cached = analysisCache.get(cacheKey);
   let job = cached ? Promise.resolve({ analysis: cached, review: null }) : analysisJobs.get(cacheKey);
   if (!job) {
+    if (!consumeAnalysisRateLimit(req)) {
+      sendJson(res, 429, { error: "Too many analysis requests. Try again shortly." });
+      return;
+    }
     job = (async () => {
       const review = await stockfish.reviewMove(fenBefore, uci);
       const analysis = classifyServerMove(
@@ -1661,6 +1675,9 @@ async function handleMoveAnalysisRequest(req, res) {
       else if (analysis.expectedPointsLoss !== null)
         table.moveReviewLosses.set(ply, analysis.expectedPointsLoss);
       recordMoveGrade(table, ply, analysis);
+    }
+    if ((table && matchesTableHistory(table, replay.history, ply)) || storedMove) {
+      persistMoveAnalysis(gameId, ply, analysis);
     }
     sendJson(res, 200, { analysis, cached: Boolean(cached) });
   } catch (error) {

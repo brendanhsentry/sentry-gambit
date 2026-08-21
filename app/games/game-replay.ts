@@ -1,6 +1,6 @@
 import { Chess } from "chess.js";
 import type { Key } from "@lichess-org/chessground/types";
-import type { ReviewMove } from "../move-analysis";
+import type { ClassifiedMove, ReviewMove } from "../move-analysis";
 
 export type PlayerColor = "w" | "b";
 
@@ -20,6 +20,7 @@ export type SavedGameSummary = {
 export type SavedMove = ReviewMove & {
   fenAfter: string;
   playedAt: number;
+  analysis?: ClassifiedMove | null;
 };
 
 export type SavedGame = SavedGameSummary & { history: SavedMove[] };

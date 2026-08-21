@@ -87,9 +87,11 @@ export function botMove(fen: string, elo: number) {
   return postForMove("/api/bot-move", { fen, elo });
 }
 
+type AnalyzableMove = ReviewMove & { analysis?: ClassifiedMove | null };
+
 export function useMoveAnalysis(
   gameId: string,
-  history: ReviewMove[],
+  history: AnalyzableMove[],
   enabled: boolean,
 ): AnalysisState {
   const [analysis, setAnalysis] = useState<AnalysisState>({
@@ -102,7 +104,8 @@ export function useMoveAnalysis(
 
   useEffect(() => {
     const controller = new AbortController();
-    const moves = JSON.parse(historyKey) as ReviewMove[];
+    const moves = JSON.parse(historyKey) as AnalyzableMove[];
+    const wireHistory = moves.map(({ from, to, promotion }) => ({ from, to, promotion }));
 
     async function run() {
       if (!enabled || !moves.length) {
@@ -141,18 +144,23 @@ export function useMoveAnalysis(
       });
 
       for (let index = startIndex; index < moves.length; index += 1) {
-        const response = await fetch("/api/move-analysis", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({ gameId, ply: index + 1, history: moves }),
-        });
-        const data = (await response.json().catch(() => ({}))) as {
-          analysis?: ClassifiedMove;
-        };
-        if (controller.signal.aborted) return;
-        if (!response.ok || !data.analysis) throw new Error("Analysis unavailable.");
-        results[index] = data.analysis;
+        const stored = moves[index].analysis;
+        if (stored) {
+          results[index] = stored;
+        } else {
+          const response = await fetch("/api/move-analysis", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({ gameId, ply: index + 1, history: wireHistory }),
+          });
+          const data = (await response.json().catch(() => ({}))) as {
+            analysis?: ClassifiedMove;
+          };
+          if (controller.signal.aborted) return;
+          if (!response.ok || !data.analysis) throw new Error("Analysis unavailable.");
+          results[index] = data.analysis;
+        }
         cacheRef.current = {
           gameId,
           history: moves.slice(0, index + 1),
