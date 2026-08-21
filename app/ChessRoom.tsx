@@ -2207,8 +2207,8 @@ export function ChessRoom() {
                 {state.liveGradesRequest?.by === role
                   ? "Asked…"
                   : state.liveGrades
-                    ? "◉ Grades on"
-                    : "○ Grades off"}
+                    ? "◉ Grades"
+                    : "○ Grades"}
               </button>
               <button
                 onClick={() => send({ type: "undo" })}
