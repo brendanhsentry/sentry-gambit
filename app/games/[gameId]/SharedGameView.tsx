@@ -7,7 +7,6 @@ import { ChessgroundBoard } from "../../ChessgroundBoard";
 import { authToken } from "../../auth";
 import { TopBar } from "../../TopBar";
 import { gradeLabel, useMoveAnalysis } from "../../move-analysis";
-import { GameSummary } from "../GameSummary";
 import {
   formatClock,
   formatDate,
@@ -306,13 +305,6 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                   · Black {formatClock(game.clock.b)}
                 </p>
               </div>
-
-              <GameSummary
-                history={game.history}
-                moves={analysis.moves}
-                players={game.players}
-                complete={analysis.status === "complete"}
-              />
 
               <section className="record-replay">
                 <div className="record-section-title">

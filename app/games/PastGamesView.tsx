@@ -9,7 +9,6 @@ import { IconSeer } from "../IconSeer";
 import { TopBar } from "../TopBar";
 import { authToken } from "../auth";
 import { gradeLabel, useMoveAnalysis } from "../move-analysis";
-import { GameSummary } from "./GameSummary";
 import {
   formatClock,
   formatDate,
@@ -436,13 +435,6 @@ export function PastGamesView() {
                     {formatClock(selectedGame.clock.b)}
                   </p>
                 </div>
-
-                <GameSummary
-                  history={selectedGame.history}
-                  moves={analysis.moves}
-                  players={selectedGame.players}
-                  complete={analysis.status === "complete"}
-                />
 
                 <section
                   className="record-seer"

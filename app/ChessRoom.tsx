@@ -41,7 +41,6 @@ import { isOpeningPosition, openingName } from "./opening-book.mjs";
 import { BOTS, type BotKey } from "./bots";
 import { authToken, useAuth } from "./auth";
 import { TopBar } from "./TopBar";
-import { GameSummary } from "./games/GameSummary";
 import { moveCountLabel } from "./games/game-replay";
 
 // The captured trays reuse chessground's <piece> element and its piece SVGs.
@@ -1747,15 +1746,6 @@ export function ChessRoom() {
                     : "One table. Two players. Every move live."}
               </p>
             </div>
-          )}
-
-          {state?.result && (
-            <GameSummary
-              history={state.history}
-              moves={analysis.moves}
-              players={state.players}
-              complete={analysis.status === "complete"}
-            />
           )}
 
           {state?.result && (
