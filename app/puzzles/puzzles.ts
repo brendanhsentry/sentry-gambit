@@ -13,7 +13,7 @@ export type Puzzle = {
 export const PUZZLES: Puzzle[] = [
   {
     id: "back-rank-bell",
-    title: "Back-rank bell",
+    title: "Puzzle 1",
     theme: "Mate in one",
     difficulty: "Beginner",
     fen: "6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1",
@@ -23,7 +23,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "night-watch",
-    title: "Night watch",
+    title: "Puzzle 2",
     theme: "Smothered mate",
     difficulty: "Beginner",
     fen: "6rk/6pp/8/4N3/8/8/8/6K1 w - - 0 1",
@@ -34,7 +34,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "four-move-fire",
-    title: "Four-move fire",
+    title: "Puzzle 3",
     theme: "Opening mate",
     difficulty: "Beginner",
     fen: "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2",
@@ -45,7 +45,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "scholars-snare",
-    title: "Scholar's snare",
+    title: "Puzzle 4",
     theme: "Mate in one",
     difficulty: "Beginner",
     fen: "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
@@ -56,7 +56,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "family-fork",
-    title: "Family fork",
+    title: "Puzzle 5",
     theme: "Knight fork",
     difficulty: "Beginner",
     fen: "q3k3/5pp1/8/3N4/8/8/5PP1/6K1 w - - 0 1",
@@ -67,7 +67,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "foot-soldier",
-    title: "Foot soldier fork",
+    title: "Puzzle 6",
     theme: "Pawn fork",
     difficulty: "Beginner",
     fen: "5rk1/pp3ppp/3q1n2/8/3PP3/5N2/P4PPP/R2Q2K1 w - - 0 1",
@@ -78,7 +78,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "royal-fork",
-    title: "Royal fork",
+    title: "Puzzle 7",
     theme: "Win the queen",
     difficulty: "Intermediate",
     fen: "2q1k3/8/8/5N2/8/8/8/6K1 w - - 0 1",
@@ -89,7 +89,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "new-queen",
-    title: "New queen",
+    title: "Puzzle 8",
     theme: "Promotion",
     difficulty: "Intermediate",
     fen: "6k1/4P3/8/8/8/8/8/6K1 w - - 0 1",
@@ -100,7 +100,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "diagonal-skewer",
-    title: "Diagonal skewer",
+    title: "Puzzle 9",
     theme: "Skewer",
     difficulty: "Intermediate",
     fen: "8/5pk1/6p1/8/8/8/1r3PPP/3Q2K1 w - - 0 1",
@@ -111,7 +111,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "frozen-knight",
-    title: "Frozen knight",
+    title: "Puzzle 10",
     theme: "Pin",
     difficulty: "Intermediate",
     fen: "4k3/pp2pppp/2n5/1B6/3PP3/8/5PPP/6K1 w - - 0 1",
@@ -122,7 +122,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "two-birds",
-    title: "Two birds",
+    title: "Puzzle 11",
     theme: "Double attack",
     difficulty: "Intermediate",
     fen: "r5k1/6pp/8/8/8/8/5PPP/3Q2K1 w - - 0 1",
@@ -133,7 +133,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "unmasked-bishop",
-    title: "Unmasked bishop",
+    title: "Puzzle 12",
     theme: "Discovered check",
     difficulty: "Intermediate",
     fen: "5q1k/5p1p/8/8/3N4/8/1B3PPP/6K1 w - - 0 1",
@@ -144,7 +144,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "anastasia",
-    title: "Anastasia's mate",
+    title: "Puzzle 13",
     theme: "Mate in two",
     difficulty: "Intermediate",
     fen: "5rk1/5pp1/6P1/3N4/8/R7/5P1P/6K1 w - - 0 1",
@@ -155,7 +155,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "philidor-finish",
-    title: "Philidor's finish",
+    title: "Puzzle 14",
     theme: "Smothered mate",
     difficulty: "Advanced",
     fen: "5r1k/6pp/4Q2N/8/8/8/5PPP/6K1 w - - 0 1",
@@ -166,7 +166,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "opera-finale",
-    title: "Opera finale",
+    title: "Puzzle 15",
     theme: "Deflection",
     difficulty: "Advanced",
     fen: "4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 0 16",
@@ -177,7 +177,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "boden-cross",
-    title: "Boden's mate",
+    title: "Puzzle 16",
     theme: "Mate in two",
     difficulty: "Advanced",
     fen: "3r2k1/4bppp/8/q4b2/8/2N5/PP3PPP/2KQ1B1R b - - 0 1",
@@ -188,7 +188,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "legal-legacy",
-    title: "Légal's legacy",
+    title: "Puzzle 17",
     theme: "Queen sacrifice",
     difficulty: "Advanced",
     fen: "r2qkbnr/ppp2ppp/2np4/4p3/2B1P1b1/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 4 5",
@@ -199,7 +199,7 @@ export const PUZZLES: Puzzle[] = [
   },
   {
     id: "knight-not-queen",
-    title: "Knight, not queen",
+    title: "Puzzle 18",
     theme: "Underpromotion",
     difficulty: "Advanced",
     fen: "8/p4P1k/6p1/6K1/8/1BB5/P7/8 w - - 0 1",
