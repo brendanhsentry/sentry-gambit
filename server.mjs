@@ -1280,19 +1280,11 @@ function describeEngineLine(fen, moves) {
 }
 
 function expectedPointsFromStockfish(tokens) {
-  const wdlIndex = tokens.indexOf("wdl");
-  if (wdlIndex >= 0) {
-    const wins = Number(tokens[wdlIndex + 1]);
-    const draws = Number(tokens[wdlIndex + 2]);
-    const losses = Number(tokens[wdlIndex + 3]);
-    const total = wins + draws + losses;
-    if (total > 0) return (wins + draws * 0.5) / total;
-  }
   const scoreIndex = tokens.indexOf("score");
   if (scoreIndex < 0) return null;
   const score = Number(tokens[scoreIndex + 2]);
   if (tokens[scoreIndex + 1] === "mate") return score > 0 ? 1 : 0;
-  if (tokens[scoreIndex + 1] === "cp") return 1 / (1 + Math.exp(-score / 220));
+  if (tokens[scoreIndex + 1] === "cp") return 1 / (1 + Math.exp(-score / 272));
   return null;
 }
 
@@ -1355,7 +1347,6 @@ class ServerStockfish {
     this.ready = (async () => {
       await this.waitFor("uci", (line) => line === "uciok");
       this.send("setoption name Hash value 32");
-      this.send("setoption name UCI_ShowWDL value true");
       await this.waitFor("isready", (line) => line === "readyok");
     })();
   }
