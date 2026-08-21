@@ -276,19 +276,18 @@ button { color: inherit; }
 .promotion-picker > div button:active { transform: translateY(2px); box-shadow: none; }
 .promotion-cancel { border: 0; background: transparent; cursor: pointer; text-decoration: underline; color: #6e7b75; font-size: 11px; }
 
-.match-panel { padding-top: 26px; border-top: 4px solid var(--green); display: flex; flex-direction: column; }
+.match-panel { padding-top: 18px; border-top: 4px solid var(--green); display: flex; flex-direction: column; }
 .match-panel--live { height: 0; min-height: 100%; padding-top: 27px; border-top: none; overflow: hidden; }
 .match-panel--live .moves-panel { min-height: 0; display: flex; flex-direction: column; }
-.match-panel--live .moves-table { max-height: none; min-height: 0; flex: 1; }
 .match-heading h2 { margin: 12px 0 4px; color: var(--green); font-size: 26px; line-height: 1.1; font-weight: 650; letter-spacing: -.01em; }
-.match-heading p { margin: 0 0 26px; color: #718078; font-size: 12px; }
+.match-heading p { margin: 0 0 18px; color: #718078; font-size: 12px; }
 .invite-card { border: 2px solid var(--line); background: rgba(255,255,255,.23); padding: 16px 17px; margin-bottom: 22px; }
 .invite-card > span { font: 650 10.5px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; color: #7d8983; }
 .invite-card > div { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 .invite-card strong { font: 700 28px/1 var(--font-geist-mono), monospace; letter-spacing: .14em; color: var(--green); }
 .invite-card button { border: 0; border-bottom: 2px solid var(--green); padding: 4px 0; background: transparent; cursor: pointer; text-transform: uppercase; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
 .invite-card p { margin: 10px 0 0; color: #7a8680; font-size: 11px; }
-.replay-share-button { width: 100%; margin-top: 13px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); padding: 9px 12px; color: var(--green); box-shadow: 0 3px 0 0 var(--btn-line); }
+.replay-share-button { width: 100%; margin-top: 0; text-transform: uppercase; font-size: 10px; font-weight: 700; letter-spacing: .08em; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); padding: 9px 12px; color: var(--green); box-shadow: 0 3px 0 0 var(--btn-line); }
 .replay-share-button:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
 .replay-share-button:active { transform: translateY(2px); box-shadow: none; }
 
@@ -385,7 +384,6 @@ footer { min-height: 52px; margin-top: auto; padding: 0 clamp(22px,4vw,64px); bo
   .lobby-card { order: -1; }
   .match-panel { min-height: auto; }
   .match-panel--live { height: auto; padding-top: 0; overflow: visible; }
-  .match-panel--live .moves-table { max-height: 298px; }
   .topbar { grid-template-columns: auto 1fr auto; }
   .topbar-nav { justify-self: center; gap: 16px; }
 }

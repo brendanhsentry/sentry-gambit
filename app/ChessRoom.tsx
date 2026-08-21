@@ -1501,9 +1501,6 @@ export function ChessRoom() {
                             : "↻ Rematch"}
                         </button>
                       )}
-                      <button onClick={copyReplay}>
-                        {replayCopied ? "Copied!" : "Share replay"}
-                      </button>
                       <button
                         onClick={() => setResultDismissedFor(state.gameId)}
                       >
@@ -2169,7 +2166,7 @@ export function ChessRoom() {
                 </div>
               </div>
             )}
-          {state && (matchUnderway || state.result) && (
+          {state && matchUnderway && (
             <div className="match-actions">
               <button
                 onClick={() => send({ type: "reset" })}
