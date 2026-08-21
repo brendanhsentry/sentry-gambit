@@ -2519,7 +2519,17 @@ function quoteSentrySearch(value) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-function explorePlan(question) {
+const EXPLORE_PLANNER_INSTRUCTIONS = [
+  "Turn a chess-history question into a safe query plan.",
+  "Available completed-game fields are opening family, player color, and outcome (win, draw, loss).",
+  "Use strongest when the user asks for their best opening, most wins, or strongest play.",
+  "Use weakest when they ask where they struggle; otherwise use overview.",
+  "Only set color when the user explicitly asks about playing White or Black.",
+  "If an opening is named, copy its name; otherwise use an empty string.",
+  "Never produce Sentry query syntax, field names, or an answer.",
+].join(" ");
+
+function fallbackExplorePlan(question) {
   const normalized = question.toLowerCase();
   const opening = findOpeningMention(question);
   const against = /\bagainst\b/.test(normalized);
@@ -2534,6 +2544,87 @@ function explorePlan(question) {
       normalized,
     ) || /\b(win the most|most wins|winningest)\b/.test(normalized);
   return { opening, color, against, strongest };
+}
+
+function explorePlanFromModel(plan, question) {
+  const fallback = fallbackExplorePlan(question);
+  const opening =
+    typeof plan?.opening === "string"
+      ? findOpeningMention(plan.opening) ?? fallback.opening
+      : fallback.opening;
+  const color = ["white", "black"].includes(plan?.color)
+    ? plan.color
+    : fallback.color;
+  return {
+    opening,
+    color,
+    against: fallback.against,
+    strongest: plan?.intent === "strongest" || fallback.strongest,
+  };
+}
+
+async function explorePlan(question) {
+  const fallback = fallbackExplorePlan(question);
+  if (!OPENROUTER_API_KEY) return fallback;
+  const body = {
+    model: OPENROUTER_MODEL,
+    ...(OPENROUTER_FALLBACK_MODELS.length
+      ? { models: OPENROUTER_FALLBACK_MODELS }
+      : {}),
+    messages: [
+      { role: "system", content: EXPLORE_PLANNER_INSTRUCTIONS },
+      { role: "user", content: question },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "explore_query_plan",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            intent: { type: "string", enum: ["overview", "strongest", "weakest"] },
+            color: { type: "string", enum: ["any", "white", "black"] },
+            opening: { type: "string" },
+          },
+          required: ["intent", "color", "opening"],
+          additionalProperties: false,
+        },
+      },
+    },
+    plugins: [{ id: "response-healing" }],
+    reasoning: { enabled: false },
+    provider: {
+      require_parameters: true,
+      data_collection: "deny",
+      ...(process.env.OPENROUTER_ZDR === "true" ? { zdr: true } : {}),
+    },
+    max_tokens: 100,
+  };
+  try {
+    const response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      signal: AbortSignal.timeout(OPENROUTER_TIMEOUT_MS),
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.APP_URL || "https://pawn-patrol.example",
+        "X-OpenRouter-Title": "Pawn Patrol",
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.error || data?.choices?.[0]?.error)
+      throw openRouterErrorFromResponse(response, data);
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== "string") throw new Error("Empty planner response");
+    return explorePlanFromModel(JSON.parse(content), question);
+  } catch (error) {
+    Sentry.logger.warn("explore.planner.failed", {
+      error_type: error?.errorType ?? error?.name ?? "unknown",
+    });
+    return fallback;
+  }
 }
 
 function numericField(row, field) {
@@ -2776,7 +2867,7 @@ async function handleExploreRequest(req, res, url) {
       });
       return;
     }
-    const plan = explorePlan(question);
+    const plan = await explorePlan(question);
     const playerId = user
       ? telemetryPlayerId("user", user.id)
       : telemetryPlayerId("player", playerKey);
