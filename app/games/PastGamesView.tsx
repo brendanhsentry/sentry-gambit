@@ -16,6 +16,7 @@ import {
   moveCountLabel,
   pairMoves,
   playerName,
+  playerPerspective,
   replayPosition,
   resultTone,
   type SavedGame,
@@ -150,6 +151,9 @@ export function PastGamesView() {
     [selectedGame, replayPly],
   );
   const lastPly = selectedGame?.history.length ?? 0;
+  const selectedPerspective = selectedGame
+    ? playerPerspective(selectedGame)
+    : null;
   const analysis = useMoveAnalysis(
     selectedGame?.id ?? "past-game",
     selectedGame?.history ?? [],
@@ -353,25 +357,38 @@ export function PastGamesView() {
                   <p>Opening the archive…</p>
                 </div>
               ) : filteredGames.length ? (
-                filteredGames.map((game) => (
-                  <button
-                    key={game.id}
-                    className={selectedId === game.id ? "is-active" : ""}
-                    onClick={() => void loadGame(game.id)}
-                  >
-                    <span className="record-date">
-                      {formatDate(game.finishedAt)}
-                    </span>
-                    <strong>
-                      {playerName(game, "w")} <i>vs</i> {playerName(game, "b")}
-                    </strong>
-                    <span className="record-result">{game.result}</span>
-                    <span className="record-meta">
-                      <code>{game.room}</code>
-                      <small>{moveCountLabel(game.plyCount)}</small>
-                    </span>
-                  </button>
-                ))
+                filteredGames.map((game) => {
+                  const perspective = playerPerspective(game);
+                  return (
+                    <button
+                      key={game.id}
+                      className={selectedId === game.id ? "is-active" : ""}
+                      onClick={() => void loadGame(game.id)}
+                    >
+                      <span className="record-date">
+                        {formatDate(game.finishedAt)}
+                      </span>
+                      <strong>
+                        {playerName(game, "w")} <i>vs</i>{" "}
+                        {playerName(game, "b")}
+                      </strong>
+                      <span className="record-result">
+                        {perspective ? (
+                          <>
+                            <b>You played {perspective.color}</b> ·{" "}
+                            {perspective.outcome}
+                          </>
+                        ) : (
+                          game.result
+                        )}
+                      </span>
+                      <span className="record-meta">
+                        <code>{game.room}</code>
+                        <small>{moveCountLabel(game.plyCount)}</small>
+                      </span>
+                    </button>
+                  );
+                })
               ) : (
                 <div className="archive-empty">
                   <span>{PIECE_GLYPHS.p}</span>
@@ -400,6 +417,12 @@ export function PastGamesView() {
                     >
                       {selectedGame.result}
                     </span>
+                    {selectedPerspective && (
+                      <span className="player-result-chip">
+                        You played {selectedPerspective.color} ·{" "}
+                        {selectedPerspective.outcome}
+                      </span>
+                    )}
                     <h2>
                       {playerName(selectedGame, "w")} <i>vs</i>{" "}
                       {playerName(selectedGame, "b")}
@@ -588,7 +611,11 @@ export function PastGamesView() {
                         <div className="record-board">
                           <ChessgroundBoard
                             fen={replay.fen}
-                            orientation={selectedGame?.playerColor === "b" ? "black" : "white"}
+                            orientation={
+                              selectedGame.playerColor === "b"
+                                ? "black"
+                                : "white"
+                            }
                             turnColor={
                               replay.chess.turn() === "w" ? "white" : "black"
                             }
@@ -601,7 +628,7 @@ export function PastGamesView() {
                             }
                             lastMove={replay.lastMove}
                             viewOnly
-                            ariaLabel={`Chess position after ${replayPly} of ${lastPly} moves`}
+                            ariaLabel={`Chess position after ${replayPly} of ${lastPly} moves, ${selectedGame.playerColor === "b" ? "black" : "white"} orientation`}
                           />
                         </div>
                       </div>

@@ -61,6 +61,24 @@ export function playerName(game: SavedGameSummary, color: PlayerColor) {
   return game.players[color] || (color === "w" ? "White" : "Black");
 }
 
+export function playerPerspective(game: SavedGameSummary) {
+  if (!game.playerColor) return null;
+
+  const color = game.playerColor === "w" ? "White" : "Black";
+  if (game.result.toLowerCase().startsWith("draw")) {
+    return { color, outcome: "Drew" };
+  }
+
+  const winner = game.result.startsWith("White wins")
+    ? "w"
+    : game.result.startsWith("Black wins")
+      ? "b"
+      : null;
+  if (!winner) return { color, outcome: "Finished" };
+
+  return { color, outcome: winner === game.playerColor ? "Won" : "Lost" };
+}
+
 export function resultTone(result: string) {
   return result.toLowerCase().startsWith("draw") ? "draw" : "decisive";
 }

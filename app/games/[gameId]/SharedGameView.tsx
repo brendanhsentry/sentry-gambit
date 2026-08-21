@@ -14,6 +14,7 @@ import {
   moveCountLabel,
   pairMoves,
   playerName,
+  playerPerspective,
   replayPosition,
   resultTone,
   type SavedGame,
@@ -59,6 +60,7 @@ export function SharedGameView({ gameId }: { gameId: string }) {
     [game, replayPly],
   );
   const lastPly = game?.history.length ?? 0;
+  const playerPerspectiveForGame = game ? playerPerspective(game) : null;
   const analysis = useMoveAnalysis(
     game?.id ?? gameId,
     game?.history ?? [],
@@ -282,6 +284,12 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                   >
                     {game.result}
                   </span>
+                  {playerPerspectiveForGame && (
+                    <span className="player-result-chip">
+                      You played {playerPerspectiveForGame.color} ·{" "}
+                      {playerPerspectiveForGame.outcome}
+                    </span>
+                  )}
                   <h2>
                     {playerName(game, "w")} <i>vs</i> {playerName(game, "b")}
                   </h2>
@@ -347,7 +355,9 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                       <div className="record-board">
                         <ChessgroundBoard
                           fen={replay.fen}
-                          orientation={game?.playerColor === "b" ? "black" : "white"}
+                          orientation={
+                            game.playerColor === "b" ? "black" : "white"
+                          }
                           turnColor={
                             replay.chess.turn() === "w" ? "white" : "black"
                           }
@@ -360,7 +370,7 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                           }
                           lastMove={replay.lastMove}
                           viewOnly
-                          ariaLabel={`Chess position after ${replayPly} of ${lastPly} moves`}
+                          ariaLabel={`Chess position after ${replayPly} of ${lastPly} moves, ${game.playerColor === "b" ? "black" : "white"} orientation`}
                         />
                       </div>
                     </div>

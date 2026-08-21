@@ -807,6 +807,7 @@ button.move-cell > span {
 .game-record-list strong { color: var(--green); font-size: 15px; line-height: 1.35; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .game-record-list strong i, .record-heading h2 i { color: #9aa49f; font-size: .7em; font-weight: 400; }
 .record-result { color: #52665e; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.record-result b { color: var(--green); font-weight: 700; }
 .record-meta { display: flex; justify-content: space-between; gap: 14px; color: #89948f; }
 .record-meta code { min-width: 0; overflow: hidden; font: 500 9.5px/1 var(--font-geist-mono), monospace; text-overflow: ellipsis; }
 .record-meta small { flex: none; font: 650 9.5px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }
@@ -824,6 +825,7 @@ button.move-cell > span {
 .record-heading { display: flex; justify-content: space-between; align-items: start; gap: 24px; padding-bottom: 27px; }
 .result-chip { display: inline-block; padding: 6px 8px; background: var(--green); color: white; font: 700 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .07em; text-transform: uppercase; }
 .result-chip--draw { background: #7e7567; }
+.player-result-chip { display: inline-block; margin-left: 8px; padding: 6px 8px; border: 1px solid var(--green); color: var(--green); font: 700 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .07em; text-transform: uppercase; }
 .record-heading h2 { margin: 12px 0 7px; color: var(--green); font-size: 26px; line-height: 1.15; font-weight: 650; letter-spacing: -.01em; }
 .record-heading p { margin: 0; color: #718078; font-size: 11px; }
 .record-room { min-width: 90px; text-align: right; }
