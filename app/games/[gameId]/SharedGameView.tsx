@@ -14,7 +14,6 @@ import {
   moveCountLabel,
   pairMoves,
   playerName,
-  playerPerspective,
   replayPosition,
   resultTone,
   type SavedGame,
@@ -60,7 +59,6 @@ export function SharedGameView({ gameId }: { gameId: string }) {
     [game, replayPly],
   );
   const lastPly = game?.history.length ?? 0;
-  const playerPerspectiveForGame = game ? playerPerspective(game) : null;
   const analysis = useMoveAnalysis(
     game?.id ?? gameId,
     game?.history ?? [],
@@ -284,20 +282,6 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                   >
                     {game.result}
                   </span>
-                  {playerPerspectiveForGame && (
-                    <span className="player-result-chip">
-                      You played {playerPerspectiveForGame.color} ·{" "}
-                      <span
-                        className={`record-outcome record-outcome--${playerPerspectiveForGame.tone}`}
-                      >
-                        <span
-                          className="record-outcome-dot"
-                          aria-hidden="true"
-                        />
-                        {playerPerspectiveForGame.outcome}
-                      </span>
-                    </span>
-                  )}
                   <h2>
                     {playerName(game, "w")} <i>vs</i> {playerName(game, "b")}
                   </h2>

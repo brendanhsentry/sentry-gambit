@@ -151,9 +151,6 @@ export function PastGamesView() {
     [selectedGame, replayPly],
   );
   const lastPly = selectedGame?.history.length ?? 0;
-  const selectedPerspective = selectedGame
-    ? playerPerspective(selectedGame)
-    : null;
   const analysis = useMoveAnalysis(
     selectedGame?.id ?? "past-game",
     selectedGame?.history ?? [],
@@ -365,6 +362,13 @@ export function PastGamesView() {
                       className={selectedId === game.id ? "is-active" : ""}
                       onClick={() => void loadGame(game.id)}
                     >
+                      {perspective && (
+                        <span
+                          className={`record-status-dot record-status-dot--${perspective.tone}`}
+                          role="img"
+                          aria-label={`You ${perspective.outcome.toLowerCase()} this game`}
+                        />
+                      )}
                       <span className="record-date">
                         {formatDate(game.finishedAt)}
                       </span>
@@ -374,18 +378,7 @@ export function PastGamesView() {
                       </strong>
                       <span className="record-result">
                         {perspective ? (
-                          <>
-                            <b>You played {perspective.color}</b> ·{" "}
-                            <span
-                              className={`record-outcome record-outcome--${perspective.tone}`}
-                            >
-                              <span
-                                className="record-outcome-dot"
-                                aria-hidden="true"
-                              />
-                              {perspective.outcome}
-                            </span>
-                          </>
+                          <b>You played {perspective.color}</b>
                         ) : (
                           game.result
                         )}
@@ -425,20 +418,6 @@ export function PastGamesView() {
                     >
                       {selectedGame.result}
                     </span>
-                    {selectedPerspective && (
-                      <span className="player-result-chip">
-                        You played {selectedPerspective.color} ·{" "}
-                        <span
-                          className={`record-outcome record-outcome--${selectedPerspective.tone}`}
-                        >
-                          <span
-                            className="record-outcome-dot"
-                            aria-hidden="true"
-                          />
-                          {selectedPerspective.outcome}
-                        </span>
-                      </span>
-                    )}
                     <h2>
                       {playerName(selectedGame, "w")} <i>vs</i>{" "}
                       {playerName(selectedGame, "b")}
