@@ -2197,6 +2197,8 @@ export function ChessRoom() {
               {!state.result && (
               <>
               <button
+                className={state.liveGrades ? "is-on" : undefined}
+                aria-pressed={Boolean(state.liveGrades)}
                 onClick={() => send({ type: "live_grades_request" })}
                 disabled={
                   role === "spectator" ||
@@ -2206,9 +2208,7 @@ export function ChessRoom() {
               >
                 {state.liveGradesRequest?.by === role
                   ? "Asked…"
-                  : state.liveGrades
-                    ? "◉ Grades"
-                    : "○ Grades"}
+                  : "Grades"}
               </button>
               <button
                 onClick={() => send({ type: "undo" })}

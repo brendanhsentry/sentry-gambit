@@ -326,6 +326,7 @@ button { color: inherit; }
 .match-actions button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
 .match-actions button:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
 .match-actions button:disabled { opacity: .45; cursor: default; }
+.match-actions button.is-on { background: var(--green); border-color: var(--green); color: #fffdf8; box-shadow: 0 3px 0 0 var(--green); }
 .resign-wrap { position: relative; }
 .resign-wrap > button { width: 100%; }
 .resign-confirm { position: absolute; z-index: 8; bottom: calc(100% + 9px); right: 0; min-width: 190px; padding: 12px; background: var(--paper); border: 2px solid var(--line); box-shadow: 0 14px 34px rgba(9,38,32,.28); display: flex; flex-direction: column; gap: 9px; }
