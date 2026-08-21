@@ -274,18 +274,6 @@ export function LearnTrainer() {
             <h1>Learn a line. Then play it.</h1>
             <p>Drill the concrete variation first. Maia takes over from the final position.</p>
           </div>
-          <div className="learn-opening-tabs" aria-label="Choose opening">
-            {openingFamilies.map((item) => (
-              <button
-                key={item.opening}
-                className={item.opening === lesson.opening ? "is-active" : undefined}
-                onClick={() => resetLesson(item)}
-              >
-                <strong>{item.opening}</strong>
-                <span>{item.side === "w" ? "White" : "Black"}</span>
-              </button>
-            ))}
-          </div>
         </header>
 
         <div className="learn-layout">
@@ -312,24 +300,47 @@ export function LearnTrainer() {
           </section>
 
           <aside className="learn-panel">
-            <span className="panel-kicker">{lesson.variation}</span>
+            <div className="learn-repertoire-picker">
+              <span className="panel-kicker">CHOOSE REPERTOIRE</span>
+              <div className="learn-picker-fields">
+                <label>
+                  <span>Opening</span>
+                  <select
+                    value={lesson.opening}
+                    onChange={(event) => {
+                      const next = openingFamilies.find((item) => item.opening === event.target.value);
+                      if (next) resetLesson(next);
+                    }}
+                  >
+                    {openingFamilies.map((item) => (
+                      <option key={item.opening} value={item.opening}>
+                        {item.opening} · {item.side === "w" ? "White" : "Black"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Opponent variation</span>
+                  <select
+                    value={lesson.id}
+                    onChange={(event) => {
+                      const next = variations.find((item) => item.id === event.target.value);
+                      if (next) resetLesson(next);
+                    }}
+                  >
+                    {variations.map((item) => (
+                      <option key={item.id} value={item.id}>{item.variation}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+            <span className="panel-kicker">YOU PLAY {lesson.side === "w" ? "WHITE" : "BLACK"}</span>
             <h2>{lesson.opening}</h2>
             <p className="learn-summary">{lesson.summary}</p>
-            <div className="learn-variations">
-              <span>OPPONENT VARIATIONS</span>
-              <p>Pick the reply you want to drill.</p>
-              <div>
-                {variations.map((item) => (
-                  <button
-                    key={item.id}
-                    className={item.id === lesson.id ? "is-active" : undefined}
-                    onClick={() => resetLesson(item)}
-                  >
-                    <strong>{item.opponentMove}</strong>
-                    <small>{item.answer}</small>
-                  </button>
-                ))}
-              </div>
+            <div className="learn-branch-answer">
+              <strong>{lesson.opponentMove}</strong>
+              <p>{lesson.answer}</p>
             </div>
             <div className={`learn-feedback${wrongMove ? " learn-feedback--wrong" : ""}`} aria-live="polite">
               <strong>{phase === "walkthrough" ? `Move ${lineIndex} of ${lesson.line.length}` : phase === "ready" ? "Line learned" : phase === "practice" || phase === "maia" ? "Maia practice" : "Current move"}</strong>
