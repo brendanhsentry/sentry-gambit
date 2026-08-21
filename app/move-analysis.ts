@@ -31,6 +31,7 @@ export type MoveAnalysisEvidence = {
 export type ClassifiedMove = {
   grade: MoveGrade;
   expectedPointsLoss: number | null;
+  positionExpectedPoints: number | null;
   evidence: MoveAnalysisEvidence | null;
 };
 

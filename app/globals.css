@@ -857,8 +857,15 @@ button.move-cell > span {
 .record-section-title h3 { margin: 0; color: var(--green); font-size: 18px; line-height: 1.1; font-weight: 650; letter-spacing: -.01em; }
 .record-section-title span { color: #89948f; font: 650 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .09em; }
 .record-replay-layout { display: grid; grid-template-columns: minmax(300px, 1.05fr) minmax(260px, .95fr); gap: clamp(20px, 3vw, 38px); align-items: start; }
+.record-board-with-eval { display: flex; align-items: stretch; gap: 8px; }
+.record-board-with-eval .record-board { min-width: 0; flex: 1; }
 .record-board { width: 100%; box-shadow: 0 14px 34px rgba(23,44,36,.16), 0 2px 6px rgba(23,44,36,.14); }
 .record-board .chessboard { --board-border: 6px; }
+.record-eval-bar { width: 18px; flex: 0 0 18px; display: flex; flex-direction: column; overflow: hidden; border: 2px solid var(--green); border-radius: 8px; background: #fdfbf4; box-shadow: 0 3px 0 rgba(23,63,53,.28); }
+.record-eval-bar-black { flex: none; background: #23332d; transition: height 220ms ease; }
+.record-eval-bar-white { flex: none; background: #fdfbf4; transition: height 220ms ease; }
+.record-eval-bar.is-loading { opacity: .58; }
+.record-eval-label { margin: 10px 0 -1px; color: #718078; font: 650 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .07em; text-transform: uppercase; }
 .record-replay-controls { display: grid; grid-template-columns: 42px 42px 1fr 42px 42px; gap: 6px; margin-top: 12px; }
 .record-replay-controls button { height: 42px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); cursor: pointer; color: var(--green); font-size: 17px; box-shadow: 0 3px 0 0 var(--btn-line); }
 .record-replay-controls button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }

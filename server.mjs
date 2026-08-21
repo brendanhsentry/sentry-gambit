@@ -1439,7 +1439,15 @@ function classifyServerMove(review, fenBefore, move, previousReview) {
     else if (loss <= 0.28 || review.played.expectedPoints >= 0.65) grade = "mistake";
     else grade = "blunder";
   }
-  return { grade, expectedPointsLoss: loss, evidence };
+  return {
+    grade,
+    expectedPointsLoss: loss,
+    positionExpectedPoints:
+      move.color === "w"
+        ? review.played.expectedPoints
+        : 1 - review.played.expectedPoints,
+    evidence,
+  };
 }
 
 function validateMoveAnalysis(body) {
@@ -1624,17 +1632,19 @@ async function handleMoveAnalysisRequest(req, res) {
   let job = cached ? Promise.resolve({ analysis: cached, review: null }) : analysisJobs.get(cacheKey);
   if (!job) {
     job = (async () => {
-      if (isOpeningPosition(replay.fensAfter[ply - 1])) {
-        return { analysis: { grade: "book", expectedPointsLoss: null, evidence: null }, review: null };
-      }
       const review = await stockfish.reviewMove(fenBefore, uci);
+      const analysis = classifyServerMove(
+        review,
+        fenBefore,
+        move,
+        previousLoss === null ? null : { loss: previousLoss },
+      );
+      if (isOpeningPosition(replay.fensAfter[ply - 1])) {
+        analysis.grade = "book";
+        analysis.expectedPointsLoss = null;
+      }
       return {
-        analysis: classifyServerMove(
-          review,
-          fenBefore,
-          move,
-          previousLoss === null ? null : { loss: previousLoss },
-        ),
+        analysis,
         review,
       };
     })();
