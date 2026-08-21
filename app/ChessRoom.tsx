@@ -1747,13 +1747,11 @@ export function ChessRoom() {
                       : "Waiting for opponent"
                     : "Ready when you are"}
               </h2>
-              <p>
-                {replayPly !== null
-                  ? "Reviewing the live game. The clock is still running."
-                  : state
-                    ? playerLabel(role)
-                    : "One table. Two players. Every move live."}
-              </p>
+              {replayPly === null && (
+                <p>
+                  {state ? playerLabel(role) : "One table. Two players. Every move live."}
+                </p>
+              )}
             </div>
           )}
 
