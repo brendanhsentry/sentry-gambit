@@ -65,6 +65,14 @@ export function SharedGameView({ gameId }: { gameId: string }) {
     game?.history ?? [],
     Boolean(game?.history.length),
   );
+  const positionExpectedPoints =
+    replayPly === 0
+      ? 0.5
+      : (analysis.moves[replayPly - 1]?.positionExpectedPoints ?? null);
+  const whiteExpectedPercent =
+    positionExpectedPoints === null
+      ? 50
+      : Math.round(positionExpectedPoints * 100);
   const selectedReview = analysisPly ? analysis.moves[analysisPly - 1] : null;
   const selectedExplanation = analysisPly
     ? moveExplanations[analysisPly]
@@ -325,25 +333,50 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                 </div>
                 <div className="record-replay-layout">
                   <div className="record-board-column">
-                    <div className="record-board">
-                      <ChessgroundBoard
-                        fen={replay.fen}
-                        orientation={game?.playerColor === "b" ? "black" : "white"}
-                        turnColor={
-                          replay.chess.turn() === "w" ? "white" : "black"
+                    <div className="record-board-with-eval">
+                      <div
+                        className={`record-eval-bar${positionExpectedPoints === null ? " is-loading" : ""}`}
+                        role="img"
+                        aria-label={
+                          positionExpectedPoints === null
+                            ? "Stockfish is evaluating this position"
+                            : `Stockfish evaluation: White has ${whiteExpectedPercent}% expected score`
                         }
-                        check={
-                          replay.chess.isCheck()
-                            ? replay.chess.turn() === "w"
-                              ? "white"
-                              : "black"
-                            : false
-                        }
-                        lastMove={replay.lastMove}
-                        viewOnly
-                        ariaLabel={`Chess position after ${replayPly} of ${lastPly} moves`}
-                      />
+                      >
+                        <div
+                          className="record-eval-bar-black"
+                          style={{ height: `${100 - whiteExpectedPercent}%` }}
+                        />
+                        <div
+                          className="record-eval-bar-white"
+                          style={{ height: `${whiteExpectedPercent}%` }}
+                        />
+                      </div>
+                      <div className="record-board">
+                        <ChessgroundBoard
+                          fen={replay.fen}
+                          orientation={game?.playerColor === "b" ? "black" : "white"}
+                          turnColor={
+                            replay.chess.turn() === "w" ? "white" : "black"
+                          }
+                          check={
+                            replay.chess.isCheck()
+                              ? replay.chess.turn() === "w"
+                                ? "white"
+                                : "black"
+                              : false
+                          }
+                          lastMove={replay.lastMove}
+                          viewOnly
+                          ariaLabel={`Chess position after ${replayPly} of ${lastPly} moves`}
+                        />
+                      </div>
                     </div>
+                    <p className="record-eval-label" aria-live="polite">
+                      {positionExpectedPoints === null
+                        ? "Stockfish is evaluating this position…"
+                        : `White ${whiteExpectedPercent}% expected score`}
+                    </p>
                     <div
                       className="record-replay-controls"
                       aria-label="Replay controls"
