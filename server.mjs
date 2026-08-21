@@ -415,6 +415,8 @@ function serializeTable(table) {
     coach: table.coach ?? false,
     undoRequest: table.undoRequest ?? null,
     drawOffer: table.drawOffer ?? null,
+    liveGrades: table.liveGrades ?? false,
+    liveGradesRequest: table.liveGradesRequest ?? null,
   };
 }
 
@@ -793,8 +795,35 @@ function handleTableMessage(table, client, raw) {
     return;
   }
 
+  // Showing grades mid-game needs both players to agree; a bot or empty seat accepts as-is.
+  if (message.type === "live_grades_request") {
+    if (table.result || (client.role !== "w" && client.role !== "b")) return;
+    const opponent = client.role === "w" ? "b" : "w";
+    const opponentIsHuman =
+      table.seats[opponent] && table.bot?.color !== opponent;
+    if (opponentIsHuman) {
+      if (table.liveGradesRequest) return;
+      table.liveGradesRequest = { by: client.role };
+    } else {
+      table.liveGrades = !table.liveGrades;
+    }
+    broadcast(table);
+    return;
+  }
+
+  if (message.type === "live_grades_response") {
+    const request = table.liveGradesRequest;
+    if (!request || table.result) return;
+    if (client.role !== (request.by === "w" ? "b" : "w")) return;
+    table.liveGradesRequest = null;
+    if (message.accept) table.liveGrades = !table.liveGrades;
+    broadcast(table);
+    return;
+  }
+
   if (message.type === "reset") {
     if (client.role === "spectator") return;
+    if (table.chess.history().length && !table.result) return;
     if (!table.sentryTraceEnded) table.sentrySpan.end();
     if (table.chess.history().length) {
       gameStore.finishGame(
@@ -815,6 +844,8 @@ function handleTableMessage(table, client, raw) {
     table.result = null;
     table.undoRequest = null;
     table.drawOffer = null;
+    table.liveGrades = false;
+    table.liveGradesRequest = null;
     table.clock = {
       w: table.initialTimeMs,
       b: table.initialTimeMs,
@@ -823,6 +854,8 @@ function handleTableMessage(table, client, raw) {
     };
     table.gradedPlies.clear();
     table.moveGrades.clear();
+    table.moveAnalyses.clear();
+    table.moveReviewLosses.clear();
     gameStore.createGame({
       id: table.gameId,
       room: table.id,
@@ -962,13 +995,15 @@ async function joinTable(request, socket) {
     if (!isBinary) handleTableMessage(table, client, data.toString());
   });
   socket.on("close", () => {
-    pauseClock(table);
     table.clients.delete(client);
     if (client.role === "w" || client.role === "b") {
+      pauseClock(table);
       if (table.seats[client.role]?.id === client.id)
         table.seats[client.role] = null;
       if (table.undoRequest?.by === client.role) table.undoRequest = null;
       if (table.drawOffer?.by === client.role) table.drawOffer = null;
+      if (table.liveGradesRequest?.by === client.role)
+        table.liveGradesRequest = null;
     }
     table.touchedAt = Date.now();
     broadcast(table);

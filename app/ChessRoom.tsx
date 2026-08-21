@@ -86,6 +86,8 @@ type GameState = {
   coach?: boolean;
   undoRequest?: { by: Color } | null;
   drawOffer?: { by: Color } | null;
+  liveGrades?: boolean;
+  liveGradesRequest?: { by: Color } | null;
 };
 
 type ServerMessage =
@@ -1262,8 +1264,9 @@ export function ChessRoom() {
     else pairs[pairs.length - 1].b = { san: move.san, index };
     return pairs;
   }, []);
+  const showGrades = Boolean(state?.result || state?.liveGrades);
   const selectedReview =
-    analysisPly && state?.result ? analysis.moves[analysisPly - 1] : null;
+    analysisPly && showGrades ? analysis.moves[analysisPly - 1] : null;
   const selectedExplanation = analysisPly
     ? moveExplanations[analysisPly]
     : null;
@@ -1281,7 +1284,7 @@ export function ChessRoom() {
           <span>—</span>
         </span>
       );
-    const reviewed = state?.result ? analysis.moves[move.index] : null;
+    const reviewed = showGrades ? analysis.moves[move.index] : null;
     const title = reviewed
       ? `${gradeLabel(reviewed.grade)}${reviewed.expectedPointsLoss === null ? "" : ` · ${(reviewed.expectedPointsLoss * 100).toFixed(1)} expected points lost`}`
       : undefined;
@@ -1833,7 +1836,7 @@ export function ChessRoom() {
             <div className="moves-header">
               <span>MOVE SHEET</span>
               <span>
-                {!state.result
+                {!showGrades
                   ? `${state.history.length} ${state.history.length === 1 ? "PLY" : "PLIES"}`
                   : analysis.status === "loading" || analysis.status === "analyzing"
                   ? `GRADING ${analysis.completed}/${state.history.length}`
@@ -2075,9 +2078,57 @@ export function ChessRoom() {
                 </div>
               </div>
             )}
+          {state &&
+            !state.result &&
+            state.liveGradesRequest &&
+            state.liveGradesRequest.by !== role &&
+            role !== "spectator" && (
+              <div className="takeback-bar" role="alert">
+                <span>
+                  {state.players[state.liveGradesRequest.by] || "Your opponent"}{" "}
+                  asks to {state.liveGrades ? "hide" : "show"} move grades
+                  during the game
+                </span>
+                <div>
+                  <button
+                    onClick={() =>
+                      send({ type: "live_grades_response", accept: true })
+                    }
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() =>
+                      send({ type: "live_grades_response", accept: false })
+                    }
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
           {state && (matchUnderway || state.result) && (
             <div className="match-actions">
-              <button onClick={() => send({ type: "reset" })}>↻ Rematch</button>
+              <button
+                onClick={() => send({ type: "reset" })}
+                disabled={role === "spectator" || !state.result}
+              >
+                ↻ Rematch
+              </button>
+              <button
+                onClick={() => send({ type: "live_grades_request" })}
+                disabled={
+                  role === "spectator" ||
+                  Boolean(state.result) ||
+                  Boolean(state.liveGradesRequest)
+                }
+              >
+                {state.liveGradesRequest?.by === role
+                  ? "Asked…"
+                  : state.liveGrades
+                    ? "◉ Grades on"
+                    : "○ Grades off"}
+              </button>
               <button
                 onClick={() => send({ type: "undo" })}
                 disabled={

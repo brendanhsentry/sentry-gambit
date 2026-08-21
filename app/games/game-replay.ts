@@ -15,6 +15,7 @@ export type SavedGameSummary = {
   clock: Record<PlayerColor, number>;
   plyCount: number;
   shareable: boolean;
+  playerColor?: PlayerColor | null;
 };
 
 export type SavedMove = ReviewMove & {

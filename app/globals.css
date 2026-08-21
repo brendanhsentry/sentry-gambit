@@ -321,7 +321,7 @@ button { color: inherit; }
 .takeback-bar button:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
 .takeback-bar button:first-child:hover { box-shadow: 0 4px 0 0 var(--blurple-deep); }
 .takeback-bar button:active { transform: translateY(2px); box-shadow: none; }
-.match-actions { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 12px; gap: 8px; }
+.match-actions { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 12px; gap: 8px; }
 .match-actions button { height: 44px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); cursor: pointer; text-transform: uppercase; font-size: 10px; letter-spacing: .08em; font-weight: 700; box-shadow: 0 3px 0 0 var(--btn-line); }
 .match-actions button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
 .match-actions button:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }

@@ -319,7 +319,7 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                     <div className="record-board">
                       <ChessgroundBoard
                         fen={replay.fen}
-                        orientation="white"
+                        orientation={game?.playerColor === "b" ? "black" : "white"}
                         turnColor={
                           replay.chess.turn() === "w" ? "white" : "black"
                         }

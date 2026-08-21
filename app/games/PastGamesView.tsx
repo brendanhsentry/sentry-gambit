@@ -587,7 +587,7 @@ export function PastGamesView() {
                         <div className="record-board">
                           <ChessgroundBoard
                             fen={replay.fen}
-                            orientation="white"
+                            orientation={selectedGame?.playerColor === "b" ? "black" : "white"}
                             turnColor={
                               replay.chess.turn() === "w" ? "white" : "black"
                             }
