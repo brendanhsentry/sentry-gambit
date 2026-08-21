@@ -287,7 +287,15 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                   {playerPerspectiveForGame && (
                     <span className="player-result-chip">
                       You played {playerPerspectiveForGame.color} ·{" "}
-                      {playerPerspectiveForGame.outcome}
+                      <span
+                        className={`record-outcome record-outcome--${playerPerspectiveForGame.tone}`}
+                      >
+                        <span
+                          className="record-outcome-dot"
+                          aria-hidden="true"
+                        />
+                        {playerPerspectiveForGame.outcome}
+                      </span>
                     </span>
                   )}
                   <h2>

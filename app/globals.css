@@ -808,6 +808,10 @@ button.move-cell > span {
 .game-record-list strong i, .record-heading h2 i { color: #9aa49f; font-size: .7em; font-weight: 400; }
 .record-result { color: #52665e; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .record-result b { color: var(--green); font-weight: 700; }
+.record-outcome { display: inline-flex; align-items: center; gap: 5px; }
+.record-outcome-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #7d8883; }
+.record-outcome--win .record-outcome-dot { background: #3d8a52; }
+.record-outcome--loss .record-outcome-dot { background: #ae372b; }
 .record-meta { display: flex; justify-content: space-between; gap: 14px; color: #89948f; }
 .record-meta code { min-width: 0; overflow: hidden; font: 500 9.5px/1 var(--font-geist-mono), monospace; text-overflow: ellipsis; }
 .record-meta small { flex: none; font: 650 9.5px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }

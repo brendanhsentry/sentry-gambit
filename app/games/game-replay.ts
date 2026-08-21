@@ -66,7 +66,7 @@ export function playerPerspective(game: SavedGameSummary) {
 
   const color = game.playerColor === "w" ? "White" : "Black";
   if (game.result.toLowerCase().startsWith("draw")) {
-    return { color, outcome: "Drew" };
+    return { color, outcome: "Drew", tone: "draw" };
   }
 
   const winner = game.result.startsWith("White wins")
@@ -74,9 +74,10 @@ export function playerPerspective(game: SavedGameSummary) {
     : game.result.startsWith("Black wins")
       ? "b"
       : null;
-  if (!winner) return { color, outcome: "Finished" };
+  if (!winner) return { color, outcome: "Finished", tone: "finished" };
 
-  return { color, outcome: winner === game.playerColor ? "Won" : "Lost" };
+  const won = winner === game.playerColor;
+  return { color, outcome: won ? "Won" : "Lost", tone: won ? "win" : "loss" };
 }
 
 export function resultTone(result: string) {

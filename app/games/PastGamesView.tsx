@@ -376,7 +376,15 @@ export function PastGamesView() {
                         {perspective ? (
                           <>
                             <b>You played {perspective.color}</b> ·{" "}
-                            {perspective.outcome}
+                            <span
+                              className={`record-outcome record-outcome--${perspective.tone}`}
+                            >
+                              <span
+                                className="record-outcome-dot"
+                                aria-hidden="true"
+                              />
+                              {perspective.outcome}
+                            </span>
                           </>
                         ) : (
                           game.result
@@ -420,7 +428,15 @@ export function PastGamesView() {
                     {selectedPerspective && (
                       <span className="player-result-chip">
                         You played {selectedPerspective.color} ·{" "}
-                        {selectedPerspective.outcome}
+                        <span
+                          className={`record-outcome record-outcome--${selectedPerspective.tone}`}
+                        >
+                          <span
+                            className="record-outcome-dot"
+                            aria-hidden="true"
+                          />
+                          {selectedPerspective.outcome}
+                        </span>
                       </span>
                     )}
                     <h2>
