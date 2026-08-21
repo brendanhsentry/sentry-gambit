@@ -346,17 +346,6 @@ export function LearnTrainer() {
               <strong>{phase === "walkthrough" ? `Move ${lineIndex} of ${lesson.line.length}` : phase === "ready" ? "Line learned" : phase === "practice" || phase === "maia" ? "Maia practice" : "Current move"}</strong>
               <p>{displayMessage}</p>
             </div>
-            <div className="learn-idea">
-              <span>WHY THIS LINE</span>
-              <p>{lesson.keyIdea}</p>
-            </div>
-            <div className="learn-moves" aria-label="Opening moves">
-              {sans.map((san, index) => (
-                <span key={`${san}-${index}`} className={index === lineIndex ? "is-next" : index < lineIndex ? "is-played" : undefined}>
-                  {index % 2 === 0 && <b>{Math.floor(index / 2) + 1}.</b>} {san}
-                </span>
-              ))}
-            </div>
             <div className="learn-actions">
               {phase === "walkthrough" ? (
                 <>
@@ -370,6 +359,17 @@ export function LearnTrainer() {
               {phase === "ready" && <button className="learn-primary" onClick={startPractice}>Play Maia from here →</button>}
               {(phase === "practice" || phase === "maia") && <button onClick={() => void requestHint()} disabled={engineLoading || phase === "maia"}>{engineLoading ? "Checking…" : "Stockfish hint"}</button>}
               {phase === "finished" && <button className="learn-primary" onClick={() => resetLesson()}>Run it back</button>}
+            </div>
+            <div className="learn-idea">
+              <span>WHY THIS LINE</span>
+              <p>{lesson.keyIdea}</p>
+            </div>
+            <div className="learn-moves" aria-label="Opening moves">
+              {sans.map((san, index) => (
+                <span key={`${san}-${index}`} className={index === lineIndex ? "is-next" : index < lineIndex ? "is-played" : undefined}>
+                  {index % 2 === 0 && <b>{Math.floor(index / 2) + 1}.</b>} {san}
+                </span>
+              ))}
             </div>
           </aside>
         </div>

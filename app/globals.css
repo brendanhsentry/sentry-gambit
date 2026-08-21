@@ -1006,17 +1006,17 @@ button.move-cell > span {
 .learn-board-meta { min-height: 36px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); color: #718078; font: 650 10.5px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; }
 .learn-board-wrap { position: relative; box-shadow: 0 22px 50px rgba(23, 44, 36, .15), 0 2px 8px rgba(23, 44, 36, .16); }
 .learn-panel { border-top: 4px solid var(--green); }
-.learn-repertoire-picker { padding: 14px 0 17px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
-.learn-picker-fields { display: grid; gap: 8px; margin-top: 11px; }
+.learn-repertoire-picker { padding: 12px 0 13px; margin-bottom: 13px; border-bottom: 1px solid var(--line); }
+.learn-picker-fields { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 8px; margin-top: 10px; }
 .learn-picker-fields label > span { display: block; margin-bottom: 6px; color: #718078; font: 700 9px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; }
-.learn-picker-fields select { width: 100%; height: 42px; border: 2px solid var(--btn-line); border-radius: 8px; background: var(--btn-bg); padding: 0 34px 0 11px; color: var(--green); cursor: pointer; font: 700 11px/1 var(--font-geist-mono), monospace; outline: 0; }
+.learn-picker-fields select { width: 100%; height: 40px; border: 2px solid var(--btn-line); border-radius: 8px; background: var(--btn-bg); padding: 0 28px 0 9px; color: var(--green); cursor: pointer; font: 700 10px/1 var(--font-geist-mono), monospace; outline: 0; text-overflow: ellipsis; }
 .learn-picker-fields select:hover, .learn-picker-fields select:focus { border-color: var(--blurple); }
 .learn-panel > h2 { margin: 11px 0 7px; color: var(--green); font-size: 24px; line-height: 1.15; font-weight: 650; letter-spacing: -.01em; }
 .learn-summary { margin: 0; color: #65736d; font-size: 12px; line-height: 1.55; }
 .learn-branch-answer { margin-top: 14px; padding: 11px 12px; border-left: 3px solid var(--blurple); background: rgba(117,83,255,.07); }
 .learn-branch-answer strong { color: var(--green); font: 700 10.5px/1.3 var(--font-geist-mono), monospace; }
 .learn-branch-answer p { margin: 6px 0 0; color: #65736d; font-size: 11px; line-height: 1.45; }
-.learn-feedback { min-height: 108px; margin: 19px 0 14px; padding: 17px; border: 2px solid var(--btn-line); background: rgba(255,255,255,.22); box-shadow: 0 4px 0 var(--btn-line); }
+.learn-feedback { min-height: 88px; margin: 13px 0 10px; padding: 14px; border: 2px solid var(--btn-line); background: rgba(255,255,255,.22); box-shadow: 0 4px 0 var(--btn-line); }
 .learn-feedback--wrong { border-color: #ae372b; box-shadow: 0 4px 0 #ae372b; background: rgba(174,55,43,.07); }
 .learn-feedback strong { color: var(--green); font: 700 10px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; }
 .learn-feedback p { margin: 10px 0 0; color: #5d6a64; font-size: 12px; line-height: 1.55; }
@@ -1028,7 +1028,7 @@ button.move-cell > span {
 .learn-moves span.is-played { color: var(--green); }
 .learn-moves span.is-next { color: var(--blurple-deep); background: rgba(117,83,255,.1); }
 .learn-moves b { color: #7d8983; font-weight: 650; }
-.learn-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-top: 15px; }
+.learn-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 0 12px; border-bottom: 1px solid var(--line); }
 .learn-actions button { min-height: 46px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); cursor: pointer; color: var(--green); font: 700 10px/1 var(--font-geist-mono), monospace; letter-spacing: .05em; text-transform: uppercase; box-shadow: 0 3px 0 var(--btn-line); }
 .learn-actions button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 var(--btn-line); }
 .learn-actions button:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
