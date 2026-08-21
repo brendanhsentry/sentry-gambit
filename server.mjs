@@ -500,7 +500,7 @@ function applyDrawAgreement(table) {
     broadcast(table);
     return;
   }
-  table.result = "Draw by agreement";
+  table.result = "Draw";
   pauseClock(table);
   captureFinishedGame(table);
   broadcast(table);

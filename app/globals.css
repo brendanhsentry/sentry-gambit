@@ -288,9 +288,9 @@ button { color: inherit; }
 .invite-card strong { font: 700 28px/1 var(--font-geist-mono), monospace; letter-spacing: .14em; color: var(--green); }
 .invite-card button { border: 0; border-bottom: 2px solid var(--green); padding: 4px 0; background: transparent; cursor: pointer; text-transform: uppercase; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
 .invite-card p { margin: 10px 0 0; color: #7a8680; font-size: 11px; }
-.invite-card .replay-share-button { width: 100%; margin-top: 13px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); padding: 9px 12px; color: var(--green); box-shadow: 0 3px 0 0 var(--btn-line); }
-.invite-card .replay-share-button:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
-.invite-card .replay-share-button:active { transform: translateY(2px); box-shadow: none; }
+.replay-share-button { width: 100%; margin-top: 13px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); padding: 9px 12px; color: var(--green); box-shadow: 0 3px 0 0 var(--btn-line); }
+.replay-share-button:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
+.replay-share-button:active { transform: translateY(2px); box-shadow: none; }
 
 .moves-panel { flex: 1; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); min-height: 235px; }
 .moves-header { height: 42px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); color: #718078; font: 650 10.5px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
@@ -996,3 +996,5 @@ button.move-cell > span {
 .game-summary-side small { font-size: 11px; color: #7a8680; }
 .puzzle-theme { margin: 4px 0 0; color: #7a8680; font-size: 12px; }
 .puzzle-list button em { font-style: normal; color: #7a8680; font-size: 11px; }
+
+.match-panel > .replay-share-button { display: block; width: 100%; margin-bottom: 22px; cursor: pointer; }

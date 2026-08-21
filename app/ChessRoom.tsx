@@ -1758,7 +1758,13 @@ export function ChessRoom() {
             />
           )}
 
-          {!matchUnderway && room && (
+          {state?.result && (
+            <button className="replay-share-button" onClick={copyReplay}>
+              {replayCopied ? "Replay link copied!" : "Share replay"}
+            </button>
+          )}
+
+          {!matchUnderway && !state?.result && room && (
             <div className="invite-card">
               <span>
                 {state
@@ -1778,14 +1784,6 @@ export function ChessRoom() {
                     ? "Both players are seated."
                     : "Share this with your opponent."}
               </p>
-              {state?.result && (
-                <button
-                  className="replay-share-button"
-                  onClick={copyReplay}
-                >
-                  {replayCopied ? "Replay link copied!" : "Share replay"}
-                </button>
-              )}
             </div>
           )}
 
