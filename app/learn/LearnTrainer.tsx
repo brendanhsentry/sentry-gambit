@@ -62,6 +62,14 @@ export function LearnTrainer() {
   const chess = useMemo(() => new Chess(fen), [fen]);
   const side = playerColor(lesson.side);
   const sans = useMemo(() => sanLine(lesson.line), [lesson]);
+  const openingFamilies = useMemo(
+    () => [...new Map(OPENING_LESSONS.map((item) => [item.opening, item])).values()],
+    [],
+  );
+  const variations = useMemo(
+    () => OPENING_LESSONS.filter((item) => item.opening === lesson.opening),
+    [lesson.opening],
+  );
   const isPlayerTurn = chess.turn() === lesson.side;
   const displayMessage =
     phase === "drill" && isPlayerTurn
@@ -225,10 +233,10 @@ export function LearnTrainer() {
             <p>Drill the concrete variation first. Maia takes over from the final position.</p>
           </div>
           <div className="learn-opening-tabs" aria-label="Choose opening">
-            {OPENING_LESSONS.map((item) => (
+            {openingFamilies.map((item) => (
               <button
-                key={item.id}
-                className={item.id === lesson.id ? "is-active" : undefined}
+                key={item.opening}
+                className={item.opening === lesson.opening ? "is-active" : undefined}
                 onClick={() => resetLesson(item)}
               >
                 <strong>{item.opening}</strong>
@@ -265,6 +273,22 @@ export function LearnTrainer() {
             <span className="panel-kicker">{lesson.variation}</span>
             <h2>{lesson.opening}</h2>
             <p className="learn-summary">{lesson.summary}</p>
+            <div className="learn-variations">
+              <span>OPPONENT VARIATIONS</span>
+              <p>Pick the reply you want to drill.</p>
+              <div>
+                {variations.map((item) => (
+                  <button
+                    key={item.id}
+                    className={item.id === lesson.id ? "is-active" : undefined}
+                    onClick={() => resetLesson(item)}
+                  >
+                    <strong>{item.opponentMove}</strong>
+                    <small>{item.answer}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className={`learn-feedback${wrongMove ? " learn-feedback--wrong" : ""}`} aria-live="polite">
               <strong>{phase === "ready" ? "Line learned" : phase === "practice" || phase === "maia" ? "Maia practice" : "Current move"}</strong>
               <p>{displayMessage}</p>

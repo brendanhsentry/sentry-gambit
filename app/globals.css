@@ -1015,6 +1015,15 @@ button.move-cell > span {
 .learn-panel { border-top: 4px solid var(--green); }
 .learn-panel > h2 { margin: 11px 0 7px; color: var(--green); font-size: 24px; line-height: 1.15; font-weight: 650; letter-spacing: -.01em; }
 .learn-summary { margin: 0; color: #65736d; font-size: 12px; line-height: 1.55; }
+.learn-variations { margin-top: 17px; padding: 14px 0 2px; border-top: 1px solid var(--line); }
+.learn-variations > span { color: #7c6a8e; font: 700 9.5px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; }
+.learn-variations > p { margin: 7px 0 10px; color: #718078; font-size: 11px; }
+.learn-variations > div { display: grid; gap: 7px; }
+.learn-variations button { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; width: 100%; padding: 10px 11px; border: 1px solid var(--btn-line); border-left: 3px solid #b4bcb6; background: rgba(255,253,248,.66); cursor: pointer; text-align: left; }
+.learn-variations button:hover { border-left-color: var(--green); background: #fffdf8; }
+.learn-variations button.is-active { border-color: var(--blurple); border-left-color: var(--blurple); background: rgba(117,83,255,.08); }
+.learn-variations strong { color: var(--green); font: 700 10px/1.3 var(--font-geist-mono), monospace; }
+.learn-variations small { color: #65736d; font-size: 10.5px; line-height: 1.35; }
 .learn-feedback { min-height: 108px; margin: 19px 0 14px; padding: 17px; border: 2px solid var(--btn-line); background: rgba(255,255,255,.22); box-shadow: 0 4px 0 var(--btn-line); }
 .learn-feedback--wrong { border-color: #ae372b; box-shadow: 0 4px 0 #ae372b; background: rgba(174,55,43,.07); }
 .learn-feedback strong { color: var(--green); font: 700 10px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; }
