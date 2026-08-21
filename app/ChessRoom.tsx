@@ -41,6 +41,8 @@ import { isOpeningPosition, openingName } from "./opening-book.mjs";
 import { BOTS, type BotKey } from "./bots";
 import { authToken, useAuth } from "./auth";
 import { TopBar } from "./TopBar";
+import { GameSummary } from "./games/GameSummary";
+import { moveCountLabel } from "./games/game-replay";
 
 // The captured trays reuse chessground's <piece> element and its piece SVGs.
 declare module "react" {
@@ -86,6 +88,7 @@ type GameState = {
   coach?: boolean;
   undoRequest?: { by: Color } | null;
   drawOffer?: { by: Color } | null;
+  rematchRequest?: { by: Color } | null;
   liveGrades?: boolean;
   liveGradesRequest?: { by: Color } | null;
 };
@@ -386,6 +389,7 @@ export function ChessRoom() {
   const [lobbyTab, setLobbyTab] = useState<"friend" | "patrol">("friend");
   const [room, setRoom] = useState("");
   const [role, setRole] = useState<Role>("spectator");
+  const coachHistoryLengthRef = useRef(0);
   const [connection, setConnection] = useState<
     "idle" | "connecting" | "online" | "offline"
   >("idle");
@@ -611,6 +615,15 @@ export function ChessRoom() {
       return;
     }
     if (state.result) return;
+    const plyCount = state.history.length;
+    if (plyCount < coachHistoryLengthRef.current) {
+      setCoachFeed((feed) => feed.filter((item) => item.ply <= plyCount));
+      for (const key of [...coachSeenRef.current]) {
+        if (Number(key.split(":")[1]) > plyCount) coachSeenRef.current.delete(key);
+      }
+      coachBaselineRef.current.ply = Math.min(coachBaselineRef.current.ply, plyCount);
+    }
+    coachHistoryLengthRef.current = plyCount;
     const baseline = coachBaselineRef.current.ply;
     const pushNote = (
       ply: number,
@@ -1006,6 +1019,13 @@ export function ChessRoom() {
       if (message.type === "welcome") {
         setRole(message.role);
         setState(message.state);
+        if (message.role !== "spectator") {
+          try {
+            window.localStorage.setItem(`pawn-patrol-seat:${cleanRoom}`, cleanName);
+          } catch {
+            // Storage can be unavailable; rejoin memory is best-effort.
+          }
+        }
       } else if (message.type === "state") {
         setState(message.state);
         setPromotion(null);
@@ -1031,8 +1051,17 @@ export function ChessRoom() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setRoomInput(cleaned);
       setInvitedRoom(cleaned || null);
+      // A player who already had a seat here goes straight back to the board.
+      const seatedAs = cleaned
+        ? window.localStorage.getItem(`pawn-patrol-seat:${cleaned}`)
+        : null;
+      if (seatedAs !== null) {
+        setName(seatedAs);
+        connect(cleaned, seatedAs);
+      }
     }
     return () => socketRef.current?.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const currentBotKey = state?.bot?.key;
@@ -1265,8 +1294,15 @@ export function ChessRoom() {
     return pairs;
   }, []);
   const showGrades = Boolean(state?.result || state?.liveGrades);
+  const gradeVisible = (index: number) =>
+    showGrades &&
+    (Boolean(state?.result) ||
+      !state?.bot ||
+      (index % 2 === 0 ? "w" : "b") === role);
   const selectedReview =
-    analysisPly && showGrades ? analysis.moves[analysisPly - 1] : null;
+    analysisPly && gradeVisible(analysisPly - 1)
+      ? analysis.moves[analysisPly - 1]
+      : null;
   const selectedExplanation = analysisPly
     ? moveExplanations[analysisPly]
     : null;
@@ -1284,7 +1320,7 @@ export function ChessRoom() {
           <span>—</span>
         </span>
       );
-    const reviewed = showGrades ? analysis.moves[move.index] : null;
+    const reviewed = gradeVisible(move.index) ? analysis.moves[move.index] : null;
     const title = reviewed
       ? `${gradeLabel(reviewed.grade)}${reviewed.expectedPointsLoss === null ? "" : ` · ${(reviewed.expectedPointsLoss * 100).toFixed(1)} expected points lost`}`
       : undefined;
@@ -1459,8 +1495,11 @@ export function ChessRoom() {
                         <button
                           className="game-over-rematch"
                           onClick={() => send({ type: "reset" })}
+                          disabled={Boolean(state.rematchRequest)}
                         >
-                          ↻ Rematch
+                          {state.rematchRequest?.by === role
+                            ? "Rematch asked…"
+                            : "↻ Rematch"}
                         </button>
                       )}
                       <button onClick={copyReplay}>
@@ -1710,6 +1749,15 @@ export function ChessRoom() {
             </div>
           )}
 
+          {state?.result && (
+            <GameSummary
+              history={state.history}
+              moves={analysis.moves}
+              players={state.players}
+              complete={analysis.status === "complete"}
+            />
+          )}
+
           {!matchUnderway && room && (
             <div className="invite-card">
               <span>
@@ -1837,14 +1885,14 @@ export function ChessRoom() {
               <span>MOVE SHEET</span>
               <span>
                 {!showGrades
-                  ? `${state.history.length} ${state.history.length === 1 ? "PLY" : "PLIES"}`
+                  ? moveCountLabel(state.history.length).toUpperCase()
                   : analysis.status === "loading" || analysis.status === "analyzing"
                   ? `GRADING ${analysis.completed}/${state.history.length}`
                   : analysis.status === "complete"
-                    ? "GRADES READY"
+                    ? "GRADED"
                     : analysis.status === "error"
                       ? "GRADES UNAVAILABLE"
-                      : `${state.history.length} ${state.history.length === 1 ? "PLY" : "PLIES"}`}
+                      : moveCountLabel(state.history.length).toUpperCase()}
               </span>
             </div>
             {lastPly > 0 && (
@@ -2027,6 +2075,33 @@ export function ChessRoom() {
             )}
 
           {state &&
+            state.rematchRequest &&
+            state.rematchRequest.by !== role &&
+            role !== "spectator" && (
+              <div className="takeback-bar" role="alert">
+                <span>
+                  {state.players[state.rematchRequest.by] || "Your opponent"}{" "}
+                  wants a rematch (colors swap)
+                </span>
+                <div>
+                  <button
+                    onClick={() =>
+                      send({ type: "rematch_response", accept: true })
+                    }
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() =>
+                      send({ type: "rematch_response", accept: false })
+                    }
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
+          {state &&
             !state.result &&
             state.undoRequest &&
             state.undoRequest.by !== role &&
@@ -2111,10 +2186,16 @@ export function ChessRoom() {
             <div className="match-actions">
               <button
                 onClick={() => send({ type: "reset" })}
-                disabled={role === "spectator" || !state.result}
+                disabled={
+                  role === "spectator" ||
+                  !state.result ||
+                  Boolean(state.rematchRequest)
+                }
               >
-                ↻ Rematch
+                {state.rematchRequest?.by === role ? "Asked…" : "↻ Rematch"}
               </button>
+              {!state.result && (
+              <>
               <button
                 onClick={() => send({ type: "live_grades_request" })}
                 disabled={
@@ -2185,6 +2266,8 @@ export function ChessRoom() {
                   Resign
                 </button>
               </div>
+              </>
+              )}
             </div>
           )}
           {state?.result && (

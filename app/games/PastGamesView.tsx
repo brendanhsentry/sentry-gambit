@@ -9,10 +9,12 @@ import { IconSeer } from "../IconSeer";
 import { TopBar } from "../TopBar";
 import { authToken } from "../auth";
 import { gradeLabel, useMoveAnalysis } from "../move-analysis";
+import { GameSummary } from "./GameSummary";
 import {
   formatClock,
   formatDate,
   formatDuration,
+  moveCountLabel,
   pairMoves,
   playerName,
   replayPosition,
@@ -366,8 +368,8 @@ export function PastGamesView() {
                     </strong>
                     <span className="record-result">{game.result}</span>
                     <span className="record-meta">
-                      <code>{game.id}</code>
-                      <small>{game.plyCount} plies</small>
+                      <code>{game.room}</code>
+                      <small>{moveCountLabel(game.plyCount)}</small>
                     </span>
                   </button>
                 ))
@@ -429,11 +431,18 @@ export function PastGamesView() {
                       selectedGame.startedAt,
                       selectedGame.finishedAt,
                     )}{" "}
-                    · {selectedGame.history.length} plies · White{" "}
+                    · {moveCountLabel(selectedGame.history.length)} · White{" "}
                     {formatClock(selectedGame.clock.w)} · Black{" "}
                     {formatClock(selectedGame.clock.b)}
                   </p>
                 </div>
+
+                <GameSummary
+                  history={selectedGame.history}
+                  moves={analysis.moves}
+                  players={selectedGame.players}
+                  complete={analysis.status === "complete"}
+                />
 
                 <section
                   className="record-seer"
@@ -557,7 +566,7 @@ export function PastGamesView() {
                       analysis.status === "analyzing"
                         ? ` · GRADING ${analysis.completed}/${lastPly}`
                         : analysis.status === "complete"
-                          ? " · GRADES READY"
+                          ? " · GRADED"
                           : analysis.status === "error"
                             ? " · GRADES UNAVAILABLE"
                             : ""}

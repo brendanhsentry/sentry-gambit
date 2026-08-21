@@ -345,7 +345,8 @@ export function PuzzleTrainer() {
               <span className="panel-kicker">
                 PUZZLE {puzzleIndex + 1} / {PUZZLES.length}
               </span>
-              <h2>Puzzle {String(puzzleIndex + 1).padStart(2, "0")}</h2>
+              <h2>{PUZZLES[puzzleIndex].title}</h2>
+              <p className="puzzle-theme">{PUZZLES[puzzleIndex].theme}</p>
             </div>
 
             <div
@@ -422,7 +423,8 @@ export function PuzzleTrainer() {
                     aria-current={index === puzzleIndex ? "true" : undefined}
                   >
                     <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>Puzzle {String(index + 1).padStart(2, "0")}</strong>
+                    <strong>{item.title}</strong>
+                    <em>{item.theme}</em>
                     <small>{solvedIds.has(item.id) ? "✓" : ""}</small>
                   </button>
                 </Fragment>

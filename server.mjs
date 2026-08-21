@@ -415,6 +415,7 @@ function serializeTable(table) {
     coach: table.coach ?? false,
     undoRequest: table.undoRequest ?? null,
     drawOffer: table.drawOffer ?? null,
+    rematchRequest: table.rematchRequest ?? null,
     liveGrades: table.liveGrades ?? false,
     liveGradesRequest: table.liveGradesRequest ?? null,
   };
@@ -456,7 +457,7 @@ function pauseClock(table, now = Date.now()) {
 }
 
 function resumeClock(table, now = Date.now()) {
-  if (!table.result && table.seats.w && table.seats.b) {
+  if (!table.result && table.seats.w && table.seats.b && table.chess.history().length) {
     table.clock.running = table.chess.turn();
     table.clock.since = now;
   }
@@ -824,71 +825,32 @@ function handleTableMessage(table, client, raw) {
   if (message.type === "reset") {
     if (client.role === "spectator") return;
     if (table.chess.history().length && !table.result) return;
-    if (!table.sentryTraceEnded) table.sentrySpan.end();
-    if (table.chess.history().length) {
-      gameStore.finishGame(
-        table.gameId,
-        table.result ?? "Game reset",
-        table.chess.fen(),
-        table.clock,
-      );
-    } else {
-      gameStore.deleteGame(table.gameId);
-    }
-    table.gameId = randomUUID();
-    table.sentrySpan = createGameTrace(table.id, table.gameId);
-    table.sentryTraceEnded = false;
-    table.finishedIssueSent = false;
-    table.summaryLogsSent = false;
-    table.chess.reset();
-    table.result = null;
-    table.undoRequest = null;
-    table.drawOffer = null;
-    table.liveGrades = false;
-    table.liveGradesRequest = null;
-    table.clock = {
-      w: table.initialTimeMs,
-      b: table.initialTimeMs,
-      running: null,
-      since: null,
-    };
-    table.gradedPlies.clear();
-    table.moveGrades.clear();
-    table.moveAnalyses.clear();
-    table.moveReviewLosses.clear();
-    gameStore.createGame({
-      id: table.gameId,
-      room: table.id,
-      fen: table.chess.fen(),
-      clock: table.clock,
-      initialTimeMs: table.initialTimeMs,
-    });
-    gameStore.updatePlayers(table.gameId, {
-      w: table.seats.w?.name ?? null,
-      b: table.seats.b?.name ?? null,
-    });
-    if (table.bot) {
-      gameStore.setBot(table.gameId, {
-        key: table.bot.key,
-        color: table.bot.color,
-        coach: table.coach === true,
-      });
-    }
-    table.playerColors.clear();
-    table.seatUsers = { w: null, b: null };
-    for (const color of ["w", "b"]) {
-      const seated = table.seats[color];
-      if (seated?.playerKey) {
-        table.playerColors.set(seated.playerKey, color);
-        gameStore.addPlayer(table.gameId, seated.playerKey, color);
+    const opponent = client.role === "w" ? "b" : "w";
+    const opponentIsHuman =
+      table.seats[opponent] && table.bot?.color !== opponent;
+    if (opponentIsHuman && table.chess.history().length) {
+      if (table.rematchRequest?.by === opponent) {
+        resetTable(table, true);
+        return;
       }
-      if (seated?.userId) {
-        table.seatUsers[color] = seated.userId;
-        gameStore.setSeatUser(table.gameId, color, seated.userId);
-      }
+      if (table.rematchRequest) return;
+      table.rematchRequest = { by: client.role };
+      broadcast(table);
+      return;
     }
-    resumeClock(table);
-    broadcast(table);
+    resetTable(table, false);
+    return;
+  }
+
+  if (message.type === "rematch_response") {
+    const request = table.rematchRequest;
+    if (!request) return;
+    if (client.role !== (request.by === "w" ? "b" : "w")) return;
+    if (message.accept) resetTable(table, true);
+    else {
+      table.rematchRequest = null;
+      broadcast(table);
+    }
     return;
   }
 
@@ -896,6 +858,94 @@ function handleTableMessage(table, client, raw) {
     captureFinishedGame(table);
     broadcast(table);
   }
+}
+
+function resetTable(table, swapSeats) {
+  if (!table.sentryTraceEnded) table.sentrySpan.end();
+  if (table.chess.history().length) {
+    gameStore.finishGame(
+      table.gameId,
+      table.result ?? "Game reset",
+      table.chess.fen(),
+      table.clock,
+    );
+  } else {
+    gameStore.deleteGame(table.gameId);
+  }
+  table.gameId = randomUUID();
+  table.sentrySpan = createGameTrace(table.id, table.gameId);
+  table.sentryTraceEnded = false;
+  table.finishedIssueSent = false;
+  table.summaryLogsSent = false;
+  table.chess.reset();
+  table.result = null;
+  table.undoRequest = null;
+  table.drawOffer = null;
+  table.rematchRequest = null;
+  table.liveGrades = false;
+  table.liveGradesRequest = null;
+  table.clock = {
+    w: table.initialTimeMs,
+    b: table.initialTimeMs,
+    running: null,
+    since: null,
+  };
+  table.gradedPlies.clear();
+  table.moveGrades.clear();
+  table.moveAnalyses.clear();
+  table.moveReviewLosses.clear();
+  if (swapSeats && !table.bot) {
+    [table.seats.w, table.seats.b] = [table.seats.b, table.seats.w];
+    for (const color of ["w", "b"]) {
+      const seated = table.seats[color];
+      if (seated?.socket) seated.role = color;
+    }
+  }
+  gameStore.createGame({
+    id: table.gameId,
+    room: table.id,
+    fen: table.chess.fen(),
+    clock: table.clock,
+    initialTimeMs: table.initialTimeMs,
+  });
+  gameStore.updatePlayers(table.gameId, {
+    w: table.seats.w?.name ?? null,
+    b: table.seats.b?.name ?? null,
+  });
+  if (table.bot) {
+    gameStore.setBot(table.gameId, {
+      key: table.bot.key,
+      color: table.bot.color,
+      coach: table.coach === true,
+    });
+  }
+  table.playerColors.clear();
+  table.seatUsers = { w: null, b: null };
+  for (const color of ["w", "b"]) {
+    const seated = table.seats[color];
+    if (seated?.playerKey) {
+      table.playerColors.set(seated.playerKey, color);
+      gameStore.addPlayer(table.gameId, seated.playerKey, color);
+    }
+    if (seated?.userId) {
+      table.seatUsers[color] = seated.userId;
+      gameStore.setSeatUser(table.gameId, color, seated.userId);
+    }
+  }
+  resumeClock(table);
+  if (swapSeats && !table.bot) {
+    for (const color of ["w", "b"]) {
+      const seated = table.seats[color];
+      if (seated?.socket)
+        send(seated, {
+          type: "welcome",
+          role: color,
+          playerId: seated.id,
+          state: serializeTable(table),
+        });
+    }
+  }
+  broadcast(table);
 }
 
 async function joinTable(request, socket) {

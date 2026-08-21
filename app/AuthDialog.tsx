@@ -43,8 +43,9 @@ export function AuthDialog({
         <span className="lobby-kicker">OPTIONAL SIGN IN</span>
         <h2>Join the leaderboard</h2>
         <p>
-          Signed-in games against other members or the Patrol bots count toward
-          your rating. Guests can keep playing without an account.
+          Signed-in games against other members count toward your rating. Games
+          against bots or guests stay unrated. Guests can keep playing without
+          an account.
         </p>
         <label>
           <span>Name</span>

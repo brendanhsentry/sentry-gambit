@@ -986,3 +986,13 @@ button.move-cell > span {
   .user-menu-sheet { animation: none; }
   .brand:hover .brand-mark img, .player-card:hover .player-avatar, .primary-button:hover:not(:disabled) span { transform: none; }
 }
+
+.game-summary { border: 2px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.23); padding: 14px 17px; margin-bottom: 22px; }
+.game-summary > span { font: 650 10.5px/1 var(--font-geist-mono), monospace; letter-spacing: .12em; color: #7d8983; text-transform: uppercase; }
+.game-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.game-summary-side { display: grid; gap: 4px; }
+.game-summary-side strong { font-size: 12px; color: #354a42; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.game-summary-side b { font: 700 26px/1 var(--font-geist-mono), monospace; color: var(--green); }
+.game-summary-side small { font-size: 11px; color: #7a8680; }
+.puzzle-theme { margin: 4px 0 0; color: #7a8680; font-size: 12px; }
+.puzzle-list button em { font-style: normal; color: #7a8680; font-size: 11px; }

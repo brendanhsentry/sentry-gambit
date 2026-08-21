@@ -7,10 +7,12 @@ import { ChessgroundBoard } from "../../ChessgroundBoard";
 import { authToken } from "../../auth";
 import { TopBar } from "../../TopBar";
 import { gradeLabel, useMoveAnalysis } from "../../move-analysis";
+import { GameSummary } from "../GameSummary";
 import {
   formatClock,
   formatDate,
   formatDuration,
+  moveCountLabel,
   pairMoves,
   playerName,
   replayPosition,
@@ -292,10 +294,17 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                 <p>
                   Started {formatDate(game.startedAt)} ·{" "}
                   {formatDuration(game.startedAt, game.finishedAt)} ·{" "}
-                  {game.history.length} plies · White {formatClock(game.clock.w)}{" "}
+                  {moveCountLabel(game.history.length)} · White {formatClock(game.clock.w)}{" "}
                   · Black {formatClock(game.clock.b)}
                 </p>
               </div>
+
+              <GameSummary
+                history={game.history}
+                moves={analysis.moves}
+                players={game.players}
+                complete={analysis.status === "complete"}
+              />
 
               <section className="record-replay">
                 <div className="record-section-title">
@@ -308,7 +317,7 @@ export function SharedGameView({ gameId }: { gameId: string }) {
                     analysis.status === "analyzing"
                       ? ` · GRADING ${analysis.completed}/${lastPly}`
                       : analysis.status === "complete"
-                        ? " · GRADES READY"
+                        ? " · GRADED"
                         : analysis.status === "error"
                           ? " · GRADES UNAVAILABLE"
                           : ""}

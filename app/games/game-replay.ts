@@ -52,6 +52,11 @@ export function formatClock(ms: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+export function moveCountLabel(plies: number) {
+  const moves = Math.ceil(plies / 2);
+  return `${moves} ${moves === 1 ? "move" : "moves"}`;
+}
+
 export function playerName(game: SavedGameSummary, color: PlayerColor) {
   return game.players[color] || (color === "w" ? "White" : "Black");
 }
