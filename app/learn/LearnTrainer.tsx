@@ -10,7 +10,7 @@ import { botMove, engineBestMove } from "../move-analysis";
 import { TopBar } from "../TopBar";
 import { OPENING_LESSONS, type OpeningLesson } from "./openings";
 
-type Phase = "drill" | "line-reply" | "ready" | "practice" | "maia" | "finished";
+type Phase = "walkthrough" | "drill" | "line-reply" | "ready" | "practice" | "maia" | "finished";
 
 function playerColor(side: "w" | "b"): Color {
   return side === "w" ? "white" : "black";
@@ -47,11 +47,26 @@ function sanLine(line: string[]) {
   });
 }
 
+function positionAt(line: string[], moveCount: number) {
+  const chess = new Chess();
+  let lastMove: Key[] | undefined;
+  for (const uci of line.slice(0, moveCount)) {
+    const { move } = movePosition(chess.fen(), uci);
+    chess.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      ...(uci[4] ? { promotion: uci[4] as "q" | "r" | "b" | "n" } : {}),
+    });
+    lastMove = [move.from as Key, move.to as Key];
+  }
+  return { fen: chess.fen(), lastMove };
+}
+
 export function LearnTrainer() {
   const [lesson, setLesson] = useState<OpeningLesson>(OPENING_LESSONS[0]);
   const [fen, setFen] = useState(new Chess().fen());
   const [lineIndex, setLineIndex] = useState(0);
-  const [phase, setPhase] = useState<Phase>("drill");
+  const [phase, setPhase] = useState<Phase>("walkthrough");
   const [lastMove, setLastMove] = useState<Key[] | undefined>();
   const [message, setMessage] = useState("Play the highlighted line on the board.");
   const [wrongMove, setWrongMove] = useState<Key[] | null>(null);
@@ -74,15 +89,19 @@ export function LearnTrainer() {
   const displayMessage =
     phase === "drill" && isPlayerTurn
       ? `Your move: ${lesson.notes[lineIndex]}`
+      : phase === "walkthrough"
+        ? lineIndex === 0
+          ? "Use Next move to replay the line with the idea behind each move."
+          : `${sans[lineIndex - 1]}: ${lesson.notes[lineIndex - 1]}`
       : message;
 
   const resetLesson = useCallback((nextLesson = lesson) => {
     setLesson(nextLesson);
     setFen(new Chess().fen());
     setLineIndex(0);
-    setPhase("drill");
+    setPhase("walkthrough");
     setLastMove(undefined);
-    setMessage(nextLesson.side === "w" ? "Your move. Build the selected line." : "Maia starts the line as White.");
+    setMessage("Use Next move to replay the selected line.");
     setWrongMove(null);
     setHint(null);
     setResetKey((value) => value + 1);
@@ -196,6 +215,29 @@ export function LearnTrainer() {
     }
   }
 
+  function stepLine(direction: -1 | 1) {
+    const nextIndex = Math.max(0, Math.min(lesson.line.length, lineIndex + direction));
+    const next = positionAt(lesson.line, nextIndex);
+    setFen(next.fen);
+    setLastMove(next.lastMove);
+    setLineIndex(nextIndex);
+    setWrongMove(null);
+    setHint(null);
+    setResetKey((value) => value + 1);
+  }
+
+  function startDrill() {
+    const initial = positionAt(lesson.line, 0);
+    setFen(initial.fen);
+    setLastMove(undefined);
+    setLineIndex(0);
+    setPhase("drill");
+    setMessage(lesson.side === "w" ? "Your move. Build the selected line." : "Maia starts the line as White.");
+    setWrongMove(null);
+    setHint(null);
+    setResetKey((value) => value + 1);
+  }
+
   function startPractice() {
     setWrongMove(null);
     setHint(null);
@@ -249,7 +291,7 @@ export function LearnTrainer() {
         <div className="learn-layout">
           <section className="learn-board-panel" aria-label="Opening board">
             <div className="learn-board-meta">
-              <span>{phase === "practice" || phase === "maia" || phase === "finished" ? "MAIA PRACTICE" : "LINE DRILL"}</span>
+              <span>{phase === "walkthrough" ? "LINE WALKTHROUGH" : phase === "practice" || phase === "maia" || phase === "finished" ? "MAIA PRACTICE" : "LINE DRILL"}</span>
               <span>You play {lesson.side === "w" ? "White" : "Black"}</span>
             </div>
             <div className="learn-board-wrap">
@@ -290,7 +332,7 @@ export function LearnTrainer() {
               </div>
             </div>
             <div className={`learn-feedback${wrongMove ? " learn-feedback--wrong" : ""}`} aria-live="polite">
-              <strong>{phase === "ready" ? "Line learned" : phase === "practice" || phase === "maia" ? "Maia practice" : "Current move"}</strong>
+              <strong>{phase === "walkthrough" ? `Move ${lineIndex} of ${lesson.line.length}` : phase === "ready" ? "Line learned" : phase === "practice" || phase === "maia" ? "Maia practice" : "Current move"}</strong>
               <p>{displayMessage}</p>
             </div>
             <div className="learn-idea">
@@ -305,7 +347,15 @@ export function LearnTrainer() {
               ))}
             </div>
             <div className="learn-actions">
-              <button onClick={() => resetLesson()}>Restart line</button>
+              {phase === "walkthrough" ? (
+                <>
+                  <button onClick={() => stepLine(-1)} disabled={lineIndex === 0}>← Previous</button>
+                  <button onClick={() => stepLine(1)} disabled={lineIndex === lesson.line.length}>Next move →</button>
+                  <button className="learn-primary" onClick={startDrill}>Drill this line</button>
+                </>
+              ) : (
+                <button onClick={() => resetLesson()}>View line</button>
+              )}
               {phase === "ready" && <button className="learn-primary" onClick={startPractice}>Play Maia from here →</button>}
               {(phase === "practice" || phase === "maia") && <button onClick={() => void requestHint()} disabled={engineLoading || phase === "maia"}>{engineLoading ? "Checking…" : "Stockfish hint"}</button>}
               {phase === "finished" && <button className="learn-primary" onClick={() => resetLesson()}>Run it back</button>}

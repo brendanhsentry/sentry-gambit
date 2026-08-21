@@ -1041,7 +1041,7 @@ button.move-cell > span {
 .learn-actions button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 var(--btn-line); }
 .learn-actions button:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
 .learn-actions button:disabled { opacity: .5; cursor: default; }
-.learn-actions .learn-primary { border: 0; background: var(--blurple); color: white; box-shadow: 0 4px 0 var(--blurple-deep); }
+.learn-actions .learn-primary { grid-column: 1 / -1; border: 0; background: var(--blurple); color: white; box-shadow: 0 4px 0 var(--blurple-deep); }
 .learn-actions .learn-primary:hover { box-shadow: 0 5px 0 var(--blurple-deep); }
 .learn-actions .learn-primary:active { box-shadow: none; }
 
