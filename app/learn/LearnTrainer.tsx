@@ -36,13 +36,14 @@ function movePosition(fen: string, uci: string) {
 
 function sanLine(line: string[]) {
   const chess = new Chess();
-  return line.map((uci) => movePosition(chess.fen(), uci).move.san).map((san, index) => {
-    chess.move({
-      from: line[index].slice(0, 2),
-      to: line[index].slice(2, 4),
-      ...(line[index][4] ? { promotion: line[index][4] as "q" | "r" | "b" | "n" } : {}),
+  return line.map((uci) => {
+    const move = chess.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      ...(uci[4] ? { promotion: uci[4] as "q" | "r" | "b" | "n" } : {}),
     });
-    return san;
+    if (!move) throw new Error(`Invalid opening move: ${uci}`);
+    return move.san;
   });
 }
 
