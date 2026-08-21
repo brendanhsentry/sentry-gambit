@@ -226,18 +226,6 @@ export function LearnTrainer() {
     setResetKey((value) => value + 1);
   }
 
-  function startDrill() {
-    const initial = positionAt(lesson.line, 0);
-    setFen(initial.fen);
-    setLastMove(undefined);
-    setLineIndex(0);
-    setPhase("drill");
-    setMessage(lesson.side === "w" ? "Your move. Build the selected line." : "Maia starts the line as White.");
-    setWrongMove(null);
-    setHint(null);
-    setResetKey((value) => value + 1);
-  }
-
   function startPractice() {
     setWrongMove(null);
     setHint(null);
@@ -351,7 +339,9 @@ export function LearnTrainer() {
                 <>
                   <button onClick={() => stepLine(-1)} disabled={lineIndex === 0}>← Previous</button>
                   <button onClick={() => stepLine(1)} disabled={lineIndex === lesson.line.length}>Next move →</button>
-                  <button className="learn-primary" onClick={startDrill}>Drill this line</button>
+                  {lineIndex === lesson.line.length && (
+                    <button className="learn-primary" onClick={startPractice}>Play Maia from here →</button>
+                  )}
                 </>
               ) : (
                 <button onClick={() => resetLesson()}>View line</button>
