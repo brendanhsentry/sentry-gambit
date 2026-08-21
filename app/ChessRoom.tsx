@@ -1262,7 +1262,8 @@ export function ChessRoom() {
     else pairs[pairs.length - 1].b = { san: move.san, index };
     return pairs;
   }, []);
-  const selectedReview = analysisPly ? analysis.moves[analysisPly - 1] : null;
+  const selectedReview =
+    analysisPly && state?.result ? analysis.moves[analysisPly - 1] : null;
   const selectedExplanation = analysisPly
     ? moveExplanations[analysisPly]
     : null;
