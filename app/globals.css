@@ -292,9 +292,9 @@ button { color: inherit; }
 .replay-share-button:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
 .replay-share-button:active { transform: translateY(2px); box-shadow: none; }
 
-.moves-panel { flex: 1; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); min-height: 235px; }
+.moves-panel { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .moves-header { height: 42px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); color: #718078; font: 650 10.5px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
-.moves-table { max-height: 298px; overflow: auto; scrollbar-width: thin; }
+.moves-table { max-height: 180px; overflow: auto; scrollbar-width: thin; }
 .move-row { display: grid; grid-template-columns: 40px 1fr 1fr; min-height: 45px; align-items: stretch; border-bottom: 1px solid rgba(23,63,53,.09); font: 600 13px/1 var(--font-geist-mono), monospace; }
 .move-row span { color: #94a099; font-size: 11px; }
 .move-row > span { align-self: center; }
