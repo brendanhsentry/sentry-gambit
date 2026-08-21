@@ -86,7 +86,7 @@ function keyMoments(logs: ExploreLog[]) {
 }
 
 export function ExploreView() {
-  const [question, setQuestion] = useState(EXAMPLES[0]);
+  const [question, setQuestion] = useState("");
   const [result, setResult] = useState<ExploreResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -150,7 +150,7 @@ export function ExploreView() {
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               maxLength={240}
-              placeholder="How do I play against the Sicilian?"
+              placeholder={EXAMPLES[0]}
               rows={3}
             />
             <div className="explore-prompt-actions">

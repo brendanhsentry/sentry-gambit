@@ -327,6 +327,7 @@ function PlayerCard({
   bottom,
   captured,
   advantage,
+  isSelf,
   onFlag,
 }: {
   name: string | null;
@@ -337,6 +338,7 @@ function PlayerCard({
   bottom?: boolean;
   captured?: PieceSymbol[];
   advantage?: number;
+  isSelf?: boolean;
   onFlag: () => void;
 }) {
   const fallback = color === "w" ? "Waiting for white" : "Waiting for black";
@@ -348,7 +350,13 @@ function PlayerCard({
       <div className="player-identity">
         <strong>{name || fallback}</strong>
         <span>
-          {name ? (active ? "Thinking…" : "At the table") : "Open seat"}
+          {name
+            ? active
+              ? isSelf
+                ? "Your move"
+                : "Thinking…"
+              : "At the table"
+            : "Open seat"}
         </span>
       </div>
       {captured && captured.length > 0 && (
@@ -1450,6 +1458,7 @@ export function ChessRoom() {
               active={state?.clock.running === topColor && !state.result}
               captured={captured[bottomColor]}
               advantage={topColor === "w" ? materialLead : -materialLead}
+              isSelf={role === topColor}
               onFlag={flagClock}
             />
           )}
@@ -1557,6 +1566,7 @@ export function ChessRoom() {
               bottom
               captured={captured[topColor]}
               advantage={bottomColor === "w" ? materialLead : -materialLead}
+              isSelf={role === bottomColor}
               onFlag={flagClock}
             />
           )}
@@ -1725,7 +1735,9 @@ export function ChessRoom() {
         >
           {!matchUnderway && (
             <div className="match-heading">
-              <span className="panel-kicker">MATCH ROOM</span>
+              <span className="panel-kicker">
+                {state?.result ? "RESULT" : "MATCH ROOM"}
+              </span>
               <h2>
                 {replayPly !== null
                   ? `Position ${viewedPly} of ${lastPly}`
@@ -1784,7 +1796,7 @@ export function ChessRoom() {
                   onClick={() => send({ type: "coach", enabled: false })}
                   title="Turn off the coach"
                 >
-                  OFF
+                  Turn off
                 </button>
                 <button
                   className="live-coach-hint"
@@ -1868,17 +1880,31 @@ export function ChessRoom() {
           <div className="moves-panel">
             <div className="moves-header">
               <span>MOVE SHEET</span>
-              <span>
-                {!showGrades
-                  ? moveCountLabel(state.history.length).toUpperCase()
-                  : analysis.status === "loading" || analysis.status === "analyzing"
-                  ? `GRADING ${analysis.completed}/${state.history.length}`
-                  : analysis.status === "complete"
-                    ? "GRADED"
-                    : analysis.status === "error"
-                      ? "GRADES UNAVAILABLE"
-                      : moveCountLabel(state.history.length).toUpperCase()}
-              </span>
+              {state.result ? (
+                <span>
+                  {!showGrades
+                    ? moveCountLabel(state.history.length).toUpperCase()
+                    : analysis.status === "loading" ||
+                        analysis.status === "analyzing"
+                      ? `GRADING ${analysis.completed}/${state.history.length}`
+                      : analysis.status === "complete"
+                        ? "GRADES READY"
+                        : analysis.status === "error"
+                          ? "GRADES UNAVAILABLE"
+                          : moveCountLabel(state.history.length).toUpperCase()}
+                </span>
+              ) : (
+                <button
+                  className={`grades-toggle ${state.liveGrades ? "is-on" : ""}`}
+                  aria-pressed={Boolean(state.liveGrades)}
+                  onClick={() => send({ type: "live_grades_request" })}
+                  disabled={
+                    role === "spectator" || Boolean(state.liveGradesRequest)
+                  }
+                >
+                  {state.liveGradesRequest?.by === role ? "Asked…" : "Grades"}
+                </button>
+              )}
             </div>
             {lastPly > 0 && (
               <div className="replay-controls" aria-label="Replay controls">
@@ -1897,9 +1923,7 @@ export function ChessRoom() {
                   ‹
                 </button>
                 <span>
-                  {viewedPly === 0
-                    ? "Start"
-                    : `${Math.ceil(viewedPly / 2)}${viewedPly % 2 ? ". White" : "… Black"}`}
+                  {viewedPly === 0 ? "Start" : `Move ${viewedPly} of ${lastPly}`}
                 </span>
                 <button
                   onClick={() => goToPly(viewedPly + 1)}
@@ -2166,34 +2190,8 @@ export function ChessRoom() {
                 </div>
               </div>
             )}
-          {state && matchUnderway && (
+          {state && matchUnderway && !state.result && (
             <div className="match-actions">
-              <button
-                onClick={() => send({ type: "reset" })}
-                disabled={
-                  role === "spectator" ||
-                  !state.result ||
-                  Boolean(state.rematchRequest)
-                }
-              >
-                {state.rematchRequest?.by === role ? "Asked…" : "↻ Rematch"}
-              </button>
-              {!state.result && (
-              <>
-              <button
-                className={state.liveGrades ? "is-on" : undefined}
-                aria-pressed={Boolean(state.liveGrades)}
-                onClick={() => send({ type: "live_grades_request" })}
-                disabled={
-                  role === "spectator" ||
-                  Boolean(state.result) ||
-                  Boolean(state.liveGradesRequest)
-                }
-              >
-                {state.liveGradesRequest?.by === role
-                  ? "Asked…"
-                  : "Grades"}
-              </button>
               <button
                 onClick={() => send({ type: "undo" })}
                 disabled={
@@ -2250,8 +2248,6 @@ export function ChessRoom() {
                   Resign
                 </button>
               </div>
-              </>
-              )}
             </div>
           )}
           {state?.result && (

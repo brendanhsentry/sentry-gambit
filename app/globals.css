@@ -237,8 +237,8 @@ button { color: inherit; }
 .coach-bubble-top strong { font: 700 12px/1 var(--font-geist-mono), monospace; color: var(--green); }
 .coach-motif { padding: 3px 5px; border-radius: 4px; background: rgba(23, 63, 53, 0.08); color: var(--green); font: 650 9px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; }
 .coach-thinking { font-style: italic; color: #71807a; }
-.live-coach-off { margin-left: auto; padding: 6px 8px; border: none; background: none; color: #8a958f; font: 650 10.5px/1 var(--font-geist-mono), monospace; letter-spacing: .08em; cursor: pointer; }
-.live-coach-off:hover { color: #b8433c; }
+.live-coach-off { margin-left: auto; padding: 7px 12px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); color: #6b7772; font: 700 11px/1 var(--font-geist-mono), monospace; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.live-coach-off:hover { color: #b8433c; border-color: #b8433c; }
 .live-coach-off + .live-coach-hint { margin-left: 0; }
 .live-coach-restore { align-self: flex-start; margin-bottom: 16px; padding: 7px 12px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); color: #7d8983; font: 650 11px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; cursor: pointer; box-shadow: 0 3px 0 0 var(--btn-line); }
 .live-coach-restore:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); color: var(--green); }
@@ -292,6 +292,10 @@ button { color: inherit; }
 .replay-share-button:active { transform: translateY(2px); box-shadow: none; }
 
 .moves-panel { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.grades-toggle { padding: 5px 11px; border: 2px solid var(--btn-line); border-radius: 999px; background: var(--btn-bg); color: var(--green); font: 700 10px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+.grades-toggle:hover:not(:disabled) { border-color: var(--green); }
+.grades-toggle.is-on { background: var(--green); border-color: var(--green); color: #fffdf8; }
+.grades-toggle:disabled { opacity: .45; cursor: default; }
 .moves-header { height: 42px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); color: #718078; font: 650 10.5px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; }
 .moves-table { max-height: 180px; overflow: auto; scrollbar-width: thin; }
 .move-row { display: grid; grid-template-columns: 40px 1fr 1fr; min-height: 45px; align-items: stretch; border-bottom: 1px solid rgba(23,63,53,.09); font: 600 13px/1 var(--font-geist-mono), monospace; }
@@ -320,7 +324,7 @@ button { color: inherit; }
 .takeback-bar button:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
 .takeback-bar button:first-child:hover { box-shadow: 0 4px 0 0 var(--blurple-deep); }
 .takeback-bar button:active { transform: translateY(2px); box-shadow: none; }
-.match-actions { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 12px; gap: 8px; }
+.match-actions { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 12px; gap: 8px; }
 .match-actions button { height: 44px; border: 2px solid var(--btn-line); border-radius: 10px; background: var(--btn-bg); cursor: pointer; text-transform: uppercase; font-size: 10px; letter-spacing: .08em; font-weight: 700; box-shadow: 0 3px 0 0 var(--btn-line); }
 .match-actions button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--btn-line); }
 .match-actions button:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
@@ -958,7 +962,7 @@ button.move-cell > span {
 
 /* Hover motion pass */
 .topbar-cta, .time-control button, .primary-button, .join-row button, .bot-card,
-.live-coach-hint, .live-coach-hintbox button, .live-coach-restore,
+.live-coach-hint, .live-coach-off, .grades-toggle, .live-coach-hintbox button, .live-coach-restore,
 .game-over-actions button, .promotion-picker > div button, .takeback-bar button,
 .match-actions button, .puzzle-hint button, .puzzle-actions button,
 .archive-tools button, .replay-controls button, .record-replay-controls button,
@@ -968,7 +972,7 @@ button.move-cell > span {
   transition: transform 120ms ease, box-shadow 120ms ease, background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 .sound-toggle, .user-menu-trigger, .user-menu-sheet button, .lobby-tabs button,
-.coach-toggle, .seer-icon-btn, .live-coach-off, .mini-seer-close, .seer-more,
+.coach-toggle, .seer-icon-btn, .mini-seer-close, .seer-more,
 .invite-card button, .promotion-cancel, .auth-cancel, .record-fact--id button {
   transition: color 140ms ease, background-color 140ms ease;
 }
@@ -992,4 +996,3 @@ button.move-cell > span {
 .puzzle-theme { margin: 4px 0 0; color: #7a8680; font-size: 12px; }
 .puzzle-list button em { font-style: normal; color: #7a8680; font-size: 11px; }
 
-.match-panel > .replay-share-button { display: block; width: 100%; margin-bottom: 22px; cursor: pointer; }
