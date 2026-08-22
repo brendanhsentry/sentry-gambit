@@ -73,6 +73,7 @@ export function LearnTrainer() {
   const [resetKey, setResetKey] = useState(0);
   const [hint, setHint] = useState<{ san: string; uci: string } | null>(null);
   const [engineLoading, setEngineLoading] = useState(false);
+  const [openingQuery, setOpeningQuery] = useState("");
 
   const chess = useMemo(() => new Chess(fen), [fen]);
   const side = playerColor(lesson.side);
@@ -85,6 +86,20 @@ export function LearnTrainer() {
     () => OPENING_LESSONS.filter((item) => item.opening === lesson.opening),
     [lesson.opening],
   );
+  const visibleOpenings = useMemo(() => {
+    const query = openingQuery.trim().toLowerCase();
+    if (!query) return openingFamilies;
+    return openingFamilies.filter((item) => {
+      const familyVariations = OPENING_LESSONS.filter(
+        (candidate) => candidate.opening === item.opening,
+      );
+      return familyVariations.some((candidate) =>
+        `${candidate.opening} ${candidate.variation} ${candidate.opponentMove}`
+          .toLowerCase()
+          .includes(query),
+      );
+    });
+  }, [openingFamilies, openingQuery]);
   const isPlayerTurn = chess.turn() === lesson.side;
   const displayMessage =
     phase === "drill" && isPlayerTurn
@@ -265,6 +280,40 @@ export function LearnTrainer() {
         </header>
 
         <div className="learn-layout">
+          <aside className="learn-catalog" aria-label="Opening repertoire">
+            <div className="learn-catalog-tools">
+              <span className="panel-kicker">OPENINGS</span>
+              <input
+                type="search"
+                value={openingQuery}
+                onChange={(event) => setOpeningQuery(event.target.value)}
+                placeholder="Search openings…"
+                aria-label="Search openings"
+              />
+            </div>
+            <div className="learn-opening-list">
+              {visibleOpenings.map((item) => {
+                const variationCount = OPENING_LESSONS.filter(
+                  (candidate) => candidate.opening === item.opening,
+                ).length;
+                return (
+                  <button
+                    key={item.opening}
+                    className={item.opening === lesson.opening ? "is-active" : undefined}
+                    onClick={() => resetLesson(item)}
+                  >
+                    <span>{item.side === "w" ? "AS WHITE" : "AS BLACK"}</span>
+                    <strong>{item.opening}</strong>
+                    <small>{variationCount} {variationCount === 1 ? "variation" : "variations"}</small>
+                  </button>
+                );
+              })}
+              {!visibleOpenings.length && (
+                <p className="learn-catalog-empty">No openings match that search.</p>
+              )}
+            </div>
+          </aside>
+
           <section className="learn-board-panel" aria-label="Opening board">
             <div className="learn-board-meta">
               <span>{phase === "walkthrough" ? "LINE WALKTHROUGH" : phase === "practice" || phase === "maia" || phase === "finished" ? "MAIA PRACTICE" : "LINE DRILL"}</span>
@@ -288,40 +337,21 @@ export function LearnTrainer() {
           </section>
 
           <aside className="learn-panel">
-            <div className="learn-repertoire-picker">
-              <span className="panel-kicker">CHOOSE REPERTOIRE</span>
-              <div className="learn-picker-fields">
-                <label>
-                  <span>Opening</span>
-                  <select
-                    value={lesson.opening}
-                    onChange={(event) => {
-                      const next = openingFamilies.find((item) => item.opening === event.target.value);
-                      if (next) resetLesson(next);
-                    }}
-                  >
-                    {openingFamilies.map((item) => (
-                      <option key={item.opening} value={item.opening}>
-                        {item.opening} · {item.side === "w" ? "White" : "Black"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Opponent variation</span>
-                  <select
-                    value={lesson.id}
-                    onChange={(event) => {
-                      const next = variations.find((item) => item.id === event.target.value);
-                      if (next) resetLesson(next);
-                    }}
-                  >
-                    {variations.map((item) => (
-                      <option key={item.id} value={item.id}>{item.variation}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+            <div className="learn-variation-picker">
+              <label>
+                <span>OPPONENT VARIATION</span>
+                <select
+                  value={lesson.id}
+                  onChange={(event) => {
+                    const next = variations.find((item) => item.id === event.target.value);
+                    if (next) resetLesson(next);
+                  }}
+                >
+                  {variations.map((item) => (
+                    <option key={item.id} value={item.id}>{item.variation}</option>
+                  ))}
+                </select>
+              </label>
             </div>
             <span className="panel-kicker">YOU PLAY {lesson.side === "w" ? "WHITE" : "BLACK"}</span>
             <h2>{lesson.opening}</h2>
