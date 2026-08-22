@@ -28,7 +28,6 @@ import {
   soundsMuted,
 } from "./board-sounds";
 import { PIECE_GLYPHS } from "./chess-pieces";
-import { startGameReplay, stopGameReplay } from "./sentry-replay";
 import {
   botMove,
   engineBestMove,
@@ -444,21 +443,6 @@ export function ChessRoom() {
     }
     return false;
   }, []);
-
-  // Record a Sentry session replay only while a game is being played:
-  // both seats filled, no result yet, and this client is one of the players.
-  const gameActive = Boolean(
-    state &&
-    !state.result &&
-    state.players.w &&
-    state.players.b &&
-    role !== "spectator",
-  );
-  useEffect(() => {
-    if (gameActive && state) startGameReplay(state.room, state.gameId, role);
-    else void stopGameReplay();
-  }, [gameActive, state, role]);
-  useEffect(() => () => void stopGameReplay(), []);
 
   const currentGameId = state?.gameId;
 

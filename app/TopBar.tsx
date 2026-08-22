@@ -10,7 +10,6 @@ import { AuthDialog } from "./AuthDialog";
 const NAV = [
   { href: "/", label: "Play" },
   { href: "/puzzles", label: "Puzzles" },
-  { href: "/learn", label: "Learn" },
   { href: "/games", label: "Past games" },
   { href: "/explore", label: "Explore" },
   { href: "/leaderboard", label: "Leaderboard" },
