@@ -29,12 +29,12 @@ import {
 } from "./board-sounds";
 import { PIECE_GLYPHS } from "./chess-pieces";
 import {
-  failMoveTelemetry,
-  hasMoveTelemetry,
-  recordBoardMoveTelemetry,
-  recordServerMoveTelemetry,
-  startLocalMoveTelemetry,
-} from "./move-performance";
+  failMoveTrace,
+  hasMoveTrace,
+  recordBoardMoveTrace,
+  recordServerMoveTrace,
+  startLocalMoveTrace,
+} from "./sentry-tracing";
 import {
   botMove,
   engineBestMove,
@@ -1030,15 +1030,15 @@ export function ChessRoom() {
         const previous = receivedStateRef.current;
         receivedStateRef.current = message.state;
         if (message.state.history.length > (previous?.history.length ?? 0)) {
-          recordServerMoveTelemetry(
+          recordServerMoveTrace(
             message.state.fen,
-            hasMoveTelemetry() ? "local" : "remote",
+            hasMoveTrace() ? "local" : "remote",
           );
         }
         setState(message.state);
         setPromotion(null);
       } else if (message.type === "error") {
-        failMoveTelemetry();
+        failMoveTrace();
         setNotice(message.message);
       }
     });
@@ -1247,7 +1247,7 @@ export function ChessRoom() {
       ply: viewedPly + 1,
       key: moveSoundKey(move),
     };
-    startLocalMoveTelemetry();
+    startLocalMoveTrace();
     if (
       !send({
         type: "move",
@@ -1256,7 +1256,7 @@ export function ChessRoom() {
         ...(move.promotion ? { promotion: move.promotion } : {}),
       })
     ) {
-      failMoveTelemetry();
+      failMoveTrace();
       localMoveSoundRef.current = null;
       return false;
     }
@@ -1515,7 +1515,7 @@ export function ChessRoom() {
               customSquareClasses={finishBadgeSquares}
               autoShapes={hintShapes}
               onMove={(from, to) => tryMove(from as Square, to as Square)}
-              onPositionApplied={recordBoardMoveTelemetry}
+              onPositionApplied={recordBoardMoveTrace}
               resetKey={promotion ? `${promotion.from}${promotion.to}` : ""}
               layoutKey={inLobby ? "lobby" : "table"}
               ariaLabel={`Chess board, ${orientation === "w" ? "white" : "black"} orientation`}

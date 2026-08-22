@@ -3121,6 +3121,7 @@ async function handleReviewRequest(req, res, url) {
 }
 
 const server = createServer((req, res) => {
+  res.setHeader("Document-Policy", "js-profiling");
   const url = new URL(req.url, "http://localhost");
   if (handleGamesRequest(req, res, url)) return;
   if (url.pathname.startsWith("/api/auth/")) {
