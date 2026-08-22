@@ -4,12 +4,22 @@ import * as Sentry from "@sentry/react";
 
 const DSN =
   "https://69f4666f8a913ed118913d18660fe20d@o4511927634296832.ingest.us.sentry.io/4511927685939200";
+const MOVE_ANIMATION_TRACE_MS = 240;
 
 type MoveSource = "local" | "remote";
 
 let initialized = false;
 let moveSpan: ReturnType<typeof Sentry.startInactiveSpan> | null = null;
 let expectedFen: string | null = null;
+let traceEndTimer: number | null = null;
+
+function finishMoveTrace() {
+  if (traceEndTimer !== null) window.clearTimeout(traceEndTimer);
+  traceEndTimer = null;
+  moveSpan?.end();
+  moveSpan = null;
+  expectedFen = null;
+}
 
 function initializeSentry() {
   if (initialized || typeof window === "undefined") return;
@@ -27,7 +37,7 @@ function initializeSentry() {
 }
 
 function startMoveTrace(source: MoveSource) {
-  moveSpan?.end();
+  finishMoveTrace();
   initializeSentry();
   moveSpan = Sentry.startInactiveSpan({
     name: "chess.move",
@@ -53,16 +63,12 @@ export function recordServerMoveTrace(fen: string, source: MoveSource) {
 }
 
 export function recordBoardMoveTrace(fen: string) {
-  if (!moveSpan || expectedFen !== fen) return;
+  if (!moveSpan || expectedFen !== fen || traceEndTimer !== null) return;
   moveSpan.addEvent("chess.move.board_applied");
-  moveSpan.end();
-  moveSpan = null;
-  expectedFen = null;
+  traceEndTimer = window.setTimeout(finishMoveTrace, MOVE_ANIMATION_TRACE_MS);
 }
 
 export function failMoveTrace() {
   moveSpan?.addEvent("chess.move.rejected");
-  moveSpan?.end();
-  moveSpan = null;
-  expectedFen = null;
+  finishMoveTrace();
 }
