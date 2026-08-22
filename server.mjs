@@ -57,6 +57,7 @@ const STARTING_TIMES = new Set(
 );
 const INCREMENTS = new Map([[15 * 60 * 1000, 10_000]]);
 const IDLE_ROOM_TTL = 60 * 60 * 1000;
+const HEARTBEAT_INTERVAL_MS = 15_000;
 const BOT_THINK_MS = 500;
 const BOTS = {
   levy: { name: "Garry", elo: 1100 },
@@ -390,6 +391,37 @@ function chooseSeat(table, playerKey) {
       (color) => !table.seats[color] && !reservedColors.has(color),
     ) ?? "spectator"
   );
+}
+
+function replacePlayerConnection(table, playerKey) {
+  if (!playerKey) return;
+  for (const client of table.clients) {
+    if (client.playerKey !== playerKey) continue;
+    table.clients.delete(client);
+    if (
+      (client.role === "w" || client.role === "b") &&
+      table.seats[client.role]?.id === client.id
+    )
+      table.seats[client.role] = null;
+    try {
+      client.socket.close(4001, "Replaced by a newer connection");
+    } catch {}
+  }
+}
+
+function removeClient(table, client) {
+  table.clients.delete(client);
+  if (
+    (client.role !== "w" && client.role !== "b") ||
+    table.seats[client.role]?.id !== client.id
+  )
+    return;
+  pauseClock(table);
+  table.seats[client.role] = null;
+  if (table.undoRequest?.by === client.role) table.undoRequest = null;
+  if (table.drawOffer?.by === client.role) table.drawOffer = null;
+  if (table.liveGradesRequest?.by === client.role)
+    table.liveGradesRequest = null;
 }
 
 function serializeTable(table) {
@@ -982,6 +1014,7 @@ async function joinTable(request, socket) {
   const table = await obtainTable(roomId, initialTimeMs);
   if (socket.readyState !== socket.OPEN) return;
 
+  replacePlayerConnection(table, playerKey);
   const role = chooseSeat(table, playerKey);
   const client = {
     id: randomUUID(),
@@ -1045,16 +1078,7 @@ async function joinTable(request, socket) {
     if (!isBinary) handleTableMessage(table, client, data.toString());
   });
   socket.on("close", () => {
-    table.clients.delete(client);
-    if (client.role === "w" || client.role === "b") {
-      pauseClock(table);
-      if (table.seats[client.role]?.id === client.id)
-        table.seats[client.role] = null;
-      if (table.undoRequest?.by === client.role) table.undoRequest = null;
-      if (table.drawOffer?.by === client.role) table.drawOffer = null;
-      if (table.liveGradesRequest?.by === client.role)
-        table.liveGradesRequest = null;
-    }
+    removeClient(table, client);
     table.touchedAt = Date.now();
     broadcast(table);
   });
@@ -3135,15 +3159,34 @@ const server = createServer((req, res) => {
 });
 const wss = new WebSocketServer({ noServer: true });
 
+setInterval(() => {
+  for (const socket of wss.clients) {
+    if (socket.isAlive === false) {
+      socket.terminate();
+      continue;
+    }
+    socket.isAlive = false;
+    try {
+      socket.ping();
+    } catch {
+      socket.terminate();
+    }
+  }
+}, HEARTBEAT_INTERVAL_MS).unref();
+
 server.on("upgrade", (req, socket, head) => {
   const { pathname } = new URL(req.url, "http://localhost");
   if (pathname === "/ws") {
-    wss.handleUpgrade(req, socket, head, (ws) =>
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      ws.isAlive = true;
+      ws.on("pong", () => {
+        ws.isAlive = true;
+      });
       joinTable(req, ws).catch((error) => {
         console.error("Failed to join table:", error);
         ws.close(1011, "The room could not be joined");
-      }),
-    );
+      });
+    });
   } else if (handleNextUpgrade) {
     // Next dev-mode hot reload uses its own WebSocket.
     handleNextUpgrade(req, socket, head);

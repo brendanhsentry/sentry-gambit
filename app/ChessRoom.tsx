@@ -398,7 +398,7 @@ export function ChessRoom() {
   const [role, setRole] = useState<Role>("spectator");
   const coachHistoryLengthRef = useRef(0);
   const [connection, setConnection] = useState<
-    "idle" | "connecting" | "online" | "offline"
+    "idle" | "connecting" | "online" | "offline" | "replaced"
   >("idle");
   const [state, setState] = useState<GameState | null>(null);
   const [promotion, setPromotion] = useState<{
@@ -1040,9 +1040,17 @@ export function ChessRoom() {
         setNotice(message.message);
       }
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       // A socket we replaced or abandoned must not clobber the connection state.
-      if (socketRef.current === socket) setConnection("offline");
+      if (socketRef.current !== socket) return;
+      if (event.code === 4001) {
+        socketRef.current = null;
+        setConnection("replaced");
+        setRole("spectator");
+        setNotice("This game is open in another tab.");
+        return;
+      }
+      setConnection("offline");
     });
   }, []);
 
@@ -1080,6 +1088,21 @@ export function ChessRoom() {
       1600,
     );
     return () => window.clearTimeout(id);
+  }, [connection, room, name, currentBotKey, currentCoach, state?.initialTimeMs, connect]);
+
+  useEffect(() => {
+    const reconnectWhenVisible = () => {
+      if (document.visibilityState !== "visible" || !room) return;
+      if (connection === "replaced") return;
+      if (socketRef.current?.readyState === WebSocket.CONNECTING) return;
+      connect(room, name, currentBotKey, state?.initialTimeMs, currentCoach);
+    };
+    document.addEventListener("visibilitychange", reconnectWhenVisible);
+    window.addEventListener("online", reconnectWhenVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", reconnectWhenVisible);
+      window.removeEventListener("online", reconnectWhenVisible);
+    };
   }, [connection, room, name, currentBotKey, currentCoach, state?.initialTimeMs, connect]);
 
   const orientation: Color = role === "b" ? "b" : "w";
@@ -1443,6 +1466,8 @@ export function ChessRoom() {
                     ? "CONNECTING"
                     : connection === "offline"
                       ? "RECONNECTING"
+                      : connection === "replaced"
+                        ? "OPEN ELSEWHERE"
                       : "READY"}
               </span>
             </span>
