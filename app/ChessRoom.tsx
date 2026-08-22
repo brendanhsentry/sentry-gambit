@@ -29,6 +29,13 @@ import {
 } from "./board-sounds";
 import { PIECE_GLYPHS } from "./chess-pieces";
 import {
+  failMoveTelemetry,
+  hasMoveTelemetry,
+  recordBoardMoveTelemetry,
+  recordServerMoveTelemetry,
+  startLocalMoveTelemetry,
+} from "./move-performance";
+import {
   botMove,
   engineBestMove,
   gradeLabel,
@@ -419,6 +426,7 @@ export function ChessRoom() {
   >({});
   const explanationRequestsRef = useRef(new Set<number>());
   const latestStateRef = useRef<GameState | null>(null);
+  const receivedStateRef = useRef<GameState | null>(null);
   const auth = useAuth();
   const { user } = auth;
   const [coachEnabled, setCoachEnabled] = useState(true);
@@ -1008,6 +1016,7 @@ export function ChessRoom() {
     socket.addEventListener("message", (event) => {
       const message = JSON.parse(event.data) as ServerMessage;
       if (message.type === "welcome") {
+        receivedStateRef.current = message.state;
         setRole(message.role);
         setState(message.state);
         if (message.role !== "spectator") {
@@ -1018,9 +1027,18 @@ export function ChessRoom() {
           }
         }
       } else if (message.type === "state") {
+        const previous = receivedStateRef.current;
+        receivedStateRef.current = message.state;
+        if (message.state.history.length > (previous?.history.length ?? 0)) {
+          recordServerMoveTelemetry(
+            message.state.fen,
+            hasMoveTelemetry() ? "local" : "remote",
+          );
+        }
         setState(message.state);
         setPromotion(null);
       } else if (message.type === "error") {
+        failMoveTelemetry();
         setNotice(message.message);
       }
     });
@@ -1229,6 +1247,7 @@ export function ChessRoom() {
       ply: viewedPly + 1,
       key: moveSoundKey(move),
     };
+    startLocalMoveTelemetry();
     if (
       !send({
         type: "move",
@@ -1237,6 +1256,7 @@ export function ChessRoom() {
         ...(move.promotion ? { promotion: move.promotion } : {}),
       })
     ) {
+      failMoveTelemetry();
       localMoveSoundRef.current = null;
       return false;
     }
@@ -1495,6 +1515,7 @@ export function ChessRoom() {
               customSquareClasses={finishBadgeSquares}
               autoShapes={hintShapes}
               onMove={(from, to) => tryMove(from as Square, to as Square)}
+              onPositionApplied={recordBoardMoveTelemetry}
               resetKey={promotion ? `${promotion.from}${promotion.to}` : ""}
               layoutKey={inLobby ? "lobby" : "table"}
               ariaLabel={`Chess board, ${orientation === "w" ? "white" : "black"} orientation`}

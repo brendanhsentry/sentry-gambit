@@ -23,6 +23,7 @@ type ChessgroundBoardProps = {
   customSquareClasses?: SquareClasses;
   autoShapes?: DrawShape[];
   onMove?: (from: Key, to: Key) => void;
+  onPositionApplied?: (fen: string) => void;
   resetKey?: string;
   layoutKey?: string;
   viewOnly?: boolean;
@@ -41,6 +42,7 @@ export function ChessgroundBoard({
   customSquareClasses,
   autoShapes,
   onMove,
+  onPositionApplied,
   resetKey,
   layoutKey,
   viewOnly = false,
@@ -49,11 +51,16 @@ export function ChessgroundBoard({
   const elementRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<Api | null>(null);
   const onMoveRef = useRef(onMove);
+  const onPositionAppliedRef = useRef(onPositionApplied);
   const layoutKeyRef = useRef(layoutKey);
 
   useLayoutEffect(() => {
     onMoveRef.current = onMove;
   }, [onMove]);
+
+  useLayoutEffect(() => {
+    onPositionAppliedRef.current = onPositionApplied;
+  }, [onPositionApplied]);
 
   useLayoutEffect(() => {
     if (!elementRef.current) return;
@@ -106,6 +113,7 @@ export function ChessgroundBoard({
     api.setAutoShapes(autoShapes ?? []);
     if (!premoveEnabled) api.cancelPremove();
     else if (movableColor === turnColor) api.playPremove();
+    onPositionAppliedRef.current?.(fen);
   }, [
     autoShapes,
     check,
